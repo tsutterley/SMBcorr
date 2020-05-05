@@ -3,7 +3,7 @@ u"""
 merra_smb_cumulative.py
 Written by Tyler Sutterley (01/2017)
 
-Reads MERRA-2 datafiles to calculate cumulative surface mass balance anomalies
+Calculates cumulative anomalies of MERRA-2 surface mass balance products
 
 INPUTS:
     SMB: Surface Mass Balance

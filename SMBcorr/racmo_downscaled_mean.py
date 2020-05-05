@@ -2,7 +2,7 @@
 u"""
 racmo_downscaled_mean.py
 Written by Tyler Sutterley (07/2019)
-Calculates mean downscaled RACMO products and outputs to netCDF4
+Calculates the temporal mean of downscaled RACMO surface mass balance products
 
 COMMAND LINE OPTIONS:
     --help: list the command line options

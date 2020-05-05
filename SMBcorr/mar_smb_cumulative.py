@@ -2,7 +2,7 @@
 u"""
 mar_smb_cumulative.py
 Written by Tyler Sutterley (11/2019)
-Calculates cumulative anomalies in MAR surface mass balance products
+Calculates cumulative anomalies of MAR surface mass balance products
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
@@ -141,22 +141,15 @@ def mar_smb_cumulative(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         input_products['SUBLIM'] = 'SU'
         input_products['REFREEZE'] = ['MEcorr','RUcorr','RU2corr']
         input_products['RAINFALL'] = 'RF'
-        input_products['ALBEDO'] = 'AL'
-        input_products['CLOUD_COVER'] = 'CC'
-        input_products['LONGWAVE'] = 'LWD'
-        input_products['SHORTWAVE'] = 'SWD'
-        input_products['LATENT_HEAT'] = 'LHF'
-        input_products['SENSIBLE_HEAT'] = 'SHF'
         #-- downscaled projection: WGS84/NSIDC Sea Ice Polar Stereographic North
-        proj = "+init=EPSG:{0:d}".format(3413)
+        proj4_params = "+init=EPSG:{0:d}".format(3413)
     else:
         #-- variable coordinates
         XNAME,YNAME,TIMENAME = ('X10_105','Y21_199','TIME')
         #-- SMB is SMB for the ice covered area
         input_products['SMB'] = 'SMB'
-        #-- RU from 15km product
         #-- RU is runoff for the ice covered area
-        #-- RU2 is unoff for the tundra covered area
+        #-- RU2 is runoff for the tundra covered area
         input_products['RUNOFF'] = ['RU','RU2']
         input_products['PRECIP'] = ['RF','SF']
         input_products['SNOWFALL'] = 'SF'
@@ -164,18 +157,12 @@ def mar_smb_cumulative(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         input_products['SUBLIM'] = 'SU'
         input_products['REFREEZE'] = 'RZ'
         input_products['RAINFALL'] = 'RF'
-        input_products['ALBEDO'] = 'AL'
-        input_products['CLOUD_COVER'] = 'CC'
-        input_products['LONGWAVE'] = 'LWD'
-        input_products['SHORTWAVE'] = 'SWD'
-        input_products['LATENT_HEAT'] = 'LHF'
-        input_products['SENSIBLE_HEAT'] = 'SHF'
         #-- MAR model projection: Polar Stereographic (Oblique)
         #-- Earth Radius: 6371229 m
         #-- True Latitude: 0
         #-- Center Longitude: -40
         #-- Center Latitude: 70.5
-        proj = ("+proj=sterea +lat_0=+70.5 +lat_ts=0 +lon_0=-40.0 "
+        proj4_params = ("+proj=sterea +lat_0=+70.5 +lat_ts=0 +lon_0=-40.0 "
             "+a=6371229 +no_defs")
 
     #-- create flag to differentiate between direct and directed products
@@ -300,7 +287,7 @@ def mar_smb_cumulative(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
                 UNITS='mmWE', LONGNAME=longname[PRODUCT], VARNAME=PRODUCT,
                 LONNAME='LON', LATNAME='LAT', XNAME='x', YNAME='y',
                 TIMENAME='TIME', MASKNAME='VALID', VERBOSE=VERBOSE,
-                PROJECTION=proj, TITLE=TITLE.format(RANGE[0],RANGE[1]))
+                PROJECTION=proj4_params, TITLE=TITLE.format(RANGE[0],RANGE[1]))
             #-- change the permissions mode
             os.chmod(os.path.join(output_dir,cumul_file),MODE)
 

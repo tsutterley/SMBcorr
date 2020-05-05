@@ -2,7 +2,7 @@
 u"""
 racmo_downscaled_cumulative.py
 Written by Tyler Sutterley (09/2019)
-Calculates downscaled RACMO cumulative anomalies and outputs to a single netCDF4
+Calculates cumulative anomalies of RACMO surface mass balance products
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
@@ -330,7 +330,7 @@ def racmo_downscaled_cumulative(base_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     #-- Full Directory Setup
     DIRECTORY = 'SMB1km_v{0}'.format(VERSION)
 
-    #-- version 1 was in separate files for each year
+    #-- version 1 was in separate files for each yearmar_cumulative_netcdf
     if (VERSION == '1.0'):
         RACMO_MODEL = ['XGRN11','2.3']
         VARNAME = input_products[PRODUCT]

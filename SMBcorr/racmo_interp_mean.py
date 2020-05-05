@@ -2,7 +2,7 @@
 u"""
 racmo_interp_mean.py
 Written by Tyler Sutterley (09/2019)
-Interpolates and extrapolates downscaled RACMO products to times and coordinates
+Interpolates the mean of downscaled RACMO products to spatial coordinates
 
 CALLING SEQUENCE:
     python racmo_interp_mean.py --directory=<path> --version=3.0 \

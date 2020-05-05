@@ -2,7 +2,7 @@
 u"""
 racmo_integrate_firn_height.py
 Written by Tyler Sutterley (10/2019)
-Integrate firn heights for each Promice ice class
+Integrate RACMO firn heights for each Promice ice class
 
 CALLING SEQUENCE:
     python racmo_integrate_firn_height.py --directory=<path> --smb=FGRN055

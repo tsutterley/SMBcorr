@@ -2,7 +2,7 @@
 u"""
 merra_hybrid_cumulative.py
 Written by Tyler Sutterley (10/2019)
-Calculates cumulative anomalies in MERRA-2 SMB variables
+Calculates cumulative anomalies of MERRA-2 hybrid surface mass balance products
     MERRA-2 Hybrid model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:

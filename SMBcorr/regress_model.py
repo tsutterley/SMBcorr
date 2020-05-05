@@ -2,7 +2,7 @@
 u"""
 regress_model.py
 Written by Tyler Sutterley (07/2019)
-Estimates a modeled time series by least-squares regression
+Estimates a modeled time series for extrapolation by least-squares regression
 
 CALLING SEQUENCE:
     d_out = regress_model(t_in, d_in, t_out, ORDER=2,

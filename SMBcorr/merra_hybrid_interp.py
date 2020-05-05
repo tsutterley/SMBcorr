@@ -2,7 +2,7 @@
 u"""
 merra_hybrid_interp.py
 Written by Tyler Sutterley (10/2019)
-Interpolates and extrapolates MERRA-2 firn variables to times and coordinates
+Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:

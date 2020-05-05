@@ -1,26 +1,22 @@
 #!/usr/bin/env python
 u"""
-racmo_interp_daily.py
+mar_interp_daily.py
 Written by Tyler Sutterley (04/2020)
-Interpolates and extrapolates daily RACMO products to times and coordinates
+Interpolates and extrapolates daily MAR products to times and coordinates
 
 INPUTS:
-    base_dir: working data directory
+    DIRECTORY: full path to the MAR data directory
+        <path_to_mar>/MARv3.11/Greenland/ERA_1958-2019-15km/daily_15km
+        <path_to_mar>/MARv3.11/Greenland/NCEP1_1948-2020_20km/daily_20km
+        <path_to_mar>/MARv3.10/Greenland/NCEP1_1948-2019_20km/daily_20km
+        <path_to_mar>/MARv3.9/Greenland/ERA_1958-2018_10km/daily_10km
     EPSG: projection of input spatial coordinates
-    MODEL: daily model outputs to interpolate
-        FGRN055: 5.5km Greenland RACMO2.3p2
-        FGRN11: 11km Greenland RACMO2.3p2
-        XANT27: 27km Antarctic RACMO2.3p2
-        ASE055: 5.5km Amundsen Sea Embayment RACMO2.3p2
-        XPEN055: 5.5km Antarctic Peninsula RACMO2.3p2
     tdec: dates to interpolate in year-decimal
     X: x-coordinates to interpolate
     Y: y-coordinates to interpolate
 
 OPTIONS:
-    VARIABLE: RACMO product to calculate
-        smb: Surface Mass Balance
-        hgtsrf: Change of Surface Height
+    VARIABLE: MAR product to calculate
     FILL_VALUE: output fill_value for invalid points
 
 PYTHON DEPENDENCIES:
@@ -40,7 +36,6 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
-    Updated 04/2020: Gaussian average model fields before interpolation
     Written 04/2020
 """
 from __future__ import print_function
@@ -52,23 +47,29 @@ import pyproj
 import netCDF4
 import numpy as np
 import scipy.spatial
-import scipy.ndimage
 import scipy.interpolate
 from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
 from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
 
-#-- PURPOSE: read and interpolate daily RACMO2.3 outputs
-def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
-    VARIABLE='smb', FILL_VALUE=None):
+#-- PURPOSE: read and interpolate daily MAR outputs
+def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
+    VARIABLE='SMB', FILL_VALUE=None):
 
     #-- start and end years to read
     SY,EY = (np.min(np.floor(tdec)),np.max(np.floor(tdec)))
-    #-- input list of files
-    if (MODEL == 'FGRN055'):
-        #-- filename and directory for input FGRN055 files
-        file_pattern = 'RACMO2.3p2_FGRN055_{0}_daily_{1:4d}.nc'
-        DIRECTORY = os.path.join(base_dir,'RACMO','GL','RACMO2.3p2_FGRN055')
+    #-- regular expression pattern for MAR dataset
+    rx = re.compile('MAR{0}-(.*?)-(\d{{{4}})(_subset)?.nc$'.format(VERSION))
+
+    #-- variable coordinates
+    XNAME,YNAME,TIMENAME = ('X10_105','Y21_199','TIME')
+    #-- MAR model projection: Polar Stereographic (Oblique)
+    #-- Earth Radius: 6371229 m
+    #-- True Latitude: 0
+    #-- Center Longitude: -40
+    #-- Center Latitude: 70.5
+    proj4_params = ("+proj=sterea +lat_0=+70.5 +lat_ts=0 +lon_0=-40.0 "
+        "+a=6371229 +no_defs")
 
     #-- create list of files to read
     input_files = [file_pattern.format(VARIABLE,YEAR) for YEAR in range(SY,EY+1)
@@ -77,80 +78,50 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
     #-- calculate number of time steps to read
     nt = 0
     for FILE in input_files:
-        #-- Open the RACMO NetCDF file for reading
+        #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
-            nx = len(fileID.variables['rlon'][:])
-            ny = len(fileID.variables['rlat'][:])
-            nt += len(fileID.variables['time'][:])
-            #-- invalid data value
-            fv = np.float(fileID.variables[VARIABLE]._FillValue)
+            nx = len(fileID.variables[XNAME][:])
+            ny = len(fileID.variables[YNAME][:])
+            nt += len(fileID.variables[TIMENAME][:])
 
     #-- create a masked array with all data
     fd = {}
-    fd[VARIABLE] = np.ma.zeros((nt,ny,nx),fill_value=fv)
+    fd[VARIABLE] = np.ma.zeros((nt,ny,nx),fill_value=FILL_VALUE)
     fd[VARIABLE].mask = np.zeros((nt,ny,nx),dtype=np.bool)
-    fd['time'] = np.zeros((nt))
+    fd['TIME'] = np.zeros((nt))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
     for FILE in input_files:
-        #-- Open the RACMO NetCDF file for reading
+        #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
-            t = len(fileID.variables['time'][:])
+            t = len(fileID.variables['TIME'][:])
             #-- Get data from netCDF variable and remove singleton dimensions
             fd[VARIABLE][c:c+t,:,:] = np.squeeze(fileID.variables[VARIABLE][:])
             #-- verify mask object for interpolating data
             fd[VARIABLE].mask[c:c+t,:,:] |= (fd[VARIABLE].data[c:c+t,:,:] == fv)
-            #-- racmo coordinates
-            fd['lon'] = fileID.variables['lon'][:,:].copy()
-            fd['lat'] = fileID.variables['lat'][:,:].copy()
-            fd['x'] = fileID.variables['rlon'][:].copy()
-            fd['y'] = fileID.variables['rlat'][:].copy()
-            #-- rotated pole parameters
-            proj4_params = fileID.variables['rotated_pole'].proj4_params
+            #-- MAR coordinates
+            fd['LON'] = fileID.variables['LON'][:,:].copy()
+            fd['LAT'] = fileID.variables['LAT'][:,:].copy()
+            fd['x'] = fileID.variables[XNAME][:].copy()
+            fd['y'] = fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time = fileID.variables['time'][:].copy()
-            time_units = fileID.variables['time'].units
+            delta_time = fileID.variables[TIMENAME][:].copy()
+            time_units = fileID.variables[TIMENAME].units
             #-- convert epoch of time to Julian days
             Y,M,D,h,m,s = [float(d) for d in re.findall('\d+\.\d+|\d+',units)]
             epoch_julian = calc_julian_day(Y,M,D,HOUR=h,MINUTE=m,SECOND=s)
             #-- calculate time array in Julian days
             YY,MM,DD,hh,mm,ss = convert_julian(epoch_julian + delta_time)
             #-- calculate time in year-decimal
-            fd['time'][c:c+t] = convert_calendar_decimal(YY,MM,DD,
+            fd['TIME'][c:c+t] = convert_calendar_decimal(YY,MM,DD,
                 HOUR=hh,MINUTE=mm,SECOND=ss)
 
-    #-- combine mask object through time to create a single mask
-    fd['mask'] = np.any(fd[VARIABLE].mask, axis=0).astype(np.float)
-    #-- use a gaussian filter to smooth mask
-    gs = {}
-    gs['mask'] = scipy.ndimage.gaussian_filter(fd['mask'], SIGMA,
-        mode='constant', cval=0)
-    #-- indices of smoothed ice mask
-    ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
-    #-- use a gaussian filter to smooth each model field
-    gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
-    for t in range(nt):
-        #-- replace fill values before smoothing data
-        temp1 = np.zeros((ny,nx))
-        temp1[i,j] = fd[VARIABLE][t,i,j].copy()
-        #-- smooth spatial field
-        temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
-            mode='constant', cval=0)
-        #-- scale output smoothed field
-        gs[VARIABLE][t,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
-        #-- replace valid values with original
-        gs[VARIABLE][t,i,j] = temp1[i,j]
-        #-- set mask variables for time
-        gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
-
     #-- convert projection from input coordinates (EPSG) to model coordinates
-    #-- RACMO models are rotated pole latitude and longitude
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
     proj2 = pyproj.Proj(proj4_params)
-    #-- calculate rotated pole coordinates of input coordinates
+    #-- calculate projected coordinates of input coordinates
     ix,iy = pyproj.transform(proj1, proj2, X, Y)
 
     #-- check that input points are within convex hull of valid model points
@@ -167,16 +138,16 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
     interp_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
     #-- find days that can be interpolated
-    if np.any((tdec >= fd['time'].min()) & (tdec <= fd['time'].max()) & valid):
+    if np.any((tdec >= fd['TIME'].min()) & (tdec <= fd['TIME'].max()) & valid):
         #-- indices of dates for interpolated days
-        ind, = np.nonzero((tdec >= fd['time'].min()) &
-            (tdec <= fd['time'].max()) & valid)
+        ind, = np.nonzero((tdec >= fd['TIME'].min()) &
+            (tdec <= fd['TIME'].max()) & valid)
         #-- create an interpolator for model variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (fd['time'],fd['y'],fd['x']), fd[VARIABLE].data)
+            (fd['TIME'],fd['y'],fd['x']), fd[VARIABLE].data)
         #-- create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
-            (fd['time'],fd['y'],fd['x']), fd[VARIABLE].mask)
+            (fd['TIME'],fd['y'],fd['x']), fd[VARIABLE].mask)
 
         #-- interpolate to points
         interp_data.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
@@ -185,10 +156,10 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
         interp_data.interpolation[ind] = 1
 
     #-- check if needing to extrapolate backwards in time
-    count = np.count_nonzero((tdec < fd['time'].min()) & valid)
+    count = np.count_nonzero((tdec < fd['TIME'].min()) & valid)
     if (count > 0):
         #-- indices of dates before model
-        ind, = np.nonzero((tdec < fd['time'].min()) & valid)
+        ind, = np.nonzero((tdec < fd['TIME'].min()) & valid)
         #-- calculate a regression model for calculating values
         #-- spatially interpolate model variable to coordinates
         DATA = np.zeros((count,nt))
@@ -205,7 +176,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
             MASK[:,k] = S2.ev(ix[ind],iy[ind])
         #-- calculate regression model
         for n,v in enumerate(ind):
-            interp_data.data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
+            interp_data.data[v] = regress_model(fd['TIME'], DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[0])
         #-- mask any invalid points
         interp_data.mask[ind] = np.any(MASK, axis=1)
@@ -213,10 +184,10 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
         interp_data.interpolation[ind] = 2
 
     #-- check if needing to extrapolate forward in time
-    count = np.count_nonzero((tdec > fd['time'].max()) & valid)
+    count = np.count_nonzero((tdec > fd['TIME'].max()) & valid)
     if (count > 0):
         #-- indices of dates after model
-        ind, = np.nonzero((tdec > fd['time'].max()) & valid)
+        ind, = np.nonzero((tdec > fd['TIME'].max()) & valid)
         #-- calculate a regression model for calculating values
         #-- spatially interpolate model variable to coordinates
         DATA = np.zeros((count,nt))
@@ -235,7 +206,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
         for n,v in enumerate(ind):
             interp_data[v] = regress_model(T, DATA[n,:], tdec[v], ORDER=2,
                 CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
-            interp_data.data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
+            interp_data.data[v] = regress_model(fd['TIME'], DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
         #-- mask any invalid points
         interp_data.mask[ind] = np.any(MASK, axis=1)

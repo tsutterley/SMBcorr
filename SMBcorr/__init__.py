@@ -1,10 +1,17 @@
 from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
 from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
+# MAR
+from SMBcorr.mar_smb_cumulative import mar_smb_cumulative
+from SMBcorr.mar_smb_mean import mar_smb_mean
+from SMBcorr.mar_extrap_daily import extrapolate_mar_daily
+from SMBcorr.mar_interp_daily import interpolate_mar_daily
+# MERRA2 and MERRA2-hybrid
 from SMBcorr.merra_smb_cumulative import merra_smb_cumulative
 from SMBcorr.merra_hybrid_cumulative import merra_hybrid_cumulative
 from SMBcorr.merra_hybrid_extrap import extrapolate_merra_hybrid
 from SMBcorr.merra_hybrid_interp import interpolate_merra_hybrid
+# RACMO
 from SMBcorr.racmo_downscaled_cumulative import racmo_downscaled_cumulative
 from SMBcorr.racmo_downscaled_mean import racmo_downscaled_mean
 from SMBcorr.racmo_extrap_daily import extrapolate_racmo_daily

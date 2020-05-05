@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 u"""
-racmo_extrap_daily.py
+mar_extrap_daily.py
 Written by Tyler Sutterley (04/2020)
-Interpolates and extrapolates daily RACMO products to times and coordinates
+Interpolates and extrapolates daily MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
 https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.BallTree.html
@@ -10,22 +10,18 @@ https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.KDTree.html
 and inverse distance weighted interpolation to extrapolate spatially
 
 INPUTS:
-    base_dir: working data directory
+    DIRECTORY: full path to the MAR data directory
+        <path_to_mar>/MARv3.11/Greenland/ERA_1958-2019-15km/daily_15km
+        <path_to_mar>/MARv3.11/Greenland/NCEP1_1948-2020_20km/daily_20km
+        <path_to_mar>/MARv3.10/Greenland/NCEP1_1948-2019_20km/daily_20km
+        <path_to_mar>/MARv3.9/Greenland/ERA_1958-2018_10km/daily_10km
     EPSG: projection of input spatial coordinates
-    MODEL: daily model outputs to interpolate
-        FGRN055: 5.5km Greenland RACMO2.3p2
-        FGRN11: 11km Greenland RACMO2.3p2
-        XANT27: 27km Antarctic RACMO2.3p2
-        ASE055: 5.5km Amundsen Sea Embayment RACMO2.3p2
-        XPEN055: 5.5km Antarctic Peninsula RACMO2.3p2
     tdec: dates to interpolate in year-decimal
     X: x-coordinates to interpolate in projection EPSG
     Y: y-coordinates to interpolate in projection EPSG
 
 OPTIONS:
-    VARIABLE: RACMO product to calculate
-        smb: Surface Mass Balance
-        hgtsrf: Change of Surface Height
+    VARIABLE: MAR product to calculate
     SEARCH: nearest-neighbor search algorithm (BallTree or KDTree)
     NN: number of nearest-neighbor points to use
     POWER: inverse distance weighting power
@@ -48,7 +44,6 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
-    Updated 04/2020: Gaussian average model fields before interpolation
     Written 04/2020
 """
 from __future__ import print_function
@@ -60,73 +55,82 @@ import pyproj
 import netCDF4
 import numpy as np
 import scipy.spatial
-import scipy.ndimage
 import scipy.interpolate
 from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
 from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
 
-#-- PURPOSE: read and interpolate daily RACMO2.3 outputs
-def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
-    VARIABLE='smb', SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
+#-- PURPOSE: get the dimensions for the input data matrices
+def get_dimensions(DIRECTORY,input_files,XNAME,YNAME):
+    #-- Open the NetCDF file for reading
+    with netCDF4.Dataset(os.path.join(DIRECTORY,input_files[0]), 'r') as fileID:
+        #-- get grid dimensions from first file
+        xsize, = fileID[XNAME].shape
+        ysize, = fileID[YNAME].shape
+        xmin = fileID[XNAME][:].min()
+        xmax = fileID[XNAME][:].max()
+        ymin = fileID[YNAME][:].min()
+        ymax = fileID[YNAME][:].max()
+        pixel_size = np.abs(fileID[XNAME][1] - fileID[XNAME][0])
+    return (xsize,ysize,(xmin,xmax,ymin,ymax),pixel_size)
+
+#-- PURPOSE: read and interpolate daily MAR outputs
+def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
+    VARIABLE='SMB', SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
 
     #-- start and end years to read
     SY,EY = (np.min(np.floor(tdec)),np.max(np.floor(tdec)))
-    #-- input list of files
-    if (MODEL == 'FGRN055'):
-        #-- filename and directory for input FGRN055 files
-        file_pattern = 'RACMO2.3p2_FGRN055_{0}_daily_{1:4d}.nc'
-        DIRECTORY = os.path.join(base_dir,'RACMO','GL','RACMO2.3p2_FGRN055')
+    #-- regular expression pattern for MAR dataset
+    rx = re.compile('MAR{0}-(.*?)-(\d{{{4}})(_subset)?.nc$'.format(VERSION))
 
     #-- create list of files to read
     input_files = [file_pattern.format(VARIABLE,YEAR) for YEAR in range(SY,EY+1)
         if file_pattern.format(VARIABLE,YEAR) in os.listdir(DIRECTORY)]
 
+    #-- variable coordinates
+    XNAME,YNAME,TIMENAME = ('X10_105','Y21_199','TIME')
+
     #-- calculate number of time steps to read
     nt = 0
     for FILE in input_files:
-        #-- Open the RACMO NetCDF file for reading
+        #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
-            nx = len(fileID.variables['rlon'][:])
-            ny = len(fileID.variables['rlat'][:])
-            nt += len(fileID.variables['time'][:])
-            #-- invalid data value
-            fv = np.float(fileID.variables[VARIABLE]._FillValue)
+            nx = len(fileID.variables[XNAME][:])
+            ny = len(fileID.variables[YNAME][:])
+            nt += len(fileID.variables[TIMENAME][:])
 
     #-- create a masked array with all data
     fd = {}
-    fd[VARIABLE] = np.ma.zeros((nt,ny,nx),fill_value=fv)
+    fd[VARIABLE] = np.ma.zeros((nt,ny,nx),fill_value=FILL_VALUE)
     fd[VARIABLE].mask = np.zeros((nt,ny,nx),dtype=np.bool)
-    fd['time'] = np.zeros((nt))
+    fd['TIME'] = np.zeros((nt))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
     for FILE in input_files:
-        #-- Open the RACMO NetCDF file for reading
+        #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
-            t = len(fileID.variables['time'][:])
+            t = len(fileID.variables[TIMENAME][:])
             #-- Get data from netCDF variable and remove singleton dimensions
             fd[VARIABLE][c:c+t,:,:] = np.squeeze(fileID.variables[VARIABLE][:])
             #-- verify mask object for interpolating data
             fd[VARIABLE].mask[c:c+t,:,:] |= (fd[VARIABLE].data[c:c+t,:,:] == fv)
-            #-- racmo coordinates
-            fd['lon'] = fileID.variables['lon'][:,:].copy()
-            fd['lat'] = fileID.variables['lat'][:,:].copy()
-            fd['x'] = fileID.variables['rlon'][:].copy()
-            fd['y'] = fileID.variables['rlat'][:].copy()
-            #-- rotated pole parameters
-            proj4_params = fileID.variables['rotated_pole'].proj4_params
+            #-- MAR coordinates
+            fd['LON'] = fileID.variables['LON'][:,:].copy()
+            fd['LAT'] = fileID.variables['LON'][:,:].copy()
+            fd['x'] = fileID.variables[XNAME][:].copy()
+            fd['y'] = fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time = fileID.variables['time'][:].copy()
-            time_units = fileID.variables['time'].units
+            delta_time = fileID.variables[TIMENAME][:].copy()
+            time_units = fileID.variables[TIMENAME].units
             #-- convert epoch of time to Julian days
             Y,M,D,h,m,s = [float(d) for d in re.findall('\d+\.\d+|\d+',units)]
             epoch_julian = calc_julian_day(Y,M,D,HOUR=h,MINUTE=m,SECOND=s)
             #-- calculate time array in Julian days
             YY,MM,DD,hh,mm,ss = convert_julian(epoch_julian + delta_time)
             #-- calculate time in year-decimal
-            fd['time'][c:c+t] = convert_calendar_decimal(YY,MM,DD,
+            fd['TIME'][c:c+t] = convert_calendar_decimal(YY,MM,DD,
                 HOUR=hh,MINUTE=mm,SECOND=ss)
 
     #-- indices of specified ice mask
@@ -157,30 +161,30 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
         #-- set mask variables for time
         gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
 
-    #-- convert RACMO latitude and longitude to input coordinates (EPSG)
+    #-- convert MAR latitude and longitude to input coordinates (EPSG)
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
     proj2 = pyproj.Proj("+init=EPSG:{0:d}".format(4326))
-    xg,yg = pyproj.transform(proj2, proj1, fd['lon'], fd['lat'])
+    xg,yg = pyproj.transform(proj2, proj1, fd['LON'], fd['LAT'])
 
     #-- construct search tree from original points
     #-- can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[i,j,None],yg[i,j,None]),axis=1)
     tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
 
-    #-- output interpolated arrays of variable
+    #-- output interpolated arrays of output variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
     #-- find days that can be interpolated
-    if np.any((tdec >= fd['time'].min()) & (tdec < fd['time'].max())):
+    if np.any((tdec >= fd['TIME'].min()) & (tdec < fd['TIME'].max())):
         #-- indices of dates for interpolated days
-        ind,=np.nonzero((tdec >= fd['time'].min()) & (tdec < fd['time'].max()))
-        f = scipy.interpolate.interp1d(fd['time'], np.arange(nt), kind='linear')
+        ind,=np.nonzero((tdec >= fd['TIME'].min()) & (tdec < fd['TIME'].max()))
+        f = scipy.interpolate.interp1d(fd['TIME'], np.arange(nt), kind='linear')
         date_indice = f(tdec[ind]).astype(np.int)
-        #-- for each unique racmo date
-        #-- linearly interpolate in time between two racmo maps
+        #-- for each unique model date
+        #-- linearly interpolate in time between two model maps
         #-- then then inverse distance weighting to extrapolate in space
         for k in np.unique(date_indice):
             kk, = np.nonzero(date_indice==k)
@@ -197,7 +201,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
             var1 = fd[VARIABLE][k,i,j]
             var2 = fd[VARIABLE][k+1,i,j]
             #-- linearly interpolate to date
-            dt = (tdec[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
+            dt = (tdec[kk] - fd['TIME'][k])/(fd['TIME'][k+1] - fd['TIME'][k])
             #-- spatially extrapolate using inverse distance weighting
             extrap_data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)
@@ -205,10 +209,10 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
         extrap_data.interpolation[ind] = 1
 
     #-- check if needing to extrapolate backwards in time
-    count = np.count_nonzero(tdec < fd['time'].min())
+    count = np.count_nonzero(tdec < fd['TIME'].min())
     if (count > 0):
         #-- indices of dates before model
-        ind, = np.nonzero(tdec < fd['time'].min())
+        ind, = np.nonzero(tdec < fd['TIME'].min())
         #-- query the search tree to find the NN closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=NN, return_distance=True)
@@ -227,16 +231,16 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
+            extrap_data[v] = regress_model(fd['TIME'], DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[0])
         #-- set interpolation type (2: extrapolated backwards in time)
         extrap_data.interpolation[ind] = 2
 
     #-- check if needing to extrapolate forward in time
-    count = np.count_nonzero(tdec >= fd['time'].max())
+    count = np.count_nonzero(tdec >= fd['TIME'].max())
     if (count > 0):
-        #-- indices of dates after racmo model
-        ind, = np.nonzero(tdec >= fd['time'].max())
+        #-- indices of dates after model
+        ind, = np.nonzero(tdec >= fd['TIME'].max())
         #-- query the search tree to find the NN closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=NN, return_distance=True)
@@ -255,7 +259,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
+            extrap_data[v] = regress_model(fd['TIME'], DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
         #-- set interpolation type (3: extrapolated forward in time)
         extrap_data.interpolation[ind] = 3
