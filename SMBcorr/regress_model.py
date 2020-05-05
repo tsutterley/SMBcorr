@@ -32,31 +32,31 @@ import numpy as np
 #-- PURPOSE: calculate a regression model for extrapolating values
 def regress_model(t_in, d_in, t_out, ORDER=2, CYCLES=None, RELATIVE=None):
 
-	#-- remove singleton dimensions
-	t_in = np.squeeze(t_in)
-	d_in = np.squeeze(d_in)
-	t_out = np.squeeze(t_out)
-	#-- check dimensions of output
-	if (np.ndim(t_out) == 0):
-		t_out = np.array([t_out])
+    #-- remove singleton dimensions
+    t_in = np.squeeze(t_in)
+    d_in = np.squeeze(d_in)
+    t_out = np.squeeze(t_out)
+    #-- check dimensions of output
+    if (np.ndim(t_out) == 0):
+        t_out = np.array([t_out])
 
-	#-- CREATING DESIGN MATRIX FOR REGRESSION
-	DMAT = []
-	MMAT = []
-	#-- add polynomial orders (0=constant, 1=linear, 2=quadratic)
-	for o in range(ORDER+1):
-		DMAT.append((t_in-RELATIVE)**o)
-		MMAT.append((t_out-RELATIVE)**o)
-	#-- add cyclical terms (0.5=semi-annual, 1=annual)
-	for c in CYCLES:
-		DMAT.append(np.sin(2.0*np.pi*t_in/np.float(c)))
-		DMAT.append(np.cos(2.0*np.pi*t_in/np.float(c)))
-		MMAT.append(np.sin(2.0*np.pi*t_out/np.float(c)))
-		MMAT.append(np.cos(2.0*np.pi*t_out/np.float(c)))
+    #-- CREATING DESIGN MATRIX FOR REGRESSION
+    DMAT = []
+    MMAT = []
+    #-- add polynomial orders (0=constant, 1=linear, 2=quadratic)
+    for o in range(ORDER+1):
+        DMAT.append((t_in-RELATIVE)**o)
+        MMAT.append((t_out-RELATIVE)**o)
+    #-- add cyclical terms (0.5=semi-annual, 1=annual)
+    for c in CYCLES:
+        DMAT.append(np.sin(2.0*np.pi*t_in/np.float(c)))
+        DMAT.append(np.cos(2.0*np.pi*t_in/np.float(c)))
+        MMAT.append(np.sin(2.0*np.pi*t_out/np.float(c)))
+        MMAT.append(np.cos(2.0*np.pi*t_out/np.float(c)))
 
-	#-- Calculating Least-Squares Coefficients
-	#-- Standard Least-Squares fitting (the [0] denotes coefficients output)
-	beta_mat = np.linalg.lstsq(np.transpose(DMAT), d_in, rcond=-1)[0]
+    #-- Calculating Least-Squares Coefficients
+    #-- Standard Least-Squares fitting (the [0] denotes coefficients output)
+    beta_mat = np.linalg.lstsq(np.transpose(DMAT), d_in, rcond=-1)[0]
 
-	#-- return modeled time-series
-	return np.dot(np.transpose(MMAT),beta_mat)
+    #-- return modeled time-series
+    return np.dot(np.transpose(MMAT),beta_mat)

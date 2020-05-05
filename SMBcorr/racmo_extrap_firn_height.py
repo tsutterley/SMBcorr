@@ -52,7 +52,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 04/2020: reduced to interpolation function.  output masked array
-	Updated 10/2019: Gaussian average firn fields before interpolation
+    Updated 10/2019: Gaussian average firn fields before interpolation
     Updated 09/2019: use scipy interpolate to find date indices
     Forked 08/2019 from racmo_interp_firn_height.py
     Updated 08/2019: convert to model coordinates (rotated pole lat/lon)
@@ -126,30 +126,30 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
     #-- indices of specified ice mask
     i,j = np.nonzero(fd[VARIABLE][0,:,:] != fv)
 
-	#-- use a gaussian filter to smooth mask
-	gs = {}
-	gs['mask'] = scipy.ndimage.gaussian_filter(fd['mask'], SIGMA,
-		mode='constant', cval=0)
-	#-- indices of smoothed ice mask
-	ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
-	#-- use a gaussian filter to smooth each firn field
-	gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-	gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
-	for t in range(nt):
-		#-- replace fill values before smoothing data
-		temp1 = np.zeros((ny,nx))
-		#-- reference to first firn field
+    #-- use a gaussian filter to smooth mask
+    gs = {}
+    gs['mask'] = scipy.ndimage.gaussian_filter(fd['mask'], SIGMA,
+        mode='constant', cval=0)
+    #-- indices of smoothed ice mask
+    ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
+    #-- use a gaussian filter to smooth each firn field
+    gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
+    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
+    for t in range(nt):
+        #-- replace fill values before smoothing data
+        temp1 = np.zeros((ny,nx))
+        #-- reference to first firn field
         if REFERENCE:
-    		temp1[i,j] = fd[VARIABLE][t,i,j] - fd[VARIABLE][0,i,j]
+            temp1[i,j] = fd[VARIABLE][t,i,j] - fd[VARIABLE][0,i,j]
         else:
-    		temp1[i,j] = fd[VARIABLE][t,i,j].copy()
-		#-- smooth firn field
-		temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
-			mode='constant', cval=0)
-		#-- scale output smoothed firn field
-		gs[VARIABLE][t,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
-		#-- replace valid firn values with original
-		gs[VARIABLE][t,i,j] = temp1[i,j]
+            temp1[i,j] = fd[VARIABLE][t,i,j].copy()
+        #-- smooth firn field
+        temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
+            mode='constant', cval=0)
+        #-- scale output smoothed firn field
+        gs[VARIABLE][t,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
+        #-- replace valid firn values with original
+        gs[VARIABLE][t,i,j] = temp1[i,j]
         #-- set mask variables for time
         gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
 

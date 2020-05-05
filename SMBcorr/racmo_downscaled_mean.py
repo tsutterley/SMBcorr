@@ -31,7 +31,6 @@ UPDATE HISTORY:
     Updated 06/2018: using python3 compatible octal and input
     Updated 11/2017: added version 2.0 (RACMO2.3p2 for 1958-2016)
     Updated 02/2017: using getopt to set base directory
-    Updated 11/2016: output ESRI shapefile of equilbrium line
     Written 11/2016
 """
 from __future__ import print_function
