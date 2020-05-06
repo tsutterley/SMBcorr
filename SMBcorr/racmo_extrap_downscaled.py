@@ -21,7 +21,7 @@ INPUTS:
     Y: y-coordinates to interpolate in projection EPSG
 
 OPTIONS:
-    VARIABLE: RACMO product to calculate
+    VARIABLE: RACMO product to interpolate
         SMB: Surface Mass Balance
         PRECIP: Precipitation
         RUNOFF: Melt Water Runoff

@@ -12,7 +12,7 @@ and inverse distance weighted interpolation to extrapolate spatially
 INPUTS:
     base_dir: working data directory
     EPSG: projection of input spatial coordinates
-    MODEL: daily model outputs to interpolate
+    MODEL: model outputs to interpolate
         FGRN055: 5.5km Greenland RACMO2.3p2
         FGRN11: 11km Greenland RACMO2.3p2
         XANT27: 27km Antarctic RACMO2.3p2
@@ -26,7 +26,7 @@ OPTIONS:
     SEARCH: nearest-neighbor search algorithm (BallTree or KDTree)
     NN: number of nearest-neighbor points to use
     POWER: inverse distance weighting power
-    VARIABLE: RACMO product to calculate
+    VARIABLE: RACMO product to interpolate
         zs: firn height
         FirnAir: firn air content
     SIGMA: Standard deviation for Gaussian kernel
@@ -166,6 +166,7 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
     #-- output interpolated arrays of firn variable (height or firn air content)
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap_data.mask = np.zeros((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 

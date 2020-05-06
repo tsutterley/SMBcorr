@@ -1,23 +1,32 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_extrap.py
-Written by Tyler Sutterley (10/2019)
+Written by Tyler Sutterley (05/2020)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:
-    python merra_hybrid_extrap.py --directory=<path> --region=gris \
-        --coordinate=[-39e4,-133e4],[-39e4,-133e4] --date=2016.1,2018.1
+    interp_data = extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
+        VARIABLE='FAC', SIGMA=1.5, SEARCH='BallTree')
 
-COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working data directory
-    -R X, --region=X: Region to interpolate (gris, ais)
-    --coordinate=X: Polar Stereographic X and Y of point
-    --date=X: Date to interpolate in year-decimal format
-    --csv=X: Read dates and coordinates from a csv file
-    --sigma=X: Standard deviation for Gaussian kernel
-    --fill-value: Replace invalid values with fill value
-        (default uses original fill values from data file)
+INPUTS:
+    base_dir: working data directory
+    EPSG: projection of input spatial coordinates
+    REGION: region to interpolate (gris, ais)
+    tdec: dates to interpolate in year-decimal
+    X: x-coordinates to interpolate in projection EPSG
+    Y: y-coordinates to interpolate in projection EPSG
+
+OPTIONS:
+    VARIABLE: MERRA-2 hybrid product to interpolate
+        FAC: firn air content
+        p_minus_e: precipitation minus evaporation
+        melt: snowmelt
+    SIGMA: Standard deviation for Gaussian kernel
+    SEARCH: nearest-neighbor search algorithm (BallTree or KDTree)
+    NN: number of nearest-neighbor points to use
+    POWER: inverse distance weighting power
+    FILL_VALUE: output fill_value for invalid points
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -37,6 +46,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 05/2020: reduced to interpolation function.  output masked array
     Written 10/2019
 """
 from __future__ import print_function
@@ -104,7 +114,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
     #-- use a gaussian filter to smooth each firn field
     gs[VARIABLE] = np.ma.zeros((nt,nx,ny), fill_value=fv)
-    gs[VARIABLE].mask = (gs['mask'] == 0.0)
+    gs[VARIABLE].mask = np.zeros((nt,nx,ny), dtype=np.bool)
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((nx,ny))
@@ -114,9 +124,11 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
             mode='constant', cval=0)
         #-- scale output smoothed firn field
-        gs[VARIABLE][t,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
+        gs[VARIABLE].data[t,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
         #-- replace valid firn values with original
-        gs[VARIABLE][t,i,j] = temp1[i,j]
+        gs[VARIABLE].data[t,i,j] = temp1[i,j]
+        #-- set mask variables for time
+        gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
     #-- MERRA-2 Hybrid models are rotated pole latitude and longitude
@@ -130,10 +142,12 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     xy1 = np.concatenate((xg[ii,jj,None],yg[ii,jj,None]),axis=1)
     tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
 
-    #-- output interpolated arrays of firn variable (height or firn air content)
-    extrap_firn = np.full_like(tdec,fv,dtype=np.float)
-    #-- type designating algorithm used (1: interpolate, 2: backward, 3:forward)
-    extrap_type = np.zeros_like(tdec,dtype=np.uint8)
+    #-- output interpolated arrays of variable
+    npts = len(tdec)
+    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap_data.mask = np.zeros((npts),dtype=np.bool)
+    #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
+    extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
     #-- find days that can be interpolated
     if np.any((tdec >= fd['time'].min()) & (tdec < fd['time'].max())):
@@ -141,8 +155,6 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         ind,=np.nonzero((tdec >= fd['time'].min()) & (tdec < fd['time'].max()))
         f = scipy.interpolate.interp1d(fd['time'], np.arange(nt), kind='linear')
         date_indice = f(tdec[ind]).astype(np.int)
-        #-- set interpolation type (1: interpolated in time)
-        extrap_type[ind] = 1
         #-- for each unique firn date
         #-- linearly interpolate in time between two firn maps
         #-- then then inverse distance weighting to extrapolate in space
@@ -163,16 +175,16 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
             #-- linearly interpolate to date
             dt = (tdec[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
             #-- spatially extrapolate using inverse distance weighting
-            extrap_firn[kk] = (1.0-dt)*np.sum(w*firn1[indices],axis=1) + \
+            extrap_data[kk] = (1.0-dt)*np.sum(w*firn1[indices],axis=1) + \
                 dt*np.sum(w*firn2[indices], axis=1)
+        #-- set interpolation type (1: interpolated in time)
+        extrap_data.interpolation[ind] = 1
 
     #-- check if needing to extrapolate backwards in time
     count = np.count_nonzero(tdec < fd['time'].min())
     if (count > 0):
         #-- indices of dates before firn model
         ind, = np.nonzero(tdec < fd['time'].min())
-        #-- set interpolation type (2: extrapolated backwards in time)
-        extrap_type[ind] = 2
         #-- query the search tree to find the N closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=N, return_distance=True)
@@ -194,19 +206,18 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
             #-- spatially extrapolate firn elevation or air content
             firn1 = gs[VARIABLE][k,ii,jj]
             FIRN[:,k] = np.sum(w*firn1[indices],axis=1)
-
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_firn[v] = regress_model(T, FIRN[n,:], tdec[v], ORDER=2,
+            extrap_data[v] = regress_model(T, FIRN[n,:], tdec[v], ORDER=2,
                 CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[0])
+        #-- set interpolation type (2: extrapolated backwards in time)
+        extrap_data.interpolation[ind] = 2
 
     #-- check if needing to extrapolate forward in time
     count = np.count_nonzero(tdec >= fd['time'].max())
     if (count > 0):
         #-- indices of dates after firn model
         ind, = np.nonzero(tdec >= fd['time'].max())
-        #-- set interpolation type (3: extrapolated forward in time)
-        extrap_type[ind] = 3
         #-- query the search tree to find the N closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=N, return_distance=True)
@@ -229,17 +240,20 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
             #-- spatially extrapolate firn elevation or air content
             firn1 = gs[VARIABLE][kk,ii,jj]
             FIRN[:,k] = np.sum(w*firn1[indices],axis=1)
-
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_firn[v] = regress_model(T, FIRN[n,:], tdec[v], ORDER=2,
+            extrap_data[v] = regress_model(T, FIRN[n,:], tdec[v], ORDER=2,
                 CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
+        #-- set interpolation type (3: extrapolated forwards in time)
+        extrap_data.interpolation[ind] = 3
 
+    #-- complete mask if any invalid in data
+    invalid, = np.nonzero(extrap_data.data == extrap_data.fill_value)
+    extrap_data.mask[invalid] = True
     #-- replace fill value if specified
     if FILL_VALUE:
-        ind, = np.nonzero(extrap_firn == fv)
-        extrap_firn[ind] = FILL_VALUE
-        fv = FILL_VALUE
+        extrap_data.fill_value = FILL_VALUE
+        extrap_data.data[extrap_data.mask] = extrap_data.fill_value
 
     #-- return the interpolated values
-    return (extrap_firn,extrap_type,fv)
+    return extrap_data

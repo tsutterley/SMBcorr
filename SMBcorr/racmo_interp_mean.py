@@ -56,8 +56,8 @@ import scipy.spatial
 import scipy.interpolate
 
 #-- PURPOSE: read and interpolate downscaled RACMO products
-def interpolate_racmo_firn(base_dir, EPSG, VERSION, PRODUCT, tdec, X, Y,
-    RANGE=[], FILL_VALUE=None):
+def interpolate_racmo_mean(base_dir, EPSG, VERSION, tdec, X, Y,
+    VARIABLE='SMB', RANGE=[], FILL_VALUE=None):
 
     #-- Full Directory Setup
     DIRECTORY = 'SMB1km_v{0}'.format(VERSION)
@@ -72,28 +72,28 @@ def interpolate_racmo_firn(base_dir, EPSG, VERSION, PRODUCT, tdec, X, Y,
     #-- version 1 was in separate files for each year
     if (VERSION == '1.0'):
         RACMO_MODEL = ['XGRN11','2.3']
-        VARNAME = input_products[PRODUCT]
+        VARNAME = input_products[VARIABLE]
         SUBDIRECTORY = '{0}_v{1}'.format(VARNAME,VERSION)
         input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY, SUBDIRECTORY)
     elif (VERSION == '2.0'):
         RACMO_MODEL = ['XGRN11','2.3p2']
-        var = input_products[PRODUCT]
-        VARNAME = var if PRODUCT in ('SMB','PRECIP') else '{0}corr'.format(var)
+        var = input_products[VARIABLE]
+        VARNAME = var if VARIABLE in ('SMB','PRECIP') else '{0}corr'.format(var)
         input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY)
     elif (VERSION == '3.0'):
         RACMO_MODEL = ['FGRN055','2.3p2']
-        var = input_products[PRODUCT]
-        VARNAME = var if (PRODUCT == 'SMB') else '{0}corr'.format(var)
+        var = input_products[VARIABLE]
+        VARNAME = var if (VARIABLE == 'SMB') else '{0}corr'.format(var)
         input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY)
 
     #-- read mean from netCDF4 file
-    arg = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,PRODUCT,RANGE[0],RANGE[1])
+    arg = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,VARIABLE,RANGE[0],RANGE[1])
     mean_file = '{0}_RACMO{1}_DS1km_v{2}_{3}_Mean_{4:4d}-{5:4d}.nc'.format(*arg)
     with netCDF4.Dataset(os.path.join(input_dir,mean_file),'r') as fileID:
         MEAN = fileID[VARNAME][:,:].copy()
 
     #-- input cumulative netCDF4 file
-    args = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,PRODUCT)
+    args = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,VARIABLE)
     input_file = '{0}_RACMO{1}_DS1km_v{2}_{3}_cumul.nc'.format(*args)
 
     #-- Open the RACMO NetCDF file for reading

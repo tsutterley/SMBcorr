@@ -14,7 +14,7 @@ INPUTS:
     t_out: output time array for calculating modeled values (year-decimal)
 
 OUTPUTS:
-    model: reconstructed time series
+    d_out: reconstructed time series
 
 OPTIONS:
     ORDER: polynomial order in design matrix (default quadratic)

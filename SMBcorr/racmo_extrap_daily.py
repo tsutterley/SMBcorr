@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_daily.py
-Written by Tyler Sutterley (04/2020)
+Written by Tyler Sutterley (05/2020)
 Interpolates and extrapolates daily RACMO products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -23,9 +23,10 @@ INPUTS:
     Y: y-coordinates to interpolate in projection EPSG
 
 OPTIONS:
-    VARIABLE: RACMO product to calculate
+    VARIABLE: RACMO product to interpolate
         smb: Surface Mass Balance
         hgtsrf: Change of Surface Height
+    SIGMA: Standard deviation for Gaussian kernel
     SEARCH: nearest-neighbor search algorithm (BallTree or KDTree)
     NN: number of nearest-neighbor points to use
     POWER: inverse distance weighting power
@@ -48,7 +49,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
-    Updated 04/2020: Gaussian average model fields before interpolation
+    Updated 05/2020: Gaussian average model fields before interpolation
     Written 04/2020
 """
 from __future__ import print_function
@@ -67,8 +68,8 @@ from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
 
 #-- PURPOSE: read and interpolate daily RACMO2.3 outputs
-def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
-    VARIABLE='smb', SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
+def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
+    SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
 
     #-- start and end years to read
     SY,EY = (np.min(np.floor(tdec)),np.max(np.floor(tdec)))
@@ -170,6 +171,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
     #-- output interpolated arrays of variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap_data.mask = np.zeros((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 

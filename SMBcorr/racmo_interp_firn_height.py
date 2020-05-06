@@ -7,7 +7,7 @@ Interpolates and extrapolates firn heights to times and coordinates
 INPUTS:
     base_dir: working data directory
     EPSG: projection of input spatial coordinates
-    MODEL: daily model outputs to interpolate
+    MODEL: model outputs to interpolate
         FGRN055: 5.5km Greenland RACMO2.3p2
         FGRN11: 11km Greenland RACMO2.3p2
         XANT27: 27km Antarctic RACMO2.3p2
@@ -18,7 +18,7 @@ INPUTS:
     Y: y-coordinates to interpolate in projection EPSG
 
 OPTIONS:
-    VARIABLE: RACMO product to calculate
+    VARIABLE: RACMO product to interpolate
         zs: firn height
         FirnAir: firn air content
     SIGMA: Standard deviation for Gaussian kernel
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 04/2020: reduced to interpolation function.  output masked array
+    Updated 10/2019: Gaussian average firn fields before interpolation
     Updated 08/2019: convert to model coordinates (rotated pole lat/lon)
         and interpolate using N-dimensional functions
         added rotation parameters for Antarctic models (XANT27,ASE055,XPEN055)

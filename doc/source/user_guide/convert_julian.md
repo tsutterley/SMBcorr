@@ -27,3 +27,6 @@ YEAR,MONTH,DAY,HOUR,MINUTE,SECOND = convert_julian(JD, FORMAT='tuple')
 - `hour`: hour of the day
 - `minute`: minute of the hour
 - `second`: second (and fractions of a second) of the minute
+
+#### Dependencies
+- [numpy: Scientific Computing Tools For Python](http://www.numpy.org)

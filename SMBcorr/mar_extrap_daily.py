@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_daily.py
-Written by Tyler Sutterley (04/2020)
+Written by Tyler Sutterley (05/2020)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -21,7 +21,8 @@ INPUTS:
     Y: y-coordinates to interpolate in projection EPSG
 
 OPTIONS:
-    VARIABLE: MAR product to calculate
+    VARIABLE: MAR product to interpolate
+    SIGMA: Standard deviation for Gaussian kernel
     SEARCH: nearest-neighbor search algorithm (BallTree or KDTree)
     NN: number of nearest-neighbor points to use
     POWER: inverse distance weighting power
@@ -37,6 +38,9 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    scikit-learn: Machine Learning in Python
+        http://scikit-learn.org/stable/index.html
+        https://github.com/scikit-learn/scikit-learn
 
 PROGRAM DEPENDENCIES:
     convert_calendar_decimal.py: converts from calendar dates to decimal years
@@ -44,6 +48,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 05/2020: Gaussian average fields before interpolation
     Written 04/2020
 """
 from __future__ import print_function
@@ -55,7 +60,9 @@ import pyproj
 import netCDF4
 import numpy as np
 import scipy.spatial
+import scipy.ndimage
 import scipy.interpolate
+from sklearn.neighbors import KDTree, BallTree
 from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
 from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
@@ -75,8 +82,8 @@ def get_dimensions(DIRECTORY,input_files,XNAME,YNAME):
     return (xsize,ysize,(xmin,xmax,ymin,ymax),pixel_size)
 
 #-- PURPOSE: read and interpolate daily MAR outputs
-def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
-    VARIABLE='SMB', SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
+def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
+    SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
 
     #-- start and end years to read
     SY,EY = (np.min(np.floor(tdec)),np.max(np.floor(tdec)))
@@ -174,6 +181,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- output interpolated arrays of output variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap_data.mask = np.zeros((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -198,8 +206,8 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             s = np.sum(power_inverse_distance, axis=1)
             w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
             #-- variable for times before and after tdec
-            var1 = fd[VARIABLE][k,i,j]
-            var2 = fd[VARIABLE][k+1,i,j]
+            var1 = gs[VARIABLE][k,i,j]
+            var2 = gs[VARIABLE][k+1,i,j]
             #-- linearly interpolate to date
             dt = (tdec[kk] - fd['TIME'][k])/(fd['TIME'][k+1] - fd['TIME'][k])
             #-- spatially extrapolate using inverse distance weighting
@@ -227,7 +235,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         #-- create interpolated time series for calculating regression model
         for k in range(nt):
             #-- spatially extrapolate variable
-            tmp = fd[VARIABLE][k,i,j]
+            tmp = gs[VARIABLE][k,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
@@ -255,7 +263,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         #-- create interpolated time series for calculating regression model
         for k in range(nt):
             #-- spatially extrapolate variable
-            tmp = fd[VARIABLE][k,i,j]
+            tmp = gs[VARIABLE][k,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):

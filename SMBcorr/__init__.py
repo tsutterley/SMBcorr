@@ -22,4 +22,4 @@ from SMBcorr.racmo_integrate_firn_height import racmo_integrate_firn_height
 from SMBcorr.racmo_interp_daily import interpolate_racmo_daily
 from SMBcorr.racmo_interp_downscaled import interpolate_racmo_downscaled
 from SMBcorr.racmo_interp_firn_height import interpolate_racmo_firn
-from SMBcorr.racmo_interp_mean import interpolate_racmo_firn
+from SMBcorr.racmo_interp_mean import interpolate_racmo_mean
