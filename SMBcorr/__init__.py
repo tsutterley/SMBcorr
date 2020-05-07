@@ -1,4 +1,5 @@
 from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
+from SMBcorr.count_leap_seconds import count_leap_seconds
 from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
 # MAR
