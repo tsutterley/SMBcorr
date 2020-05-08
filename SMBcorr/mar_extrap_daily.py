@@ -100,7 +100,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
 
     #-- calculate number of time steps to read
     nt = 0
-    for FILE in input_files:
+    for FILE in sorted(input_files):
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             nx = len(fileID.variables[XNAME][:])
@@ -115,7 +115,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
-    for FILE in input_files:
+    for FILE in sorted(input_files):
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
@@ -144,8 +144,9 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             #-- MAR coordinates
             fd['LON']=fileID.variables['LON'][:,:].copy()
             fd['LAT']=fileID.variables['LAT'][:,:].copy()
-            fd['x']=fileID.variables[XNAME][:].copy()
-            fd['y']=fileID.variables[YNAME][:].copy()
+            #-- convert x and y coordinates to meters
+            fd['x']=1000.0*fileID.variables[XNAME][:].copy()
+            fd['y']=1000.0*fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
             delta_time=fileID.variables[TIMENAME][:].copy()
             units=fileID.variables[TIMENAME].units

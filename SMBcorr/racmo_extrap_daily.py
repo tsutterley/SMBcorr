@@ -87,7 +87,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- calculate number of time steps to read
     nt = 0
-    for FILE in input_files:
+    for FILE in sorted(input_files):
         #-- Open the RACMO NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             nx = len(fileID.variables['rlon'][:])
@@ -95,6 +95,12 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             nt += len(fileID.variables['time'][:])
             #-- invalid data value
             fv = np.float(fileID.variables[VARIABLE]._FillValue)
+
+    #-- scaling factor for converting units
+    if (VARIABLE == 'hgtsrf'):
+        scale_factor = 86400.0
+    elif (VARIABLE == 'smb'):
+        scale_factor = 1.0
 
     #-- create a masked array with all data
     fd = {}
@@ -104,15 +110,16 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
-    for FILE in input_files:
+    for FILE in sorted(input_files):
         #-- Open the RACMO NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
             t=len(fileID.variables['time'][:])
             #-- Get data from netCDF variable and remove singleton dimensions
-            fd[VARIABLE][c:c+t,:,:]=np.squeeze(fileID.variables[VARIABLE][:])
+            tmp=np.squeeze(fileID.variables[VARIABLE][:])
+            fd[VARIABLE][c:c+t,:,:]=scale_factor*tmp
             #-- verify mask object for interpolating data
-            fd[VARIABLE].mask[c:c+t,:,:] |= (fd[VARIABLE].data[c:c+t,:,:] == fv)
+            fd[VARIABLE].mask[c:c+t,:,:] |= (tmp == fv)
             #-- racmo coordinates
             fd['lon']=fileID.variables['lon'][:,:].copy()
             fd['lat']=fileID.variables['lat'][:,:].copy()
