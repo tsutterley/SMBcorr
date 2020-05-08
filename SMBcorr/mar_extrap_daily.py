@@ -86,13 +86,14 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
     SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
 
     #-- start and end years to read
-    SY,EY = (np.min(np.floor(tdec)),np.max(np.floor(tdec)))
+    SY = np.nanmin(np.floor(tdec)).astype(np.int)
+    EY = np.nanmax(np.floor(tdec)).astype(np.int)
+    YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- regular expression pattern for MAR dataset
-    rx = re.compile('MAR{0}-(.*?)-(\d{{{4}})(_subset)?.nc$'.format(VERSION))
+    rx = re.compile('{0}-(.*?)-({1})(_subset)?.nc$'.format(VERSION,YRS))
 
     #-- create list of files to read
-    input_files = [file_pattern.format(VARIABLE,YEAR) for YEAR in range(SY,EY+1)
-        if file_pattern.format(VARIABLE,YEAR) in os.listdir(DIRECTORY)]
+    input_files = [fi for fi in os.listdir(DIRECTORY) if rx.match(fi)]
 
     #-- variable coordinates
     XNAME,YNAME,TIMENAME = ('X10_105','Y21_199','TIME')
@@ -118,55 +119,73 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
-            t = len(fileID.variables[TIMENAME][:])
+            t=len(fileID.variables['TIME'][:])
+            #-- surface type
+            SRF=fileID.variables['SRF'][:]
+            #-- ice fraction
+            FRA=fileID.variables['FRA'][:]/100.0            
             #-- Get data from netCDF variable and remove singleton dimensions
-            fd[VARIABLE][c:c+t,:,:] = np.squeeze(fileID.variables[VARIABLE][:])
+            tmp=np.squeeze(fileID.variables[VARIABLE][:])
+            #-- combine sectors for multi-layered data
+            if (np.ndim(tmp) == 4):
+                #-- create mask for combining data
+                i,j=np.nonzero(SRF == 4)
+                MASK=np.zeros((nt,ny,nx))
+                MASK[:,i,j]=FRA[:,0,i,j]
+                #-- combine data
+                fd[VARIABLE][c:c+t,:,:]=MASK*tmp[:,0,:,:] + \
+                    (1.0-MASK)*tmp[:,1,:,:]
+            else:
+                #-- copy data
+                fd[VARIABLE][c:c+t,:,:]=tmp.copy()                
             #-- verify mask object for interpolating data
-            fd[VARIABLE].mask[c:c+t,:,:] |= (fd[VARIABLE].data[c:c+t,:,:] == fv)
+            surf_mask = np.broadcast_to(SRF, (nt,ny,nx))
+            fd[VARIABLE].mask[c:c+t,:,:] |= (surf_mask != 4)
             #-- MAR coordinates
-            fd['LON'] = fileID.variables['LON'][:,:].copy()
-            fd['LAT'] = fileID.variables['LON'][:,:].copy()
-            fd['x'] = fileID.variables[XNAME][:].copy()
-            fd['y'] = fileID.variables[YNAME][:].copy()
+            fd['LON']=fileID.variables['LON'][:,:].copy()
+            fd['LAT']=fileID.variables['LAT'][:,:].copy()
+            fd['x']=fileID.variables[XNAME][:].copy()
+            fd['y']=fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time = fileID.variables[TIMENAME][:].copy()
-            time_units = fileID.variables[TIMENAME].units
+            delta_time=fileID.variables[TIMENAME][:].copy()
+            units=fileID.variables[TIMENAME].units
             #-- convert epoch of time to Julian days
-            Y,M,D,h,m,s = [float(d) for d in re.findall('\d+\.\d+|\d+',units)]
-            epoch_julian = calc_julian_day(Y,M,D,HOUR=h,MINUTE=m,SECOND=s)
+            Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
+            epoch_julian=calc_julian_day(Y1,M1,D1,HOUR=h1,MINUTE=m1,SECOND=s1)
             #-- calculate time array in Julian days
-            YY,MM,DD,hh,mm,ss = convert_julian(epoch_julian + delta_time)
+            Y2,M2,D2,h2,m2,s2=convert_julian(epoch_julian + delta_time)
             #-- calculate time in year-decimal
-            fd['TIME'][c:c+t] = convert_calendar_decimal(YY,MM,DD,
-                HOUR=hh,MINUTE=mm,SECOND=ss)
+            fd['TIME'][c:c+t]=convert_calendar_decimal(Y2,M2,D2,
+                HOUR=h2,MINUTE=m2,SECOND=s2)
 
     #-- indices of specified ice mask
-    i,j = np.nonzero(fd[VARIABLE][0,:,:] != fv)
+    i,j = np.nonzero(SRF == 4)
 
     #-- combine mask object through time to create a single mask
-    fd['mask'] = np.any(fd[VARIABLE].mask, axis=0).astype(np.float)
+    fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
     #-- use a gaussian filter to smooth mask
     gs = {}
-    gs['mask'] = scipy.ndimage.gaussian_filter(fd['mask'], SIGMA,
-        mode='constant', cval=0)
+    gs['MASK']=scipy.ndimage.gaussian_filter(fd['MASK'],SIGMA,
+        mode='constant',cval=0)
     #-- indices of smoothed ice mask
-    ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
+    ii,jj = np.nonzero(np.ceil(gs['MASK']) == 1.0)
     #-- use a gaussian filter to smooth each model field
-    gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
+    gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
     gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
+        i,j = np.nonzero(~fd[VARIABLE].mask[t,:,:])
         temp1[i,j] = fd[VARIABLE][t,i,j].copy()
         #-- smooth spatial field
         temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
             mode='constant', cval=0)
         #-- scale output smoothed field
-        gs[VARIABLE][t,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
+        gs[VARIABLE][t,ii,jj] = temp2[ii,jj]/gs['MASK'][ii,jj]
         #-- replace valid values with original
         gs[VARIABLE][t,i,j] = temp1[i,j]
         #-- set mask variables for time
-        gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
+        gs[VARIABLE].mask[t,:,:] = (gs['MASK'] == 0.0)
 
     #-- convert MAR latitude and longitude to input coordinates (EPSG)
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
@@ -180,7 +199,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
 
     #-- output interpolated arrays of output variable
     npts = len(tdec)
-    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap_data = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
     extrap_data.mask = np.zeros((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
@@ -275,10 +294,6 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
     #-- complete mask if any invalid in data
     invalid, = np.nonzero(extrap_data.data == extrap_data.fill_value)
     extrap_data.mask[invalid] = True
-    #-- replace fill value if specified
-    if FILL_VALUE:
-        extrap_data.fill_value = FILL_VALUE
-        extrap_data.data[extrap_data.mask] = extrap_data.fill_value
 
     #-- return the interpolated values
     return extrap_data

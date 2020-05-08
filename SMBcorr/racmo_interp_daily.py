@@ -64,16 +64,18 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     SIGMA=1.5, FILL_VALUE=None):
 
     #-- start and end years to read
-    SY,EY = (np.min(np.floor(tdec)),np.max(np.floor(tdec)))
+    SY = np.nanmin(np.floor(tdec)).astype(np.int)
+    EY = np.nanmax(np.floor(tdec)).astype(np.int)
+    YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- input list of files
     if (MODEL == 'FGRN055'):
         #-- filename and directory for input FGRN055 files
-        file_pattern = 'RACMO2.3p2_FGRN055_{0}_daily_{1:4d}.nc'
+        file_pattern = 'RACMO2.3p2_FGRN055_{0}_daily_{1}.nc'
         DIRECTORY = os.path.join(base_dir,'RACMO','GL','RACMO2.3p2_FGRN055')
 
     #-- create list of files to read
-    input_files = [file_pattern.format(VARIABLE,YEAR) for YEAR in range(SY,EY+1)
-        if file_pattern.format(VARIABLE,YEAR) in os.listdir(DIRECTORY)]
+    rx = re.compile(file_pattern.format(VARIABLE,YRS),re.VERBOSE)
+    input_files = [fi for fi in os.listdir(DIRECTORY) if rx.match(fi)]
 
     #-- calculate number of time steps to read
     nt = 0
@@ -98,36 +100,36 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- Open the RACMO NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
-            t = len(fileID.variables['time'][:])
+            t=len(fileID.variables['time'][:])
             #-- Get data from netCDF variable and remove singleton dimensions
-            fd[VARIABLE][c:c+t,:,:] = np.squeeze(fileID.variables[VARIABLE][:])
+            fd[VARIABLE][c:c+t,:,:]=np.squeeze(fileID.variables[VARIABLE][:])
             #-- verify mask object for interpolating data
             fd[VARIABLE].mask[c:c+t,:,:] |= (fd[VARIABLE].data[c:c+t,:,:] == fv)
             #-- racmo coordinates
-            fd['lon'] = fileID.variables['lon'][:,:].copy()
-            fd['lat'] = fileID.variables['lat'][:,:].copy()
-            fd['x'] = fileID.variables['rlon'][:].copy()
-            fd['y'] = fileID.variables['rlat'][:].copy()
+            fd['lon']=fileID.variables['lon'][:,:].copy()
+            fd['lat']=fileID.variables['lat'][:,:].copy()
+            fd['x']=fileID.variables['rlon'][:].copy()
+            fd['y']=fileID.variables['rlat'][:].copy()
             #-- rotated pole parameters
-            proj4_params = fileID.variables['rotated_pole'].proj4_params
+            proj4_params=fileID.variables['rotated_pole'].proj4_params
             #-- extract delta time and epoch of time
-            delta_time = fileID.variables['time'][:].copy()
-            time_units = fileID.variables['time'].units
+            delta_time=fileID.variables['time'][:].copy()
+            units=fileID.variables['time'].units
             #-- convert epoch of time to Julian days
-            Y,M,D,h,m,s = [float(d) for d in re.findall('\d+\.\d+|\d+',units)]
-            epoch_julian = calc_julian_day(Y,M,D,HOUR=h,MINUTE=m,SECOND=s)
+            Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
+            epoch_julian=calc_julian_day(Y1,M1,D1,HOUR=h1,MINUTE=m1,SECOND=s1)
             #-- calculate time array in Julian days
-            YY,MM,DD,hh,mm,ss = convert_julian(epoch_julian + delta_time)
+            Y2,M2,D2,h2,m2,s2=convert_julian(epoch_julian + delta_time)
             #-- calculate time in year-decimal
-            fd['time'][c:c+t] = convert_calendar_decimal(YY,MM,DD,
-                HOUR=hh,MINUTE=mm,SECOND=ss)
+            fd['time'][c:c+t]=convert_calendar_decimal(Y2,M2,D2,
+                HOUR=h2,MINUTE=m2,SECOND=s2)
 
     #-- combine mask object through time to create a single mask
-    fd['mask'] = np.any(fd[VARIABLE].mask, axis=0).astype(np.float)
+    fd['mask']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
     #-- use a gaussian filter to smooth mask
     gs = {}
-    gs['mask'] = scipy.ndimage.gaussian_filter(fd['mask'], SIGMA,
-        mode='constant', cval=0)
+    gs['mask']=scipy.ndimage.gaussian_filter(fd['mask'],SIGMA,
+        mode='constant',cval=0)
     #-- indices of smoothed ice mask
     ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
     #-- use a gaussian filter to smooth each model field
@@ -136,6 +138,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
+        i,j = np.nonzero(~fd[VARIABLE].mask[t,:,:])
         temp1[i,j] = fd[VARIABLE][t,i,j].copy()
         #-- smooth spatial field
         temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
@@ -155,7 +158,8 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     ix,iy = pyproj.transform(proj1, proj2, X, Y)
 
     #-- check that input points are within convex hull of valid model points
-    points = np.concatenate((fd['x'][i,j,None],fd['y'][i,j,None]),axis=1)
+    gs['x'],gs['y'] = np.meshgrid(fd['x'],fd['y'])
+    points = np.concatenate((gs['x'][ii,jj,None],gs['y'][ii,jj,None]),axis=1)
     triangle = scipy.spatial.Delaunay(points.data, qhull_options='Qt Qbb Qc Qz')
     interp_points = np.concatenate((ix[:,None],iy[:,None]),axis=1)
     valid = (triangle.find_simplex(interp_points) >= 0)
@@ -207,7 +211,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- calculate regression model
         for n,v in enumerate(ind):
             interp_data.data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
-                ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[0])
+                ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=fd['time'][0])
         #-- mask any invalid points
         interp_data.mask[ind] = np.any(MASK, axis=1)
         #-- set interpolation type (2: extrapolated backward)
@@ -234,10 +238,8 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             MASK[:,k] = S2.ev(ix[ind],iy[ind])
         #-- calculate regression model
         for n,v in enumerate(ind):
-            interp_data[v] = regress_model(T, DATA[n,:], tdec[v], ORDER=2,
-                CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
             interp_data.data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
-                ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
+                ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=fd['time'][-1])
         #-- mask any invalid points
         interp_data.mask[ind] = np.any(MASK, axis=1)
         #-- set interpolation type (3: extrapolated forward)
