@@ -139,7 +139,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
                 #-- copy data
                 fd[VARIABLE][c:c+t,:,:]=tmp.copy()                
             #-- verify mask object for interpolating data
-            surf_mask = np.broadcast_to(SRF, (nt,ny,nx))
+            surf_mask = np.broadcast_to(SRF, (t,ny,nx))
             fd[VARIABLE].mask[c:c+t,:,:] |= (surf_mask != 4)
             #-- MAR coordinates
             fd['LON']=fileID.variables['LON'][:,:].copy()
