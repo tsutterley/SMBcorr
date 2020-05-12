@@ -18,4 +18,4 @@ n_leaps = count_leap_seconds(GPS_Time)
 - `n_leaps`: number of elapsed leap seconds  
 
 #### Dependencies
-- [numpy: Scientific Computing Tools For Python](http://www.numpy.org)  
+- [numpy: Scientific Computing Tools For Python](https://numpy.org)  

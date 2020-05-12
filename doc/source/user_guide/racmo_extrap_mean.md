@@ -36,8 +36,8 @@ interp_data = extrapolate_racmo_mean(base_dir, EPSG, '3.0', tdec, X, Y,
 - `FILL_VALUE`: output fill_value for invalid points  
 
 #### Dependencies
-- [numpy: Scientific Computing Tools For Python](http://www.numpy.org)  
-- [scipy: Scientific Tools for Python](http://www.scipy.org/)  
+- [numpy: Scientific Computing Tools For Python](https://numpy.org)  
+- [scipy: Scientific Tools for Python](https://docs.scipy.org/doc//)  
 - [netCDF4: Python interface to the netCDF C library](https://unidata.github.io/netcdf4-python/netCDF4/index.html)  
 - [pyproj: Python interface to PROJ library](https://pypi.org/project/pyproj/)  
-- [scikit-learn: Machine Learning in Python](http://scikit-learn.org/stable/index.html)
+- [scikit-learn: Machine Learning in Python](https://scikit-learn.org/stable/index.html)

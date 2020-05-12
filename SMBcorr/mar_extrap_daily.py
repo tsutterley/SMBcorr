@@ -30,16 +30,16 @@ OPTIONS:
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
-        http://www.numpy.org
-        http://www.scipy.org/NumPy_for_Matlab_Users
+        https://numpy.org
+        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     scipy: Scientific Tools for Python
-        http://www.scipy.org/
+        https://docs.scipy.org/doc/
     netCDF4: Python interface to the netCDF C library
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
     scikit-learn: Machine Learning in Python
-        http://scikit-learn.org/stable/index.html
+        https://scikit-learn.org/stable/index.html
         https://github.com/scikit-learn/scikit-learn
 
 PROGRAM DEPENDENCIES:
@@ -123,7 +123,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             #-- surface type
             SRF=fileID.variables['SRF'][:]
             #-- ice fraction
-            FRA=fileID.variables['FRA'][:]/100.0            
+            FRA=fileID.variables['FRA'][:]/100.0
             #-- Get data from netCDF variable and remove singleton dimensions
             tmp=np.squeeze(fileID.variables[VARIABLE][:])
             #-- combine sectors for multi-layered data
@@ -137,7 +137,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
                     (1.0-MASK)*tmp[:,1,:,:]
             else:
                 #-- copy data
-                fd[VARIABLE][c:c+t,:,:]=tmp.copy()                
+                fd[VARIABLE][c:c+t,:,:]=tmp.copy()
             #-- verify mask object for interpolating data
             surf_mask = np.broadcast_to(SRF, (t,ny,nx))
             fd[VARIABLE].mask[c:c+t,:,:] |= (surf_mask != 4)
@@ -172,7 +172,12 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
     ii,jj = np.nonzero(np.ceil(gs['MASK']) == 1.0)
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
-    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
+    gs[VARIABLE].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    #-- calculate cumulative sum of gaussian filtered values
+    gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
+    gs['CUMULATIVE'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    temp = np.zeros((ny,nx))
+    #-- for each time
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
@@ -187,6 +192,10 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
         gs[VARIABLE][t,i,j] = temp1[i,j]
         #-- set mask variables for time
         gs[VARIABLE].mask[t,:,:] = (gs['MASK'] == 0.0)
+        #-- calculate cumulative
+        temp += gs[VARIABLE][t,:,:]
+        gs['CUMULATIVE'].data[t,:,:] = np.copy(temp)
+        gs['CUMULATIVE'].mask[t,:,:] = np.copy(gs[VARIABLE].mask[t,:,:])
 
     #-- convert MAR latitude and longitude to input coordinates (EPSG)
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
@@ -226,8 +235,8 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             s = np.sum(power_inverse_distance, axis=1)
             w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
             #-- variable for times before and after tdec
-            var1 = gs[VARIABLE][k,i,j]
-            var2 = gs[VARIABLE][k+1,i,j]
+            var1 = gs['CUMULATIVE'][k,i,j]
+            var2 = gs['CUMULATIVE'][k+1,i,j]
             #-- linearly interpolate to date
             dt = (tdec[kk] - fd['TIME'][k])/(fd['TIME'][k+1] - fd['TIME'][k])
             #-- spatially extrapolate using inverse distance weighting
@@ -255,7 +264,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
         #-- create interpolated time series for calculating regression model
         for k in range(nt):
             #-- spatially extrapolate variable
-            tmp = gs[VARIABLE][k,i,j]
+            tmp = gs['CUMULATIVE'][k,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
@@ -283,7 +292,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
         #-- create interpolated time series for calculating regression model
         for k in range(nt):
             #-- spatially extrapolate variable
-            tmp = gs[VARIABLE][k,i,j]
+            tmp = gs['CUMULATIVE'][k,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):

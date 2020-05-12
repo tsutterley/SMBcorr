@@ -26,10 +26,10 @@ OPTIONS:
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
-        http://www.numpy.org
-        http://www.scipy.org/NumPy_for_Matlab_Users
+        https://numpy.org
+        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     scipy: Scientific Tools for Python
-        http://www.scipy.org/
+        https://docs.scipy.org/doc/
     netCDF4: Python interface to the netCDF C library
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
@@ -93,7 +93,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         scale_factor = 86400.0
     elif (VARIABLE == 'smb'):
         scale_factor = 1.0
-   
+
     #-- create a masked array with all data
     fd = {}
     fd[VARIABLE] = np.ma.zeros((nt,ny,nx),fill_value=fv)
@@ -141,7 +141,12 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
+    gs[VARIABLE].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    #-- calculate cumulative sum of gaussian filtered values
+    gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
+    gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    temp = np.zeros((ny,nx))
+    #-- for each time
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
@@ -156,6 +161,10 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         gs[VARIABLE][t,i,j] = temp1[i,j]
         #-- set mask variables for time
         gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
+        #-- calculate cumulative
+        temp += gs[VARIABLE][t,:,:]
+        gs['cumulative'].data[t,:,:] = np.copy(temp)
+        gs['cumulative'].mask[t,:,:] = np.copy(gs[VARIABLE].mask[t,:,:])
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
     #-- RACMO models are rotated pole latitude and longitude
@@ -185,10 +194,10 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             (tdec <= fd['time'].max()) & valid)
         #-- create an interpolator for model variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (fd['time'],fd['y'],fd['x']), fd[VARIABLE].data)
+            (fd['time'],fd['y'],fd['x']), gs['cumulative'].data)
         #-- create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
-            (fd['time'],fd['y'],fd['x']), fd[VARIABLE].mask)
+            (fd['time'],fd['y'],fd['x']), gs['cumulative'].mask)
 
         #-- interpolate to points
         interp_data.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
@@ -209,9 +218,9 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         for k in range(nt):
             #-- spatially interpolate model variable
             S1 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                fd[VARIABLE].data[k,:,:].T, kx=1, ky=1)
+                gs['cumulative'].data[k,:,:].T, kx=1, ky=1)
             S2 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                fd[VARIABLE].mask[k,:,:].T, kx=1, ky=1)
+                gs['cumulative'].mask[k,:,:].T, kx=1, ky=1)
             #-- create numpy masked array of interpolated values
             DATA[:,k] = S1.ev(ix[ind],iy[ind])
             MASK[:,k] = S2.ev(ix[ind],iy[ind])
@@ -237,9 +246,9 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         for k in range(nt):
             #-- spatially interpolate model variable
             S1 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                fd[VARIABLE].data[k,:,:].T, kx=1, ky=1)
+                gs['cumulative'].data[k,:,:].T, kx=1, ky=1)
             S2 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                fd[VARIABLE].mask[k,:,:].T, kx=1, ky=1)
+                gs['cumulative'].mask[k,:,:].T, kx=1, ky=1)
             #-- create numpy masked array of interpolated values
             DATA[:,k] = S1.ev(ix[ind],iy[ind])
             MASK[:,k] = S2.ev(ix[ind],iy[ind])

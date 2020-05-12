@@ -34,10 +34,10 @@ OPTIONS:
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
-        http://www.numpy.org
-        http://www.scipy.org/NumPy_for_Matlab_Users
+        https://numpy.org
+        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     scipy: Scientific Tools for Python
-        http://www.scipy.org/
+        https://docs.scipy.org/doc/
     netCDF4: Python interface to the netCDF C library
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
@@ -152,7 +152,12 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
+    gs[VARIABLE].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    #-- calculate cumulative sum of gaussian filtered values
+    gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
+    gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    temp = np.zeros((ny,nx))
+    #-- for each time
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
@@ -167,6 +172,10 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         gs[VARIABLE][t,i,j] = temp1[i,j]
         #-- set mask variables for time
         gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
+        #-- calculate cumulative
+        temp += gs[VARIABLE][t,:,:]
+        gs['cumulative'].data[t,:,:] = np.copy(temp)
+        gs['cumulative'].mask[t,:,:] = np.copy(gs[VARIABLE].mask[t,:,:])
 
     #-- convert RACMO latitude and longitude to input coordinates (EPSG)
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
@@ -206,8 +215,8 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             s = np.sum(power_inverse_distance, axis=1)
             w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
             #-- variable for times before and after tdec
-            var1 = fd[VARIABLE][k,i,j]
-            var2 = fd[VARIABLE][k+1,i,j]
+            var1 = fd['cumulative'][k,i,j]
+            var2 = fd['cumulative'][k+1,i,j]
             #-- linearly interpolate to date
             dt = (tdec[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
             #-- spatially extrapolate using inverse distance weighting
@@ -235,7 +244,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- create interpolated time series for calculating regression model
         for k in range(nt):
             #-- spatially extrapolate variable
-            tmp = fd[VARIABLE][k,i,j]
+            tmp = fd['cumulative'][k,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
@@ -263,7 +272,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- create interpolated time series for calculating regression model
         for k in range(nt):
             #-- spatially extrapolate variable
-            tmp = fd[VARIABLE][k,i,j]
+            tmp = fd['cumulative'][k,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):

@@ -14,9 +14,9 @@ COMMAND LINE OPTIONS:
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
-        http://www.numpy.org
+        https://numpy.org
     netCDF4: Python interface to the netCDF C library
-        http://www.scipy.org/NumPy_for_Matlab_Users
+        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
         https://unidata.github.io/netcdf4-python/netCDF4/index.html
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
@@ -73,6 +73,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     models['GL']['MAR'] = []
     # models['GL']['MAR'].append('MARv3.9-ERA')
     # models['GL']['MAR'].append('MARv3.10-ERA')
+    # models['GL']['MAR'].append('MARv3.11-NCEP')
     models['GL']['MAR'].append('MARv3.11-ERA')
     models['GL']['RACMO'] = []
     # models['GL']['RACMO'].append('RACMO2.3-XGRN11')
@@ -86,6 +87,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             SUBDIRECTORY={}
             SUBDIRECTORY['MARv3.9-ERA']=['ERA_1958-2018_10km','daily_10km']
             SUBDIRECTORY['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
+            SUBDIRECTORY['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
             SUBDIRECTORY['MARv3.11-ERA']=['ERA_1958-2019-15km','daily_15km']
             MAR_MODEL=SUBDIRECTORY[model_version]
             DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)

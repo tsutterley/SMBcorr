@@ -22,7 +22,7 @@ OPTIONS:
     RELATIVE: set polynomial fits relative to some value
 
 PYTHON DEPENDENCIES:
-    numpy: Scientific Computing Tools For Python (http://www.numpy.org)
+    numpy: Scientific Computing Tools For Python (https://numpy.org)
 
 UPDATE HISTORY:
     Written 07/2019

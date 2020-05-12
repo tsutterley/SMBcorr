@@ -29,4 +29,4 @@ YEAR,MONTH,DAY,HOUR,MINUTE,SECOND = convert_julian(JD, FORMAT='tuple')
 - `second`: second (and fractions of a second) of the minute
 
 #### Dependencies
-- [numpy: Scientific Computing Tools For Python](http://www.numpy.org)
+- [numpy: Scientific Computing Tools For Python](https://numpy.org)

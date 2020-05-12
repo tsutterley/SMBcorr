@@ -22,10 +22,10 @@ OPTIONS:
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
-        http://www.numpy.org
-        http://www.scipy.org/NumPy_for_Matlab_Users
+        https://numpy.org
+        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     scipy: Scientific Tools for Python
-        http://www.scipy.org/
+        https://docs.scipy.org/doc/
     netCDF4: Python interface to the netCDF C library
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
@@ -104,7 +104,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             #-- surface type
             SRF=fileID.variables['SRF'][:]
             #-- ice fraction
-            FRA=fileID.variables['FRA'][:]/100.0            
+            FRA=fileID.variables['FRA'][:]/100.0
             #-- Get data from netCDF variable and remove singleton dimensions
             tmp=np.squeeze(fileID.variables[VARIABLE][:])
             #-- combine sectors for multi-layered data
@@ -118,7 +118,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
                     (1.0-MASK)*tmp[:,1,:,:]
             else:
                 #-- copy data
-                fd[VARIABLE][c:c+t,:,:]=tmp.copy()                
+                fd[VARIABLE][c:c+t,:,:]=tmp.copy()
             #-- verify mask object for interpolating data
             surf_mask = np.broadcast_to(SRF, (t,ny,nx))
             fd[VARIABLE].mask[c:c+t,:,:] |= (surf_mask != 4)
@@ -142,7 +142,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
 
     #-- indices of specified ice mask
     i,j = np.nonzero(SRF == 4)
-    
+
     #-- combine mask object through time to create a single mask
     fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
     #-- use a gaussian filter to smooth mask
@@ -153,7 +153,12 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     ii,jj = np.nonzero(np.ceil(gs['MASK']) == 1.0)
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
-    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
+    gs[VARIABLE].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    #-- calculate cumulative sum of gaussian filtered values
+    gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
+    gs['CUMULATIVE'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    temp = np.zeros((ny,nx))
+    #-- for each time
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
@@ -168,6 +173,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         gs[VARIABLE][t,i,j] = temp1[i,j]
         #-- set mask variables for time
         gs[VARIABLE].mask[t,:,:] = (gs['MASK'] == 0.0)
+        #-- calculate cumulative
+        temp += gs[VARIABLE][t,:,:]
+        gs['CUMULATIVE'].data[t,:,:] = np.copy(temp)
+        gs['CUMULATIVE'].mask[t,:,:] = np.copy(gs[VARIABLE].mask[t,:,:])
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
@@ -196,10 +205,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             (tdec <= fd['TIME'].max()) & valid)
         #-- create an interpolator for model variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (fd['TIME'],fd['y'],fd['x']), gs[VARIABLE].data)
+            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].data)
         #-- create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
-            (fd['TIME'],fd['y'],fd['x']), gs[VARIABLE].mask)
+            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].mask)
 
         #-- interpolate to points
         interp_data.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
@@ -220,9 +229,9 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         for k in range(nt):
             #-- spatially interpolate model variable
             S1 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs[VARIABLE].data[k,:,:].T, kx=1, ky=1)
+                gs['CUMULATIVE'].data[k,:,:].T, kx=1, ky=1)
             S2 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs[VARIABLE].mask[k,:,:].T, kx=1, ky=1)
+                gs['CUMULATIVE'].mask[k,:,:].T, kx=1, ky=1)
             #-- create numpy masked array of interpolated values
             DATA[:,k] = S1.ev(ix[ind],iy[ind])
             MASK[:,k] = S2.ev(ix[ind],iy[ind])
@@ -248,9 +257,9 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         for k in range(nt):
             #-- spatially interpolate model variable
             S1 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs[VARIABLE].data[k,:,:].T, kx=1, ky=1)
+                gs['CUMULATIVE'].data[k,:,:].T, kx=1, ky=1)
             S2 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs[VARIABLE].mask[k,:,:].T, kx=1, ky=1)
+                gs['CUMULATIVE'].mask[k,:,:].T, kx=1, ky=1)
             #-- create numpy masked array of interpolated values
             DATA[:,k] = S1.ev(ix[ind],iy[ind])
             MASK[:,k] = S2.ev(ix[ind],iy[ind])

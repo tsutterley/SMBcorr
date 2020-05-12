@@ -37,7 +37,7 @@ SMBcorr
  - [scipy: Scientific Tools for Python](https://www.scipy.org/)  
  - [pyproj: Python interface to PROJ library](https://pypi.org/project/pyproj/)  
  - [netCDF4: Python interface to the netCDF C library](https://unidata.github.io/netcdf4-python/)  
- - [scikit-learn: Machine Learning in Python](http://scikit-learn.org/stable/index.html)
+ - [scikit-learn: Machine Learning in Python](https://scikit-learn.org/stable/index.html)
 
 #### Download
 The program homepage is:  

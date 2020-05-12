@@ -25,4 +25,4 @@ d_out = regress_model(t_in, d_in, t_out, ORDER=2,
 - `RELATIVE`: set polynomial fits relative to some value
 
 #### Dependencies
-- [numpy: Scientific Computing Tools For Python](http://www.numpy.org)  
+- [numpy: Scientific Computing Tools For Python](https://numpy.org)  
