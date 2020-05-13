@@ -145,7 +145,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- output interpolated arrays of variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
-    extrap_data.mask = np.zeros((npts),dtype=np.bool)
+    extrap_data.mask = np.ones((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 

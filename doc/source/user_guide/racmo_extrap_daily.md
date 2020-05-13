@@ -33,6 +33,7 @@ interp_data = extrapolate_racmo_daily(DIRECTORY, EPSG, 'FGRN055', tdec, X, Y,
 - `NN`: number of nearest-neighbor points to use  
 - `POWER`: inverse distance weighting power  
 - `FILL_VALUE`: output fill_value for invalid points  
+- `EXTRAPOLATE`: create a regression model to extrapolate out in time  
 
 #### Dependencies
 - [numpy: Scientific Computing Tools For Python](https://numpy.org)  

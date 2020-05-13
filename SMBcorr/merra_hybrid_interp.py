@@ -140,7 +140,7 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     npts = len(tdec)
     interp_data = np.ma.zeros((npts),fill_value=fv)
     #-- interpolation mask of invalid values
-    interp_data.mask = np.zeros((npts),dtype=np.bool)
+    interp_data.mask = np.ones((npts),dtype=np.bool)
     #-- type designating algorithm used (1: interpolate, 2: backward, 3:forward)
     interp_data.interpolation = np.zeros_like(tdec,dtype=np.uint8)
 

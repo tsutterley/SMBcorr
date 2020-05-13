@@ -30,6 +30,7 @@ interp_data = interpolate_racmo_daily(base_dir, EPSG, 'FGRN055', tdec, X, Y,
     * `'hgtsrf'`: Change of Surface Height  
 - `SIGMA`: Standard deviation for Gaussian kernel  
 - `FILL_VALUE`: output fill_value for invalid points  
+- `EXTRAPOLATE`: create a regression model to extrapolate out in time  
 
 #### Dependencies
 - [numpy: Scientific Computing Tools For Python](https://numpy.org)  

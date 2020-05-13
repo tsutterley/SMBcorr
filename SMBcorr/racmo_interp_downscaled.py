@@ -141,7 +141,7 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     npts = len(tdec)
     interp_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
     #-- interpolation mask of invalid values
-    interp_data.mask = np.zeros((npts),dtype=np.bool)
+    interp_data.mask = np.ones((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp_data.interpolation = np.zeros((npts),dtype=np.uint8)
 

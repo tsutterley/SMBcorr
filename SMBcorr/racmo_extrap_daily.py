@@ -31,6 +31,7 @@ OPTIONS:
     NN: number of nearest-neighbor points to use
     POWER: inverse distance weighting power
     FILL_VALUE: output fill_value for invalid points
+    EXTRAPOLATE: create a regression model to extrapolate out in time
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -50,6 +51,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2020: Gaussian average model fields before interpolation
+        accumulate variable over all available dates
     Written 04/2020
 """
 from __future__ import print_function
@@ -69,7 +71,8 @@ from SMBcorr.regress_model import regress_model
 
 #-- PURPOSE: read and interpolate daily RACMO2.3 outputs
 def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
-    SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
+    SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None,
+    EXTRAPOLATE=False):
 
     #-- start and end years to read
     SY = np.nanmin(np.floor(tdec)).astype(np.int)
@@ -78,7 +81,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     #-- input list of files
     if (MODEL == 'FGRN055'):
         #-- filename and directory for input FGRN055 files
-        file_pattern = 'RACMO2.3p2_FGRN055_{0}_daily_{1}.nc'
+        file_pattern = 'RACMO2.3p2_FGRN055_{0}_daily_(\d+).nc'
         DIRECTORY = os.path.join(base_dir,'RACMO','GL','RACMO2.3p2_FGRN055')
 
     #-- create list of files to read
@@ -102,11 +105,15 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     elif (VARIABLE == 'smb'):
         scale_factor = 1.0
 
-    #-- create a masked array with all data
+    #-- python dictionary with file variables
     fd = {}
-    fd[VARIABLE] = np.ma.zeros((nt,ny,nx),fill_value=fv)
-    fd[VARIABLE].mask = np.zeros((nt,ny,nx),dtype=np.bool)
     fd['time'] = np.zeros((nt))
+    #-- python dictionary with gaussian filtered variables
+    gs = {}
+    #-- calculate cumulative sum of gaussian filtered values
+    cumulative = np.zeros((ny,nx))
+    gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
+    gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -115,11 +122,16 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
             t=len(fileID.variables['time'][:])
+            fd[VARIABLE] = np.ma.zeros((t,ny,nx),fill_value=fv)
+            fd[VARIABLE].mask = np.ones((t,ny,nx),dtype=np.bool)
             #-- Get data from netCDF variable and remove singleton dimensions
             tmp=np.squeeze(fileID.variables[VARIABLE][:])
-            fd[VARIABLE][c:c+t,:,:]=scale_factor*tmp
-            #-- verify mask object for interpolating data
-            fd[VARIABLE].mask[c:c+t,:,:] |= (tmp == fv)
+            fd[VARIABLE][:] = scale_factor*tmp
+            #-- indices of specified ice mask
+            i,j = np.nonzero(tmp[0,:,:] != fv)
+            fd[VARIABLE].mask[:,i,j] = False
+            #-- combine mask object through time to create a single mask
+            fd['mask']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
             #-- racmo coordinates
             fd['lon']=fileID.variables['lon'][:,:].copy()
             fd['lat']=fileID.variables['lat'][:,:].copy()
@@ -130,52 +142,43 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             #-- extract delta time and epoch of time
             delta_time=fileID.variables['time'][:].copy()
             units=fileID.variables['time'].units
-            #-- convert epoch of time to Julian days
-            Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
-            epoch_julian=calc_julian_day(Y1,M1,D1,HOUR=h1,MINUTE=m1,SECOND=s1)
-            #-- calculate time array in Julian days
-            Y2,M2,D2,h2,m2,s2=convert_julian(epoch_julian + delta_time)
-            #-- calculate time in year-decimal
-            fd['time'][c:c+t]=convert_calendar_decimal(Y2,M2,D2,
-                HOUR=h2,MINUTE=m2,SECOND=s2)
-
-    #-- indices of specified ice mask
-    i,j = np.nonzero(fd[VARIABLE][0,:,:] != fv)
-
-    #-- combine mask object through time to create a single mask
-    fd['mask']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
-    #-- use a gaussian filter to smooth mask
-    gs = {}
-    gs['mask']=scipy.ndimage.gaussian_filter(fd['mask'],SIGMA,
-        mode='constant',cval=0)
-    #-- indices of smoothed ice mask
-    ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
-    #-- use a gaussian filter to smooth each model field
-    gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-    gs[VARIABLE].mask = np.zeros((nt,ny,nx), dtype=np.bool)
-    #-- calculate cumulative sum of gaussian filtered values
-    gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-    gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
-    temp = np.zeros((ny,nx))
-    #-- for each time
-    for t in range(nt):
-        #-- replace fill values before smoothing data
-        temp1 = np.zeros((ny,nx))
-        i,j = np.nonzero(~fd[VARIABLE].mask[t,:,:])
-        temp1[i,j] = fd[VARIABLE][t,i,j].copy()
-        #-- smooth spatial field
-        temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
-            mode='constant', cval=0)
-        #-- scale output smoothed field
-        gs[VARIABLE][t,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
-        #-- replace valid values with original
-        gs[VARIABLE][t,i,j] = temp1[i,j]
-        #-- set mask variables for time
-        gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
-        #-- calculate cumulative
-        temp += gs[VARIABLE][t,:,:]
-        gs['cumulative'].data[t,:,:] = np.copy(temp)
-        gs['cumulative'].mask[t,:,:] = np.copy(gs[VARIABLE].mask[t,:,:])
+        #-- convert epoch of time to Julian days
+        Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
+        epoch_julian=calc_julian_day(Y1,M1,D1,HOUR=h1,MINUTE=m1,SECOND=s1)
+        #-- calculate time array in Julian days
+        Y2,M2,D2,h2,m2,s2=convert_julian(epoch_julian + delta_time)
+        #-- calculate time in year-decimal
+        fd['time'][c:c+t]=convert_calendar_decimal(Y2,M2,D2,
+            HOUR=h2,MINUTE=m2,SECOND=s2)
+        #-- use a gaussian filter to smooth mask
+        gs['mask']=scipy.ndimage.gaussian_filter(fd['mask'],SIGMA,
+            mode='constant',cval=0)
+        #-- indices of smoothed ice mask
+        ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
+        #-- use a gaussian filter to smooth each model field
+        gs[VARIABLE] = np.ma.zeros((t,ny,nx), fill_value=fv)
+        gs[VARIABLE].mask = np.ones((t,ny,nx), dtype=np.bool)
+        #-- for each time
+        for tt in range(t):
+            #-- replace fill values before smoothing data
+            temp1 = np.zeros((ny,nx))
+            i,j = np.nonzero(~fd[VARIABLE].mask[tt,:,:])
+            temp1[i,j] = fd[VARIABLE][tt,i,j].copy()
+            #-- smooth spatial field
+            temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
+                mode='constant', cval=0)
+            #-- scale output smoothed field
+            gs[VARIABLE][tt,ii,jj] = temp2[ii,jj]/gs['mask'][ii,jj]
+            #-- replace valid values with original
+            gs[VARIABLE][tt,i,j] = temp1[i,j]
+            #-- set mask variables for time
+            gs[VARIABLE].mask[tt,ii,jj] = False
+            #-- calculate cumulative
+            cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
+            gs['cumulative'].data[c,ii,jj] = np.copy(cumulative[ii,jj])
+            gs['cumulative'].mask[c,ii,jj] = False
+            #-- add to counter
+            c += 1
 
     #-- convert RACMO latitude and longitude to input coordinates (EPSG)
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
@@ -190,7 +193,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     #-- output interpolated arrays of variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
-    extrap_data.mask = np.zeros((npts),dtype=np.bool)
+    extrap_data.mask = np.ones((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -215,8 +218,8 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             s = np.sum(power_inverse_distance, axis=1)
             w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
             #-- variable for times before and after tdec
-            var1 = fd['cumulative'][k,i,j]
-            var2 = fd['cumulative'][k+1,i,j]
+            var1 = gs['cumulative'][k,i,j]
+            var2 = gs['cumulative'][k+1,i,j]
             #-- linearly interpolate to date
             dt = (tdec[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
             #-- spatially extrapolate using inverse distance weighting
@@ -227,7 +230,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- check if needing to extrapolate backwards in time
     count = np.count_nonzero(tdec < fd['time'].min())
-    if (count > 0):
+    if (count > 0) and EXTRAPOLATE:
         #-- indices of dates before model
         ind, = np.nonzero(tdec < fd['time'].min())
         #-- query the search tree to find the NN closest points
@@ -238,24 +241,29 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         power_inverse_distance = dist**(-POWER)
         s = np.sum(power_inverse_distance, axis=1)
         w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
+        #-- read the first year of data to create regression model
+        N = 365
         #-- calculate a regression model for calculating values
         #-- spatially interpolate variable to coordinates
         DATA = np.zeros((count,N))
+        TIME = np.zeros((N))
         #-- create interpolated time series for calculating regression model
-        for k in range(nt):
+        for k in range(N):
+            #-- time at k
+            TIME[k] = fd['time'][k]
             #-- spatially extrapolate variable
-            tmp = fd['cumulative'][k,i,j]
+            tmp = gs['cumulative'][k,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
-                ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[0])
+            extrap_data[v] = regress_model(TIME, DATA[n,:], tdec[v],
+                ORDER=2, CYCLES=[0.25,0.5,1.0], RELATIVE=TIME[0])
         #-- set interpolation type (2: extrapolated backwards in time)
         extrap_data.interpolation[ind] = 2
 
     #-- check if needing to extrapolate forward in time
     count = np.count_nonzero(tdec >= fd['time'].max())
-    if (count > 0):
+    if (count > 0) and EXTRAPOLATE:
         #-- indices of dates after racmo model
         ind, = np.nonzero(tdec >= fd['time'].max())
         #-- query the search tree to find the NN closest points
@@ -266,18 +274,24 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         power_inverse_distance = dist**(-POWER)
         s = np.sum(power_inverse_distance, axis=1)
         w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
+        #-- read the last year of data to create regression model
+        N = 365
         #-- calculate a regression model for calculating values
         #-- spatially interpolate variable to coordinates
         DATA = np.zeros((count,N))
+        TIME = np.zeros((N))
         #-- create interpolated time series for calculating regression model
-        for k in range(nt):
+        for k in range(N):
+            kk = nt - N + k
+            #-- time at kk
+            TIME[k] = fd['time'][kk]
             #-- spatially extrapolate variable
-            tmp = fd['cumulative'][k,i,j]
+            tmp = gs['cumulative'][kk,i,j]
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(fd['time'], DATA[n,:], tdec[v],
-                ORDER=2, CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
+            extrap_data[v] = regress_model(TIME, DATA[n,:], tdec[v],
+                ORDER=2, CYCLES=[0.25,0.5,1.0], RELATIVE=TIME[-1])
         #-- set interpolation type (3: extrapolated forward in time)
         extrap_data.interpolation[ind] = 3
 

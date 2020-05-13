@@ -26,6 +26,7 @@ interp_data = interpolate_mar_daily(DIRECTORY, EPSG, tdec, X, Y,
 - `VARIABLE`: MAR product to interpolate  
 - `SIGMA`: Standard deviation for Gaussian kernel  
 - `FILL_VALUE`: output fill_value for invalid points  
+- `EXTRAPOLATE`: create a regression model to extrapolate out in time  
 
 #### Dependencies
 - [numpy: Scientific Computing Tools For Python](https://numpy.org)  
