@@ -174,8 +174,11 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
     if np.any((tdec >= fd['time'].min()) & (tdec < fd['time'].max())):
         #-- indices of dates for interpolated days
         ind,=np.nonzero((tdec >= fd['time'].min()) & (tdec < fd['time'].max()))
+        #-- reduce x, y and t coordinates
+        xind,yind,tind = (X[ind],Y[ind],tdec[ind])
+        #-- find indices for linearly interpolating in time
         f = scipy.interpolate.interp1d(fd['time'], np.arange(nt), kind='linear')
-        date_indice = f(tdec[ind]).astype(np.int)
+        date_indice = f(tind).astype(np.int)
         #-- for each unique firn date
         #-- linearly interpolate in time between two firn maps
         #-- then then inverse distance weighting to extrapolate in space
@@ -183,7 +186,7 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
             kk, = np.nonzero(date_indice==k)
             count = np.count_nonzero(date_indice==k)
             #-- query the search tree to find the NN closest points
-            xy2 = np.concatenate((X[kk,None],Y[kk,None]),axis=1)
+            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
             dist,indices = tree.query(xy2, k=NN, return_distance=True)
             #-- normalized weights if POWER > 0 (typically between 1 and 3)
             #-- in the inverse distance weighting
@@ -194,7 +197,7 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
             firn1 = gs[VARIABLE][k,ii,jj]
             firn2 = gs[VARIABLE][k+1,ii,jj]
             #-- linearly interpolate to date
-            dt = (tdec[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
+            dt = (tind[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
             #-- spatially extrapolate using inverse distance weighting
             extrap_data[kk] = (1.0-dt)*np.sum(w*firn1[indices],axis=1) + \
                 dt*np.sum(w*firn2[indices], axis=1)

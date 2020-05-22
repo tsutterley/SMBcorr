@@ -139,10 +139,12 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     if np.any((tdec >= d['TIME'].min()) & (tdec <= d['TIME'].max())):
         #-- indices of dates for interpolated days
         ind,=np.nonzero((tdec >= d['TIME'].min()) & (tdec < d['TIME'].max()))
+        #-- reduce x, y and t coordinates
+        xind,yind,tind = (X[ind],Y[ind],tdec[ind])
         #-- determine which subset of time to read from the netCDF4 file
         f = scipy.interpolate.interp1d(d['TIME'], np.arange(nt), kind='linear',
             fill_value=(0,nt-1), bounds_error=False)
-        date_indice = f(tdec[ind]).astype(np.int)
+        date_indice = f(tind).astype(np.int)
         #-- for each unique RACMO date
         #-- linearly interpolate in time between two RACMO maps
         #-- then then inverse distance weighting to extrapolate in space
@@ -150,7 +152,7 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
             kk, = np.nonzero(date_indice==k)
             count = np.count_nonzero(date_indice==k)
             #-- query the search tree to find the NN closest points
-            xy2 = np.concatenate((X[kk,None],Y[kk,None]),axis=1)
+            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
             dist,indices = tree.query(xy2, k=NN, return_distance=True)
             #-- normalized weights if POWER > 0 (typically between 1 and 3)
             #-- in the inverse distance weighting
@@ -161,7 +163,7 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
             var1 = fileID.variables[VARNAME][k,i,j].copy()
             var2 = fileID.variables[VARNAME][k+1,i,j].copy()
             #-- linearly interpolate to date
-            dt = (tdec[kk] - d['TIME'][k])/(d['TIME'][k+1] - d['TIME'][k])
+            dt = (tind[kk] - d['TIME'][k])/(d['TIME'][k+1] - d['TIME'][k])
             #-- spatially extrapolate using inverse distance weighting
             extrap_data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)

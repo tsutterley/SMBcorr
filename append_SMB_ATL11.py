@@ -24,6 +24,8 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 05/2020: reduce variables imported from HDF5
+        add crossover reading and interpolation
     Written 05/2020
 """
 import sys
@@ -59,16 +61,18 @@ def set_projection(REGION):
 
 def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     # read input file
-    field_dict = {None:('delta_time','dem_h','file_ind',
-        'h_corr','h_corr_sigma','latitude','longitude',
-        'quality_summary','x','y')}
+    field_dict = {None:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
-    nseg,ncycle = D11.shape
+    # check if running crossover or along-track ATL11
+    if (D11.h_corr.ndim == 3):
+        nseg,ncycle,ncross = D11.shape
+    else:
+        nseg,ncycle = D11.shape
 
     # get projection of input coordinates
     EPSG = set_projection(REGION)
 
-    #-- available models
+    # available models
     models = dict(AA={}, GL={})
     models['GL']['MAR'] = []
     # models['GL']['MAR'].append('MARv3.9-ERA')
@@ -94,22 +98,64 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
         elif (MODEL == 'RACMO'):
             RACMO_VERSION,RACMO_MODEL=model_version.split('-')
 
-        # for each cycle of ICESat-2 ATL11 data
-        FIRN = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
-        for c in range(ncycle):
-            i, = np.nonzero(np.isfinite(D11.delta_time[:,c]))
-            # convert from delta time to decimal-years
-            tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
-            if (MODEL == 'MAR'):
-                # read and interpolate daily MAR outputs
-                FIRN[i,c] = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
-                    MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                    VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan)
-            elif (MODEL == 'RACMO'):
-                # read and interpolate daily RACMO outputs
-                FIRN[i,c] = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
-                    RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
-                    VARIABLE='hgtsrf', SIGMA=1.5, FILL_VALUE=np.nan)
+        # check if running crossover or along track
+        if (D11.h_corr.ndim == 3):
+            # allocate for output FIRN height for crossover data
+            FIRN = np.ma.zeros((nseg,ncycle,ncross),fill_value=np.nan)
+            FIRN.annual = np.zeros((nseg,ncycle,ncross))
+            FIRN.interpolation = np.zeros((nseg,ncycle,ncross),dtype=np.uint8)
+            # for each cycle of ICESat-2 ATL11 data
+            for c in range(ncycle):
+                # check that there are valid crossovers
+                cross = [xo for xo in range(ncross) if np.any(np.isfinite(D11.delta_time[:,c,xo]))]
+                # for each valid crossing
+                for xo in cross:
+                    # find valid crossovers
+                    i, = np.nonzero(np.isfinite(D11.delta_time[:,c,xo]))
+                    # convert from delta time to decimal-years
+                    tdec = convert_delta_time(D11.delta_time[i,c,xo])['decimal']
+                    if (MODEL == 'MAR'):
+                        # read and interpolate daily MAR outputs
+                        firn_out = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                            VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan)
+                    elif (MODEL == 'RACMO'):
+                        # read and interpolate daily RACMO outputs
+                        firn_out = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                            RACMO_MODEL, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                            VARIABLE='hgtsrf', SIGMA=1.5, FILL_VALUE=np.nan)
+                    # set attributes to output for iteration
+                    FIRN[i,c,xo] = np.copy(firn_out)
+                    FIRN.annual[i,c,xo] = np.copy(firn_out.annual)
+                    FIRN.interpolation[i,c,xo] = np.copy(firn_out.interpolation)
+        else:
+            # allocate for output FIRN height for along track data
+            FIRN = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
+            FIRN.annual = np.zeros((nseg,ncycle))
+            FIRN.interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
+            # check that there are valid elevations
+            cycle = [c for c in range(ncycle) if np.any(np.isfinite(D11.delta_time[:,c]))]
+            # for each valid cycle of ICESat-2 ATL11 data
+            for c in cycle:
+                # find valid elevations
+                i, = np.nonzero(np.isfinite(D11.delta_time[:,c]))
+                # convert from delta time to decimal-years
+                tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
+                if (MODEL == 'MAR'):
+                    # read and interpolate daily MAR outputs
+                    firn_out = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
+                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan)
+                elif (MODEL == 'RACMO'):
+                    # read and interpolate daily RACMO outputs
+                    firn_out = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                        RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
+                        VARIABLE='hgtsrf', SIGMA=1.5, FILL_VALUE=np.nan)
+                # set attributes to output for iteration
+                FIRN[i,c] = np.copy(firn_out)
+                FIRN.annual[i,c] = np.copy(firn_out.annual)
+                FIRN.interpolation[i,c] = np.copy(firn_out.interpolation)
+                    
         # replace mask values
         FIRN.mask = (FIRN.data == FIRN.fill_value)
 
@@ -124,6 +170,13 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
         h5['zsurf'].attrs['long_name'] = "Snow Height Change"
         h5['zsurf'].attrs['coordinates'] = "../delta_time ../latitude ../longitude"
         h5['zsurf'].attrs['model'] = model_version
+        val = '{0}/{1}'.format(model_version,'zannual')
+        h5['zannual'] = fileID.create_dataset(val, FIRN.shape, data=FIRN.annual,
+            dtype=FIRN.dtype, compression='gzip', fillvalue=FIRN.fill_value)
+        h5['zannual'].attrs['units'] = "m"
+        h5['zannual'].attrs['long_name'] = "Annual Snow Height Change"
+        h5['zannual'].attrs['coordinates'] = "../delta_time ../latitude ../longitude"
+        h5['zannual'].attrs['model'] = model_version
         fileID.close()
 
 #-- PURPOSE: help module to describe the optional input parameters
@@ -153,7 +206,7 @@ def main():
         elif opt in ("-D","--directory"):
             base_dir = os.path.expanduser(arg)
         elif opt in ("-R","--region"):
-            REGION = arg.lower()
+            REGION = arg
         elif opt in ("-M","--model"):
             MODELS = arg.split(',')
 

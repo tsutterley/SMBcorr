@@ -52,6 +52,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2020: Gaussian average model fields before interpolation
         accumulate variable over all available dates
+        calculate and save yearly rates of cumulative change
     Written 04/2020
 """
 from __future__ import print_function
@@ -86,11 +87,12 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- create list of files to read
     rx = re.compile(file_pattern.format(VARIABLE,YRS),re.VERBOSE)
-    input_files = [fi for fi in os.listdir(DIRECTORY) if rx.match(fi)]
+    input_files=sorted([f for f in os.listdir(DIRECTORY) if rx.match(f)])
 
     #-- calculate number of time steps to read
     nt = 0
-    for FILE in sorted(input_files):
+    nfiles = len(input_files)
+    for f,FILE in enumerate(input_files):
         #-- Open the RACMO NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             nx = len(fileID.variables['rlon'][:])
@@ -114,10 +116,13 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     cumulative = np.zeros((ny,nx))
     gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
     gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    gs['annual'] = np.ma.zeros((nfiles,ny,nx), fill_value=FILL_VALUE)
+    gs['annual'].mask = np.ones((nfiles,ny,nx), dtype=np.bool)
+    gs['annual'].time = np.zeros((nfiles))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
-    for FILE in sorted(input_files):
+    for f,FILE in enumerate(input_files):
         #-- Open the RACMO NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
@@ -175,10 +180,16 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             gs[VARIABLE].mask[tt,ii,jj] = False
             #-- calculate cumulative
             cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
-            gs['cumulative'].data[c,ii,jj] = np.copy(cumulative[ii,jj])
-            gs['cumulative'].mask[c,ii,jj] = False
-            #-- add to counter
-            c += 1
+            gs['cumulative'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
+            gs['cumulative'].mask[c+tt,ii,jj] = False
+        #-- calculate yearly change
+        gs['annual'].data[f,:,:] = gs['cumulative'].data[c+tt,:,:] - \
+            gs['cumulative'].data[c,:,:]
+        gs['annual'].mask[f,:,:] = gs['cumulative'].mask[c,:,:] | \
+            gs['cumulative'].mask[c+tt,:,:]
+        gs['annual'].time[f] = np.copy(Y2[0])
+        #-- add to counter
+        c += t
 
     #-- convert RACMO latitude and longitude to input coordinates (EPSG)
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
@@ -192,17 +203,22 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- output interpolated arrays of variable
     npts = len(tdec)
-    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
-    extrap_data.mask = np.ones((npts),dtype=np.bool)
+    extrap = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap.mask = np.ones((npts),dtype=np.bool)
+    #-- annual rates of change
+    extrap.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
-    extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
+    extrap.interpolation = np.zeros((npts),dtype=np.uint8)
 
     #-- find days that can be interpolated
     if np.any((tdec >= fd['time'].min()) & (tdec < fd['time'].max())):
         #-- indices of dates for interpolated days
         ind,=np.nonzero((tdec >= fd['time'].min()) & (tdec < fd['time'].max()))
+        #-- reduce x, y and t coordinates
+        xind,yind,tind = (X[ind],Y[ind],tdec[ind])
+        #-- find indices for linearly interpolating in time
         f = scipy.interpolate.interp1d(fd['time'], np.arange(nt), kind='linear')
-        date_indice = f(tdec[ind]).astype(np.int)
+        date_indice = f(tind).astype(np.int)
         #-- for each unique racmo date
         #-- linearly interpolate in time between two racmo maps
         #-- then then inverse distance weighting to extrapolate in space
@@ -210,7 +226,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             kk, = np.nonzero(date_indice==k)
             count = np.count_nonzero(date_indice==k)
             #-- query the search tree to find the NN closest points
-            xy2 = np.concatenate((X[kk,None],Y[kk,None]),axis=1)
+            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
             dist,indices = tree.query(xy2, k=NN, return_distance=True)
             #-- normalized weights if POWER > 0 (typically between 1 and 3)
             #-- in the inverse distance weighting
@@ -221,12 +237,29 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             var1 = gs['cumulative'][k,i,j]
             var2 = gs['cumulative'][k+1,i,j]
             #-- linearly interpolate to date
-            dt = (tdec[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
+            dt = (tind[kk] - fd['time'][k])/(fd['time'][k+1] - fd['time'][k])
             #-- spatially extrapolate using inverse distance weighting
-            extrap_data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
+            extrap[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)
+        #-- find indices for annual interpolation
+        date_indice = [k for k,yr in enumerate(gs['annual'].year) if
+            (np.any(np.floor(tind) == yr))]
+        for k in date_indice:
+            kk, = np.nonzero(np.floor(tind) == gs['annual'].year[k])
+            count = np.count_nonzero(np.floor(tind) == gs['annual'].year[k])
+            #-- query the search tree to find the NN closest points
+            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
+            dist,indices = tree.query(xy2, k=NN, return_distance=True)
+            #-- normalized weights if POWER > 0 (typically between 1 and 3)
+            #-- in the inverse distance weighting
+            power_inverse_distance = dist**(-POWER)
+            s = np.sum(power_inverse_distance, axis=1)
+            w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
+            #-- spatially extrapolate annual change variable
+            tmp = gs['annual'][k,i,j]
+            extrap.annual[ind] = np.sum(w*tmp[indices],axis=1)
         #-- set interpolation type (1: interpolated in time)
-        extrap_data.interpolation[ind] = 1
+        extrap.interpolation[ind] = 1
 
     #-- check if needing to extrapolate backwards in time
     count = np.count_nonzero(tdec < fd['time'].min())
@@ -256,10 +289,10 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(TIME, DATA[n,:], tdec[v],
+            extrap[v] = regress_model(TIME, DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0], RELATIVE=TIME[0])
         #-- set interpolation type (2: extrapolated backwards in time)
-        extrap_data.interpolation[ind] = 2
+        extrap.interpolation[ind] = 2
 
     #-- check if needing to extrapolate forward in time
     count = np.count_nonzero(tdec >= fd['time'].max())
@@ -290,21 +323,21 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(TIME, DATA[n,:], tdec[v],
+            extrap[v] = regress_model(TIME, DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0], RELATIVE=TIME[-1])
         #-- set interpolation type (3: extrapolated forward in time)
-        extrap_data.interpolation[ind] = 3
+        extrap.interpolation[ind] = 3
 
     #-- complete mask if any invalid in data
-    invalid, = np.nonzero(extrap_data.data == extrap_data.fill_value)
-    extrap_data.mask[invalid] = True
+    invalid, = np.nonzero(extrap.data == extrap.fill_value)
+    extrap.mask[invalid] = True
     #-- replace fill value if specified
     if FILL_VALUE:
-        extrap_data.fill_value = FILL_VALUE
-        extrap_data.data[extrap_data.mask] = extrap_data.fill_value
+        extrap.fill_value = FILL_VALUE
+        extrap.data[extrap.mask] = extrap.fill_value
 
     #-- return the interpolated values
-    return extrap_data
+    return extrap
 
 #-- PURPOSE: calculate the Julian day from the calendar date
 def calc_julian_day(YEAR, MONTH, DAY, HOUR=0, MINUTE=0, SECOND=0):

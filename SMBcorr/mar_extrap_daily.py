@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2020: Gaussian average fields before interpolation
         accumulate variable over all available dates
+        calculate and save yearly rates of cumulative change
     Written 04/2020
 """
 from __future__ import print_function
@@ -95,15 +96,16 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
     #-- regular expression pattern for MAR dataset
     rx = re.compile('{0}-(.*?)-(\d+)(_subset)?.nc$'.format(VERSION,YRS))
 
-    #-- create list of files to read
-    input_files = [fi for fi in os.listdir(DIRECTORY) if rx.match(fi)]
-
     #-- variable coordinates
     XNAME,YNAME,TIMENAME = ('X10_105','Y21_199','TIME')
 
+    #-- create list of files to read
+    input_files=sorted([f for f in os.listdir(DIRECTORY) if rx.match(f)])
+
     #-- calculate number of time steps to read
     nt = 0
-    for FILE in sorted(input_files):
+    nfiles = len(input_files)
+    for f,FILE in enumerate(input_files):
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             nx = len(fileID.variables[XNAME][:])
@@ -119,10 +121,13 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
     cumulative = np.zeros((ny,nx))
     gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
     gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
+    gs['ANNUAL'] = np.ma.zeros((nfiles,ny,nx), fill_value=FILL_VALUE)
+    gs['ANNUAL'].mask = np.ones((nfiles,ny,nx), dtype=np.bool)
+    gs['ANNUAL'].time = np.zeros((nfiles))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
-    for FILE in sorted(input_files):
+    for f,FILE in enumerate(input_files):
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
@@ -195,10 +200,16 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             gs[VARIABLE].mask[tt,ii,jj] = False
             #-- calculate cumulative
             cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
-            gs['CUMULATIVE'].data[c,ii,jj] = np.copy(cumulative[ii,jj])
-            gs['CUMULATIVE'].mask[c,ii,jj] = False
-            #-- add to counter
-            c += 1
+            gs['CUMULATIVE'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
+            gs['CUMULATIVE'].mask[c+tt,ii,jj] = False
+        #-- calculate yearly change
+        gs['ANNUAL'].data[f,:,:] = gs['CUMULATIVE'].data[c+tt,:,:] - \
+            gs['CUMULATIVE'].data[c,:,:]
+        gs['ANNUAL'].mask[f,:,:] = gs['CUMULATIVE'].mask[c,:,:] | \
+            gs['CUMULATIVE'].mask[c+tt,:,:]
+        gs['ANNUAL'].time[f] = np.copy(Y2[0])
+        #-- add to counter
+        c += t
 
     #-- convert MAR latitude and longitude to input coordinates (EPSG)
     proj1 = pyproj.Proj("+init={0}".format(EPSG))
@@ -212,17 +223,22 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
 
     #-- output interpolated arrays of output variable
     npts = len(tdec)
-    extrap_data = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
-    extrap_data.mask = np.ones((npts),dtype=np.bool)
+    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
+    extrap.mask = np.ones((npts),dtype=np.bool)
+    #-- annual rates of change
+    extrap.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
-    extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
+    extrap.interpolation = np.zeros((npts),dtype=np.uint8)
 
     #-- find days that can be interpolated
     if np.any((tdec >= fd['TIME'].min()) & (tdec < fd['TIME'].max())):
         #-- indices of dates for interpolated days
         ind,=np.nonzero((tdec >= fd['TIME'].min()) & (tdec < fd['TIME'].max()))
+        #-- reduce x, y and t coordinates
+        xind,yind,tind = (X[ind],Y[ind],tdec[ind])
+        #-- find indices for linearly interpolating in time
         f = scipy.interpolate.interp1d(fd['TIME'], np.arange(nt), kind='linear')
-        date_indice = f(tdec[ind]).astype(np.int)
+        date_indice = f(tind).astype(np.int)
         #-- for each unique model date
         #-- linearly interpolate in time between two model maps
         #-- then then inverse distance weighting to extrapolate in space
@@ -230,7 +246,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             kk, = np.nonzero(date_indice==k)
             count = np.count_nonzero(date_indice==k)
             #-- query the search tree to find the NN closest points
-            xy2 = np.concatenate((X[kk,None],Y[kk,None]),axis=1)
+            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
             dist,indices = tree.query(xy2, k=NN, return_distance=True)
             #-- normalized weights if POWER > 0 (typically between 1 and 3)
             #-- in the inverse distance weighting
@@ -241,12 +257,29 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             var1 = gs['CUMULATIVE'][k,i,j]
             var2 = gs['CUMULATIVE'][k+1,i,j]
             #-- linearly interpolate to date
-            dt = (tdec[kk] - fd['TIME'][k])/(fd['TIME'][k+1] - fd['TIME'][k])
+            dt = (tind[kk] - fd['TIME'][k])/(fd['TIME'][k+1] - fd['TIME'][k])
             #-- spatially extrapolate using inverse distance weighting
-            extrap_data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
+            extrap.data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)
+        #-- find indices for annual interpolation
+        date_indice = [k for k,yr in enumerate(gs['ANNUAL'].year) if
+            (np.any(np.floor(tind) == yr))]
+        for k in date_indice:
+            kk, = np.nonzero(np.floor(tind) == gs['ANNUAL'].year[k])
+            count = np.count_nonzero(np.floor(tind) == gs['ANNUAL'].year[k])
+            #-- query the search tree to find the NN closest points
+            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
+            dist,indices = tree.query(xy2, k=NN, return_distance=True)
+            #-- normalized weights if POWER > 0 (typically between 1 and 3)
+            #-- in the inverse distance weighting
+            power_inverse_distance = dist**(-POWER)
+            s = np.sum(power_inverse_distance, axis=1)
+            w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
+            #-- spatially extrapolate annual change variable
+            tmp = gs['ANNUAL'][k,i,j]
+            extrap.annual[ind] = np.sum(w*tmp[indices],axis=1)
         #-- set interpolation type (1: interpolated in time)
-        extrap_data.interpolation[ind] = 1
+        extrap.interpolation[ind] = 1
 
     #-- check if needing to extrapolate backwards in time
     count = np.count_nonzero(tdec < fd['TIME'].min())
@@ -276,10 +309,10 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(TIME, DATA[n,:], tdec[v],
+            extrap.data[v] = regress_model(TIME, DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0], RELATIVE=TIME[0])
         #-- set interpolation type (2: extrapolated backwards in time)
-        extrap_data.interpolation[ind] = 2
+        extrap.interpolation[ind] = 2
 
     #-- check if needing to extrapolate forward in time
     count = np.count_nonzero(tdec >= fd['TIME'].max())
@@ -310,17 +343,17 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             DATA[:,k] = np.sum(w*tmp[indices],axis=1)
         #-- calculate regression model
         for n,v in enumerate(ind):
-            extrap_data[v] = regress_model(TIME, DATA[n,:], tdec[v],
+            extrap.data[v] = regress_model(TIME, DATA[n,:], tdec[v],
                 ORDER=2, CYCLES=[0.25,0.5,1.0], RELATIVE=TIME[-1])
         #-- set interpolation type (3: extrapolated forward in time)
-        extrap_data.interpolation[ind] = 3
+        extrap.interpolation[ind] = 3
 
     #-- complete mask if any invalid in data
-    invalid, = np.nonzero(extrap_data.data == extrap_data.fill_value)
-    extrap_data.mask[invalid] = True
+    invalid, = np.nonzero(extrap.data == extrap.fill_value)
+    extrap.mask[invalid] = True
 
     #-- return the interpolated values
-    return extrap_data
+    return extrap
 
 #-- PURPOSE: calculate the Julian day from the calendar date
 def calc_julian_day(YEAR, MONTH, DAY, HOUR=0, MINUTE=0, SECOND=0):

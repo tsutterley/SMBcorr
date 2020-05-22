@@ -1,8 +1,14 @@
 from setuptools import setup, find_packages
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
 setup(
     name='SMBcorr',
     version='0.0.0.1',
     description='Python-based tools for correcting altimetry data for surface mass balance and firn processes',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     url='https://github.com/tsutterley/SMBcorr',
     author='Tyler Sutterley',
     author_email='tsutterl@uw.edu',
