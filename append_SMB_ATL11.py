@@ -15,8 +15,8 @@ COMMAND LINE OPTIONS:
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
         https://numpy.org
-    netCDF4: Python interface to the netCDF C library
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
+    netCDF4: Python interface to the netCDF C library
         https://unidata.github.io/netcdf4-python/netCDF4/index.html
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
@@ -25,7 +25,7 @@ PYTHON DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2020: reduce variables imported from HDF5
-        add crossover reading and interpolation
+        add crossover reading and interpolation.  add more models
     Written 05/2020
 """
 import sys
@@ -79,6 +79,11 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     # models['GL']['MAR'].append('MARv3.10-ERA')
     # models['GL']['MAR'].append('MARv3.11-NCEP')
     models['GL']['MAR'].append('MARv3.11-ERA')
+    models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
+    models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
+    models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
+    models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
+    models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
     models['GL']['RACMO'] = []
     # models['GL']['RACMO'].append('RACMO2.3-XGRN11')
     # models['GL']['RACMO'].append('RACMO2.3p2-XGRN11')
@@ -86,15 +91,34 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
 
     for model_version in models[REGION][MODEL]:
         if (MODEL == 'MAR'):
-            MAR_VERSION,=re.findall('MARv\d+\.\d+',model_version)
+            match_object=re.match('(MARv\d+\.\d+(.\d+)?)',model_version)
+            MAR_VERSION=match_object.group(0)
             MAR_REGION=dict(GL='Greenland',AA='Antarctic')[REGION]
+            # model subdirectories
             SUBDIRECTORY={}
             SUBDIRECTORY['MARv3.9-ERA']=['ERA_1958-2018_10km','daily_10km']
             SUBDIRECTORY['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
             SUBDIRECTORY['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
             SUBDIRECTORY['MARv3.11-ERA']=['ERA_1958-2019-15km','daily_15km']
+            SUBDIRECTORY['MARv3.11.2-ERA-7.5km']=['7.5km_ERA5']
+            SUBDIRECTORY['MARv3.11.2-ERA-10km']=['10km_ERA5']
+            SUBDIRECTORY['MARv3.11.2-ERA-15km']=['15km_ERA5']
+            SUBDIRECTORY['MARv3.11.2-ERA-20km']=['20km_ERA5']
+            SUBDIRECTORY['MARv3.11.2-NCEP-20km']=['20km_NCEP']
             MAR_MODEL=SUBDIRECTORY[model_version]
             DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
+            # variable coordinates
+            KWARGS = {}
+            KWARGS['MARv3.9-ERA']=dict(XNAME='X10_153',YNAME='Y21_288')
+            KWARGS['MARv3.10-ERA']=dict(XNAME='X10_105',YNAME='Y21_199')
+            KWARGS['MARv3.11-NCEP']=dict(XNAME='X12_84',YNAME='Y21_155')
+            KWARGS['MARv3.11-ERA']=dict(XNAME='X10_105',YNAME='Y21_199')
+            KWARGS['MARv3.11.2-ERA-7.5km']=dict(XNAME='X12_203',YNAME='Y20_377')
+            KWARGS['MARv3.11.2-ERA-10km']=dict(XNAME='X10_153',YNAME='Y21_288')
+            KWARGS['MARv3.11.2-ERA-15km']=dict(XNAME='X10_105',YNAME='Y21_199')
+            KWARGS['MARv3.11.2-ERA-20km']=dict(XNAME='X12_84',YNAME='Y21_155')
+            KWARGS['MARv3.11.2-NCEP-20km']=dict(XNAME='X12_84',YNAME='Y21_155')            
+            MAR_KWARGS=KWARGS[model_version]
         elif (MODEL == 'RACMO'):
             RACMO_VERSION,RACMO_MODEL=model_version.split('-')
 
@@ -107,7 +131,8 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             # for each cycle of ICESat-2 ATL11 data
             for c in range(ncycle):
                 # check that there are valid crossovers
-                cross = [xo for xo in range(ncross) if np.any(np.isfinite(D11.delta_time[:,c,xo]))]
+                cross = [xo for xo in range(ncross) if 
+                    np.any(np.isfinite(D11.delta_time[:,c,xo]))]
                 # for each valid crossing
                 for xo in cross:
                     # find valid crossovers
@@ -118,7 +143,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         # read and interpolate daily MAR outputs
                         firn_out = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan)
+                            VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
                     elif (MODEL == 'RACMO'):
                         # read and interpolate daily RACMO outputs
                         firn_out = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
@@ -134,7 +159,8 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             FIRN.annual = np.zeros((nseg,ncycle))
             FIRN.interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
             # check that there are valid elevations
-            cycle = [c for c in range(ncycle) if np.any(np.isfinite(D11.delta_time[:,c]))]
+            cycle = [c for c in range(ncycle) if 
+                np.any(np.isfinite(D11.delta_time[:,c]))]
             # for each valid cycle of ICESat-2 ATL11 data
             for c in cycle:
                 # find valid elevations
@@ -145,7 +171,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     # read and interpolate daily MAR outputs
                     firn_out = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan)
+                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
                 elif (MODEL == 'RACMO'):
                     # read and interpolate daily RACMO outputs
                     firn_out = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,

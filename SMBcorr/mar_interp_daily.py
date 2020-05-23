@@ -16,6 +16,9 @@ INPUTS:
     Y: y-coordinates to interpolate
 
 OPTIONS:
+    XNAME: x-coordinate variable name in MAR netCDF4 file
+    YNAME: x-coordinate variable name in MAR netCDF4 file
+    TIMENAME: time variable name in MAR netCDF4 file
     VARIABLE: MAR product to interpolate
     SIGMA: Standard deviation for Gaussian kernel
     FILL_VALUE: output fill_value for invalid points
@@ -39,7 +42,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2020: Gaussian average fields before interpolation
-        accumulate variable over all available dates
+        accumulate variable over all available dates. add coordinate options
         calculate and save yearly rates of cumulative change
     Written 04/2020
 """
@@ -60,7 +63,8 @@ from SMBcorr.regress_model import regress_model
 
 #-- PURPOSE: read and interpolate daily MAR outputs
 def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
-    VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=None, EXTRAPOLATE=False):
+    XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
+    SIGMA=1.5, FILL_VALUE=None, EXTRAPOLATE=False):
 
     #-- start and end years to read
     SY = np.nanmin(np.floor(tdec)).astype(np.int)
@@ -69,8 +73,6 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- regular expression pattern for MAR dataset
     rx = re.compile('{0}-(.*?)-(\d+)(_subset)?.nc$'.format(VERSION,YRS))
 
-    #-- variable coordinates
-    XNAME,YNAME,TIMENAME = ('X10_105','Y21_199','TIME')
     #-- MAR model projection: Polar Stereographic (Oblique)
     #-- Earth Radius: 6371229 m
     #-- True Latitude: 0
@@ -145,7 +147,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             fd['x']=1000.0*fileID.variables[XNAME][:].copy()
             fd['y']=1000.0*fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables[TIMENAME][:].copy()
+            delta_time=fileID.variables[TIMENAME][:].astype(np.float)
             units=fileID.variables[TIMENAME].units
         #-- convert epoch of time to Julian days
         Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]

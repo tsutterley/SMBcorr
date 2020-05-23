@@ -21,6 +21,9 @@ INPUTS:
     Y: y-coordinates to interpolate in projection EPSG
 
 OPTIONS:
+    XNAME: x-coordinate variable name in MAR netCDF4 file
+    YNAME: x-coordinate variable name in MAR netCDF4 file
+    TIMENAME: time variable name in MAR netCDF4 file
     VARIABLE: MAR product to interpolate
     SIGMA: Standard deviation for Gaussian kernel
     SEARCH: nearest-neighbor search algorithm (BallTree or KDTree)
@@ -50,7 +53,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2020: Gaussian average fields before interpolation
-        accumulate variable over all available dates
+        accumulate variable over all available dates. add coordinate options
         calculate and save yearly rates of cumulative change
     Written 04/2020
 """
@@ -85,7 +88,8 @@ def get_dimensions(DIRECTORY,input_files,XNAME,YNAME):
     return (xsize,ysize,(xmin,xmax,ymin,ymax),pixel_size)
 
 #-- PURPOSE: read and interpolate daily MAR outputs
-def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
+def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
+    XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
     SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None,
     EXTRAPOLATE=False):
 
@@ -95,9 +99,6 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
     YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- regular expression pattern for MAR dataset
     rx = re.compile('{0}-(.*?)-(\d+)(_subset)?.nc$'.format(VERSION,YRS))
-
-    #-- variable coordinates
-    XNAME,YNAME,TIMENAME = ('X10_105','Y21_199','TIME')
 
     #-- create list of files to read
     input_files=sorted([f for f in os.listdir(DIRECTORY) if rx.match(f)])
@@ -165,7 +166,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y, VARIABLE='SMB',
             fd['x']=1000.0*fileID.variables[XNAME][:].copy()
             fd['y']=1000.0*fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables[TIMENAME][:].copy()
+            delta_time=fileID.variables[TIMENAME][:].astype(np.float)
             units=fileID.variables[TIMENAME].units
         #-- convert epoch of time to Julian days
         Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]

@@ -136,7 +136,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             #-- rotated pole parameters
             proj4_params=fileID.variables['rotated_pole'].proj4_params
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables['time'][:].copy()
+            delta_time=fileID.variables['time'][:].astype(np.float)
             units=fileID.variables['time'].units
         #-- convert epoch of time to Julian days
         Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
