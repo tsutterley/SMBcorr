@@ -295,7 +295,8 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         interp.interpolation[ind] = 3
 
     #-- complete mask if any invalid in data
-    invalid, = np.nonzero(interp.data == interp.fill_value)
+    invalid, = np.nonzero((interp.data == interp.fill_value) |
+        np.isnan(interp.data))
     interp.mask[invalid] = True
     #-- replace fill value if specified
     if FILL_VALUE:

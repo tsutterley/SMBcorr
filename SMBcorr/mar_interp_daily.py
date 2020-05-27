@@ -305,7 +305,8 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         interp.interpolation[ind] = 3
 
     #-- complete mask if any invalid in data
-    invalid, = np.nonzero(interp.data == interp.fill_value)
+    invalid, = np.nonzero((interp.data == interp.fill_value) |
+        np.isnan(interp.data))
     interp.mask[invalid] = True
 
     #-- return the interpolated values

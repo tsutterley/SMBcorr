@@ -329,7 +329,8 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         extrap.interpolation[ind] = 3
 
     #-- complete mask if any invalid in data
-    invalid, = np.nonzero(extrap.data == extrap.fill_value)
+    invalid, = np.nonzero((extrap.data == extrap.fill_value) |
+        np.isnan(extrap.data))
     extrap.mask[invalid] = True
     #-- replace fill value if specified
     if FILL_VALUE:

@@ -26,6 +26,7 @@ PYTHON DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2020: reduce variables imported from HDF5
         add crossover reading and interpolation.  add more models
+        copy mask variable from interpolation programs
     Written 05/2020
 """
 import sys
@@ -104,7 +105,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             SUBDIRECTORY['MARv3.11.2-ERA-10km']=['10km_ERA5']
             SUBDIRECTORY['MARv3.11.2-ERA-15km']=['15km_ERA5']
             SUBDIRECTORY['MARv3.11.2-ERA-20km']=['20km_ERA5']
-            SUBDIRECTORY['MARv3.11.2-NCEP-20km']=['20km_NCEP']
+            SUBDIRECTORY['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
             MAR_MODEL=SUBDIRECTORY[model_version]
             DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
             # variable coordinates
@@ -119,15 +120,31 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             KWARGS['MARv3.11.2-ERA-20km']=dict(XNAME='X12_84',YNAME='Y21_155')
             KWARGS['MARv3.11.2-NCEP-20km']=dict(XNAME='X12_84',YNAME='Y21_155')            
             MAR_KWARGS=KWARGS[model_version]
+            # output variable keys for both direct and derived fields
+            KEYS = ['zsurf','zfirn','zmelt','zsmb','zaccum']
+            # HDF5 longname attributes for each variable
+            LONGNAME = {}
+            LONGNAME['zsurf'] = "Snow Height Change"
+            LONGNAME['zfirn'] = "Snow Height Change due to Compaction"
+            LONGNAME['zmelt'] = "Snow Height Change due to Surface Melt"
+            LONGNAME['zsmb'] = "Snow Height Change due to Surface Mass Balance"
+            LONGNAME['zaccum'] = "Snow Height Change due to Surface Accumulation"
         elif (MODEL == 'RACMO'):
             RACMO_VERSION,RACMO_MODEL=model_version.split('-')
+            # output variable keys
+            KEYS = ['zsurf']
+            # HDF5 longname attributes for each variable
+            LONGNAME = {}
+            LONGNAME['zsurf'] = "Snow Height Change"
 
         # check if running crossover or along track
         if (D11.h_corr.ndim == 3):
-            # allocate for output FIRN height for crossover data
-            FIRN = np.ma.zeros((nseg,ncycle,ncross),fill_value=np.nan)
-            FIRN.annual = np.zeros((nseg,ncycle,ncross))
-            FIRN.interpolation = np.zeros((nseg,ncycle,ncross),dtype=np.uint8)
+            # allocate for output height for crossover data
+            OUTPUT = {}
+            for key in KEYS:
+                OUTPUT[key] = np.ma.zeros((nseg,ncycle,ncross),fill_value=np.nan)
+                OUTPUT[key].mask = np.zeros((nseg,ncycle,ncross),dtype=np.bool)
+                OUTPUT[key].interpolation = np.zeros((nseg,ncycle,ncross),dtype=np.uint8)
             # for each cycle of ICESat-2 ATL11 data
             for c in range(ncycle):
                 # check that there are valid crossovers
@@ -141,23 +158,46 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     tdec = convert_delta_time(D11.delta_time[i,c,xo])['decimal']
                     if (MODEL == 'MAR'):
                         # read and interpolate daily MAR outputs
-                        firn_out = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                        ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                            VARIABLE='ZN4', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        ZN5 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                            VARIABLE='ZN5', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        ZN6 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
                             VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        # set attributes to output for iteration
+                        OUTPUT['zfirn'].data[i,c,xo] = np.copy(ZN4.data)
+                        OUTPUT['zfirn'].mask[i,c,xo] = np.copy(ZN4.mask)
+                        OUTPUT['zfirn'].interpolation[i,c,xo] = np.copy(ZN4.interpolation)
+                        OUTPUT['zsurf'].data[i,c,xo] = np.copy(ZN6.data)
+                        OUTPUT['zsurf'].mask[i,c,xo] = np.copy(ZN6.mask)
+                        OUTPUT['zsurf'].interpolation[i,c,xo] = np.copy(ZN6.interpolation)
+                        OUTPUT['zmelt'].data[i,c,xo] = np.copy(ZN5.data)
+                        OUTPUT['zmelt'].mask[i,c,xo] = np.copy(ZN5.mask)
+                        OUTPUT['zmelt'].interpolation[i,c,xo] = np.copy(ZN5.interpolation)
+                        # calculate derived fields
+                        OUTPUT['zsmb'].data[i,c,xo] = ZN6.data - ZN4.data
+                        OUTPUT['zsmb'].mask[i,c,xo] = ZN4.mask | ZN6.mask
+                        OUTPUT['zaccum'].data[i,c,xo] = ZN6.data - ZN4.data - ZN5.data
+                        OUTPUT['zaccum'].mask[i,c,xo] = ZN4.mask | ZN5.mask | ZN6.mask
                     elif (MODEL == 'RACMO'):
                         # read and interpolate daily RACMO outputs
-                        firn_out = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                        hgtsrf = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
                             RACMO_MODEL, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
                             VARIABLE='hgtsrf', SIGMA=1.5, FILL_VALUE=np.nan)
-                    # set attributes to output for iteration
-                    FIRN[i,c,xo] = np.copy(firn_out)
-                    FIRN.annual[i,c,xo] = np.copy(firn_out.annual)
-                    FIRN.interpolation[i,c,xo] = np.copy(firn_out.interpolation)
+                        # set attributes to output for iteration
+                        OUTPUT['zsurf'].data[i,c,xo] = np.copy(hgtsrf.data)
+                        OUTPUT['zsurf'].mask[i,c,xo] = np.copy(hgtsrf.mask)
+                        OUTPUT['zsurf'].interpolation[i,c,xo] = np.copy(hgtsrf.interpolation)
         else:
-            # allocate for output FIRN height for along track data
-            FIRN = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
-            FIRN.annual = np.zeros((nseg,ncycle))
-            FIRN.interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
+            # allocate for output height for along-track data
+            OUTPUT = {}
+            for key in KEYS:
+                OUTPUT[key] = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
+                OUTPUT[key].mask = np.zeros((nseg,ncycle),dtype=np.bool)
+                OUTPUT[key].interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
             # check that there are valid elevations
             cycle = [c for c in range(ncycle) if 
                 np.any(np.isfinite(D11.delta_time[:,c]))]
@@ -169,62 +209,80 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                 tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
                 if (MODEL == 'MAR'):
                     # read and interpolate daily MAR outputs
-                    firn_out = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                    ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
+                        VARIABLE='ZN4', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                    ZN5 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
+                        VARIABLE='ZN5', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                    ZN6 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
                         VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['zfirn'].data[i,c] = np.copy(ZN4.data)
+                    OUTPUT['zfirn'].mask[i,c] = np.copy(ZN4.mask)
+                    OUTPUT['zfirn'].interpolation[i,c] = np.copy(ZN4.interpolation)
+                    OUTPUT['zsurf'].data[i,c] = np.copy(ZN6.data)
+                    OUTPUT['zsurf'].mask[i,c] = np.copy(ZN6.mask)
+                    OUTPUT['zsurf'].interpolation[i,c] = np.copy(ZN6.interpolation)
+                    OUTPUT['zmelt'].data[i,c] = np.copy(ZN5.data)
+                    OUTPUT['zmelt'].mask[i,c] = np.copy(ZN5.mask)
+                    OUTPUT['zmelt'].interpolation[i,c] = np.copy(ZN5.interpolation)
+                    # calculate derived fields
+                    OUTPUT['zsmb'].data[i,c] = ZN6.data - ZN4.data
+                    OUTPUT['zsmb'].mask[i,c] = ZN4.mask | ZN6.mask
+                    OUTPUT['zaccum'].data[i,c] = ZN6.data - ZN4.data - ZN5.data
+                    OUTPUT['zaccum'].mask[i,c] = ZN4.mask | ZN5.mask | ZN6.mask
                 elif (MODEL == 'RACMO'):
                     # read and interpolate daily RACMO outputs
-                    firn_out = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                    hgtsrf = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
                         RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
                         VARIABLE='hgtsrf', SIGMA=1.5, FILL_VALUE=np.nan)
-                # set attributes to output for iteration
-                FIRN[i,c] = np.copy(firn_out)
-                FIRN.annual[i,c] = np.copy(firn_out.annual)
-                FIRN.interpolation[i,c] = np.copy(firn_out.interpolation)
-                    
-        # replace mask values
-        FIRN.mask = (FIRN.data == FIRN.fill_value)
+                    # set attributes to output for iteration
+                    OUTPUT['zsurf'].data[i,c] = np.copy(hgtsrf.data)
+                    OUTPUT['zsurf'].mask[i,c] = np.copy(hgtsrf.mask)
+                    OUTPUT['zsurf'].interpolation[i,c] = np.copy(hgtsrf.interpolation)
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')
         fileID.create_group(model_version)
         h5 = {}
-        val = '{0}/{1}'.format(model_version,'zsurf')
-        h5['zsurf'] = fileID.create_dataset(val, FIRN.shape, data=FIRN,
-            dtype=FIRN.dtype, compression='gzip', fillvalue=FIRN.fill_value)
-        h5['zsurf'].attrs['units'] = "m"
-        h5['zsurf'].attrs['long_name'] = "Snow Height Change"
-        h5['zsurf'].attrs['coordinates'] = "../delta_time ../latitude ../longitude"
-        h5['zsurf'].attrs['model'] = model_version
-        val = '{0}/{1}'.format(model_version,'zannual')
-        h5['zannual'] = fileID.create_dataset(val, FIRN.shape, data=FIRN.annual,
-            dtype=FIRN.dtype, compression='gzip', fillvalue=FIRN.fill_value)
-        h5['zannual'].attrs['units'] = "m"
-        h5['zannual'].attrs['long_name'] = "Annual Snow Height Change"
-        h5['zannual'].attrs['coordinates'] = "../delta_time ../latitude ../longitude"
-        h5['zannual'].attrs['model'] = model_version
+        for key in KEYS:
+            # verify mask values
+            OUTPUT[key].mask |= (OUTPUT[key].data == OUTPUT[key].fill_value) | \
+                    np.isnan(OUTPUT[key].data)
+            # output variable to HDF5
+            val = '{0}/{1}'.format(model_version,key)
+            h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
+                data=OUTPUT[key], dtype=OUTPUT[key].dtype,
+                compression='gzip', fillvalue=OUTPUT[key].fill_value)
+            h5[key].attrs['units'] = "m"
+            h5[key].attrs['long_name'] = LONGNAME[key]
+            h5[key].attrs['coordinates'] = "../delta_time ../latitude ../longitude"
+            h5[key].attrs['model'] = model_version
+        # close the output HDF5 file
         fileID.close()
 
-#-- PURPOSE: help module to describe the optional input parameters
+# PURPOSE: help module to describe the optional input parameters
 def usage():
     print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
     print(' -D X, --directory=X\tWorking data directory')
     print(' -R X, --region=X\tRegion of model to interpolate')
     print(' -M X, --model=X\tRegional climate model to run\n')
 
-#-- Main program that calls merra_hybrid_cumulative()
+# Main program that calls append_SMB_ATL11()
 def main():
-    #-- Read the system arguments listed after the program
+    # Read the system arguments listed after the program
     long_options = ['help','directory=','region=','model=']
     optlist,arglist = getopt.getopt(sys.argv[1:], 'hD:R:M:', long_options)
 
-    #-- data directory
+    # data directory
     base_dir = None
-    #-- region of firn model
+    # region of firn model
     REGION = 'GL'
-    #-- surface mass balance product
+    # surface mass balance product
     MODELS = ['RACMO','MAR']
-    #-- extract parameters
+    # extract parameters
     for opt, arg in optlist:
         if opt in ('-h','--help'):
             usage()
@@ -236,11 +294,11 @@ def main():
         elif opt in ("-M","--model"):
             MODELS = arg.split(',')
 
-    #-- run program with parameters
+    # run program with parameters
     for f in arglist:
         for m in MODELS:
             append_SMB_ATL11(os.path.expanduser(f),base_dir,REGION,m)
 
-#-- run main program
+# run main program
 if __name__ == '__main__':
     main()
