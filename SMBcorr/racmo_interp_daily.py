@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_daily.py
-Written by Tyler Sutterley (05/2020)
+Written by Tyler Sutterley (06/2020)
 Interpolates and extrapolates daily RACMO products to times and coordinates
 
 INPUTS:
@@ -42,6 +42,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average model fields before interpolation
         accumulate variable over all available dates
         calculate and save yearly rates of cumulative change
@@ -200,6 +201,8 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     npts = len(tdec)
     interp = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
     interp.mask = np.ones((npts),dtype=np.bool)
+    #-- initially set all values to fill value
+    interp.data[:] = interp.fill_value
     #-- annual rates of change
     interp.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)

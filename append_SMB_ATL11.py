@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_ATL11.py
-Written by Tyler Sutterley (05/2020)
+Written by Tyler Sutterley (06/2020)
 Interpolates daily model firn estimates to the coordinates of an ATL11 file
 
 CALLING SEQUENCE:
@@ -24,6 +24,7 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 06/2020: verify masked values are set to fill_value
     Updated 05/2020: reduce variables imported from HDF5
         add crossover reading and interpolation.  add more models
         copy mask variable from interpolation programs
@@ -143,7 +144,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle,ncross),fill_value=np.nan)
-                OUTPUT[key].mask = np.zeros((nseg,ncycle,ncross),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle,ncross),dtype=np.bool)
                 OUTPUT[key].interpolation = np.zeros((nseg,ncycle,ncross),dtype=np.uint8)
             # for each cycle of ICESat-2 ATL11 data
             for c in range(ncycle):
@@ -196,7 +197,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
-                OUTPUT[key].mask = np.zeros((nseg,ncycle),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=np.bool)
                 OUTPUT[key].interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
             # check that there are valid elevations
             cycle = [c for c in range(ncycle) if 
@@ -251,6 +252,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             # verify mask values
             OUTPUT[key].mask |= (OUTPUT[key].data == OUTPUT[key].fill_value) | \
                     np.isnan(OUTPUT[key].data)
+            OUTPUT[key].data[OUTPUT[key].mask] = OUTPUT[key].fill_value
             # output variable to HDF5
             val = '{0}/{1}'.format(model_version,key)
             h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,

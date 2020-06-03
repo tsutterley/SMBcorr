@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_daily.py
-Written by Tyler Sutterley (05/2020)
+Written by Tyler Sutterley (06/2020)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -52,6 +52,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average fields before interpolation
         accumulate variable over all available dates. add coordinate options
         calculate and save yearly rates of cumulative change
@@ -226,6 +227,8 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     npts = len(tdec)
     extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
     extrap.mask = np.ones((npts),dtype=np.bool)
+    #-- initially set all values to fill value
+    extrap.data[:] = extrap.fill_value
     #-- annual rates of change
     extrap.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
