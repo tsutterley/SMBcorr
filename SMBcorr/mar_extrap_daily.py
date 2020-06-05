@@ -55,7 +55,6 @@ UPDATE HISTORY:
     Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average fields before interpolation
         accumulate variable over all available dates. add coordinate options
-        calculate and save yearly rates of cumulative change
     Written 04/2020
 """
 from __future__ import print_function
@@ -73,20 +72,6 @@ from sklearn.neighbors import KDTree, BallTree
 from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
 from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
-
-#-- PURPOSE: get the dimensions for the input data matrices
-def get_dimensions(DIRECTORY,input_files,XNAME,YNAME):
-    #-- Open the NetCDF file for reading
-    with netCDF4.Dataset(os.path.join(DIRECTORY,input_files[0]), 'r') as fileID:
-        #-- get grid dimensions from first file
-        xsize, = fileID[XNAME].shape
-        ysize, = fileID[YNAME].shape
-        xmin = fileID[XNAME][:].min()
-        xmax = fileID[XNAME][:].max()
-        ymin = fileID[YNAME][:].min()
-        ymax = fileID[YNAME][:].max()
-        pixel_size = np.abs(fileID[XNAME][1] - fileID[XNAME][0])
-    return (xsize,ysize,(xmin,xmax,ymin,ymax),pixel_size)
 
 #-- PURPOSE: read and interpolate daily MAR outputs
 def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
@@ -106,7 +91,6 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
 
     #-- calculate number of time steps to read
     nt = 0
-    nfiles = len(input_files)
     for f,FILE in enumerate(input_files):
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
@@ -123,9 +107,6 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     cumulative = np.zeros((ny,nx))
     gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
     gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
-    gs['ANNUAL'] = np.ma.zeros((nfiles,ny,nx), fill_value=FILL_VALUE)
-    gs['ANNUAL'].mask = np.ones((nfiles,ny,nx), dtype=np.bool)
-    gs['ANNUAL'].time = np.zeros((nfiles))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -204,12 +185,6 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
             gs['CUMULATIVE'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
             gs['CUMULATIVE'].mask[c+tt,ii,jj] = False
-        #-- calculate yearly change
-        gs['ANNUAL'].data[f,:,:] = gs['CUMULATIVE'].data[c+tt,:,:] - \
-            gs['CUMULATIVE'].data[c,:,:]
-        gs['ANNUAL'].mask[f,:,:] = gs['CUMULATIVE'].mask[c,:,:] | \
-            gs['CUMULATIVE'].mask[c+tt,:,:]
-        gs['ANNUAL'].time[f] = np.copy(Y2[0])
         #-- add to counter
         c += t
 
@@ -229,8 +204,6 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     extrap.mask = np.ones((npts),dtype=np.bool)
     #-- initially set all values to fill value
     extrap.data[:] = extrap.fill_value
-    #-- annual rates of change
-    extrap.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -265,23 +238,6 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             #-- spatially extrapolate using inverse distance weighting
             extrap.data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)
-        #-- find indices for annual interpolation
-        date_indice = [k for k,yr in enumerate(gs['ANNUAL'].year) if
-            (np.any(np.floor(tind) == yr))]
-        for k in date_indice:
-            kk, = np.nonzero(np.floor(tind) == gs['ANNUAL'].year[k])
-            count = np.count_nonzero(np.floor(tind) == gs['ANNUAL'].year[k])
-            #-- query the search tree to find the NN closest points
-            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
-            dist,indices = tree.query(xy2, k=NN, return_distance=True)
-            #-- normalized weights if POWER > 0 (typically between 1 and 3)
-            #-- in the inverse distance weighting
-            power_inverse_distance = dist**(-POWER)
-            s = np.sum(power_inverse_distance, axis=1)
-            w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
-            #-- spatially extrapolate annual change variable
-            tmp = gs['ANNUAL'][k,i,j]
-            extrap.annual[ind] = np.sum(w*tmp[indices],axis=1)
         #-- set interpolation type (1: interpolated in time)
         extrap.interpolation[ind] = 1
 

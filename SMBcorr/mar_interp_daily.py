@@ -44,7 +44,6 @@ UPDATE HISTORY:
     Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average fields before interpolation
         accumulate variable over all available dates. add coordinate options
-        calculate and save yearly rates of cumulative change
     Written 04/2020
 """
 from __future__ import print_function
@@ -87,7 +86,6 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
 
     #-- calculate number of time steps to read
     nt = 0
-    nfiles = len(input_files)
     for f,FILE in enumerate(input_files):
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
@@ -104,9 +102,6 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     cumulative = np.zeros((ny,nx))
     gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
     gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
-    gs['ANNUAL'] = np.ma.zeros((nfiles,ny,nx), fill_value=FILL_VALUE)
-    gs['ANNUAL'].mask = np.ones((nfiles,ny,nx), dtype=np.bool)
-    gs['ANNUAL'].time = np.zeros((nfiles))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -185,12 +180,6 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
             gs['CUMULATIVE'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
             gs['CUMULATIVE'].mask[c+tt,ii,jj] = False
-        #-- calculate yearly change
-        gs['ANNUAL'].data[f,:,:] = gs['CUMULATIVE'].data[c+tt,:,:] - \
-            gs['CUMULATIVE'].data[c,:,:]
-        gs['ANNUAL'].mask[f,:,:] = gs['CUMULATIVE'].mask[c,:,:] | \
-            gs['CUMULATIVE'].mask[c+tt,:,:]
-        gs['ANNUAL'].time[f] = np.copy(Y2[0])
         #-- add to counter
         c += t
 
@@ -213,8 +202,6 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     interp.mask = np.ones((npts),dtype=np.bool)
     #-- initially set all values to fill value
     interp.data[:] = interp.fill_value
-    #-- annual rates of change
-    interp.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -229,14 +216,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         #-- create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
             (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].mask)
-        #-- create an interpolator for annual variable
-        ANN = scipy.interpolate.RegularGridInterpolator(
-            (gs['ANNUAL'].time,fd['y'],fd['x']), gs['ANNUAL'].data)
 
         #-- interpolate to points
         interp.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
         interp.mask[ind] = MI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
-        interp.annual[ind] = ANN.__call__(np.c_[np.floor(tdec[ind]),iy[ind],ix[ind]])
         #-- set interpolation type (1: interpolated)
         interp.interpolation[ind] = 1
 

@@ -6,7 +6,9 @@ from SMBcorr.regress_model import regress_model
 from SMBcorr.mar_smb_cumulative import mar_smb_cumulative
 from SMBcorr.mar_smb_mean import mar_smb_mean
 from SMBcorr.mar_extrap_daily import extrapolate_mar_daily
+from SMBcorr.mar_extrap_seasonal import extrapolate_mar_seasonal
 from SMBcorr.mar_interp_daily import interpolate_mar_daily
+from SMBcorr.mar_interp_seasonal import interpolate_mar_seasonal
 # MERRA2 and MERRA2-hybrid
 from SMBcorr.merra_smb_cumulative import merra_smb_cumulative
 from SMBcorr.merra_hybrid_cumulative import merra_hybrid_cumulative

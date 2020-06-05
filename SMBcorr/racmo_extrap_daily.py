@@ -53,7 +53,6 @@ UPDATE HISTORY:
     Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average model fields before interpolation
         accumulate variable over all available dates
-        calculate and save yearly rates of cumulative change
     Written 04/2020
 """
 from __future__ import print_function
@@ -92,7 +91,6 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- calculate number of time steps to read
     nt = 0
-    nfiles = len(input_files)
     for f,FILE in enumerate(input_files):
         #-- Open the RACMO NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
@@ -117,9 +115,6 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     cumulative = np.zeros((ny,nx))
     gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
     gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
-    gs['annual'] = np.ma.zeros((nfiles,ny,nx), fill_value=FILL_VALUE)
-    gs['annual'].mask = np.ones((nfiles,ny,nx), dtype=np.bool)
-    gs['annual'].time = np.zeros((nfiles))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -183,12 +178,6 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
             gs['cumulative'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
             gs['cumulative'].mask[c+tt,ii,jj] = False
-        #-- calculate yearly change
-        gs['annual'].data[f,:,:] = gs['cumulative'].data[c+tt,:,:] - \
-            gs['cumulative'].data[c,:,:]
-        gs['annual'].mask[f,:,:] = gs['cumulative'].mask[c,:,:] | \
-            gs['cumulative'].mask[c+tt,:,:]
-        gs['annual'].time[f] = np.copy(Y2[0])
         #-- add to counter
         c += t
 
@@ -208,8 +197,6 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     extrap.mask = np.ones((npts),dtype=np.bool)
     #-- initially set all values to fill value
     extrap.data[:] = extrap.fill_value
-    #-- annual rates of change
-    extrap.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -244,23 +231,6 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             #-- spatially extrapolate using inverse distance weighting
             extrap[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)
-        #-- find indices for annual interpolation
-        date_indice = [k for k,yr in enumerate(gs['annual'].year) if
-            (np.any(np.floor(tind) == yr))]
-        for k in date_indice:
-            kk, = np.nonzero(np.floor(tind) == gs['annual'].year[k])
-            count = np.count_nonzero(np.floor(tind) == gs['annual'].year[k])
-            #-- query the search tree to find the NN closest points
-            xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
-            dist,indices = tree.query(xy2, k=NN, return_distance=True)
-            #-- normalized weights if POWER > 0 (typically between 1 and 3)
-            #-- in the inverse distance weighting
-            power_inverse_distance = dist**(-POWER)
-            s = np.sum(power_inverse_distance, axis=1)
-            w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
-            #-- spatially extrapolate annual change variable
-            tmp = gs['annual'][k,i,j]
-            extrap.annual[ind] = np.sum(w*tmp[indices],axis=1)
         #-- set interpolation type (1: interpolated in time)
         extrap.interpolation[ind] = 1
 

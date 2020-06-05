@@ -1,15 +1,17 @@
-mar_extrap_daily.py
-===================
+mar_extrap_seasonal.py
+======================
 
-- Interpolates and extrapolates daily MAR products to times and coordinates using inverse distance weighting
+- Interpolates and extrapolates seasonal MAR products to times and coordinates using inverse distance weighting  
+- Seasonal files are climatology files for each day of the year  
 
 #### Calling Sequence
 ```python
-from SMBcorr.mar_extrap_daily import extrapolate_mar_daily
-interp_data = extrapolate_mar_daily(DIRECTORY, EPSG, tdec, X, Y,
-    VARIABLE='SMB', SIGMA=1.5, SEARCH='BallTree', FILL_VALUE=np.nan)
+from SMBcorr.mar_extrap_seasonal import extrapolate_mar_seasonal
+interp_data = extrapolate_mar_seasonal(DIRECTORY, EPSG, tdec, X, Y,
+    VARIABLE='SMB', RANGE=[2000,2019], SIGMA=1.5, SEARCH='BallTree',
+    FILL_VALUE=np.nan)
 ```
-[Source code](https://github.com/tsutterley/SMBcorr/blob/master/SMBcorr/mar_extrap_daily.py)
+[Source code](https://github.com/tsutterley/SMBcorr/blob/master/SMBcorr/mar_extrap_seasonal.py)
 
 #### Inputs
 - `DIRECTORY`: full path to the MAR data directory  
@@ -18,7 +20,6 @@ interp_data = extrapolate_mar_daily(DIRECTORY, EPSG, tdec, X, Y,
     * `<path_to_mar>/MARv3.11.2/Greenland/15km_ERA5/`  
     * `<path_to_mar>/MARv3.11.2/Greenland/20km_ERA5/`  
     * `<path_to_mar>/MARv3.11.2/Greenland/20km_NCEP1/`  
-    * `<path_to_mar>/MARv3.11/Greenland/ERA_1958-2019-15km`  
     * `<path_to_mar>/MARv3.11/Greenland/ERA_1958-2019-15km/daily_15km`  
     * `<path_to_mar>/MARv3.11/Greenland/NCEP1_1948-2020_20km/daily_20km`  
     * `<path_to_mar>/MARv3.10/Greenland/NCEP1_1948-2019_20km/daily_20km`  
@@ -30,6 +31,7 @@ interp_data = extrapolate_mar_daily(DIRECTORY, EPSG, tdec, X, Y,
 
 #### Options
 - `VARIABLE`: MAR product to interpolate  
+- `RANGE`: start year and end year of seasonal file
 - `SIGMA`: Standard deviation for Gaussian kernel  
 - `SEARCH`: nearest-neighbor search algorithm (`'BallTree'` or `'KDTree'`)  
 - `NN`: number of nearest-neighbor points to use  

@@ -12,7 +12,9 @@ SMBcorr
 - [`convert_calendar_decimal.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/convert_calendar_decimal.md) - Converts from calendar date into decimal years taking into account leap years  
 - [`convert_julian.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/convert_julian.md) - Return the calendar date and time given Julian date  
 - [`mar_extrap_daily.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_extrap_daily.md) - Interpolates and extrapolates daily MAR products to times and coordinates using inverse distance weighting  
+- [`mar_extrap_seasonal.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_extrap_seasonal.md) - Interpolates and extrapolates seasonal MAR products to times and coordinates using inverse distance weighting  
 - [`mar_interp_daily.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_interp_daily.md) - Interpolates and extrapolates daily MAR products to times and coordinates using surface splines  
+- [`mar_interp_seasonal.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_interp_seasonal.md) - Interpolates and extrapolates seasonal MAR products to times and coordinates using surface splines  
 - [`mar_smb_cumulative.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_smb_cumulative.md) - Calculates cumulative anomalies of MAR surface mass balance products  
 - [`mar_smb_mean.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_smb_mean.md) - Calculates the temporal mean of MAR surface mass balance products  
 - [`merra_hybrid_cumulative.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/merra_hybrid_cumulative.md) - Calculates the temporal mean of MAR surface mass balance products  
@@ -47,3 +49,6 @@ https://github.com/tsutterley/SMBcorr/archive/master.zip
 
 #### Disclaimer  
 This program is not sponsored or maintained by the Universities Space Research Association (USRA) or NASA.  It is provided here for your convenience but _with no guarantees whatsoever_.  
+
+#### License
+The content of this project is licensed under the [Creative Commons Attribution 4.0 Attribution license](https://creativecommons.org/licenses/by/4.0/) and the underlying source code is licensed under the [MIT license](LICENSE).  

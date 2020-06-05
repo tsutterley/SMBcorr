@@ -45,7 +45,6 @@ UPDATE HISTORY:
     Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average model fields before interpolation
         accumulate variable over all available dates
-        calculate and save yearly rates of cumulative change
     Written 04/2020
 """
 from __future__ import print_function
@@ -83,7 +82,6 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- calculate number of time steps to read
     nt = 0
-    nfiles = len(input_files)
     for f,FILE in enumerate(input_files):
         #-- Open the RACMO NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
@@ -108,9 +106,6 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     cumulative = np.zeros((ny,nx))
     gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
     gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
-    gs['annual'] = np.ma.zeros((nfiles,ny,nx), fill_value=FILL_VALUE)
-    gs['annual'].mask = np.ones((nfiles,ny,nx), dtype=np.bool)
-    gs['annual'].time = np.zeros((nfiles))
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -174,12 +169,6 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
             gs['cumulative'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
             gs['cumulative'].mask[c+tt,ii,jj] = False
-        #-- calculate yearly change
-        gs['annual'].data[f,:,:] = gs['cumulative'].data[c+tt,:,:] - \
-            gs['cumulative'].data[c,:,:]
-        gs['annual'].mask[f,:,:] = gs['cumulative'].mask[c,:,:] | \
-            gs['cumulative'].mask[c+tt,:,:]
-        gs['annual'].time[f] = np.copy(Y2[0])
         #-- add to counter
         c += t
 
@@ -203,8 +192,6 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     interp.mask = np.ones((npts),dtype=np.bool)
     #-- initially set all values to fill value
     interp.data[:] = interp.fill_value
-    #-- annual rates of change
-    interp.annual = np.zeros((npts))
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -219,14 +206,10 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
             (fd['time'],fd['y'],fd['x']), gs['cumulative'].mask)
-        #-- create an interpolator for annual variable
-        ANN = scipy.interpolate.RegularGridInterpolator(
-            (gs['annual'].time,fd['y'],fd['x']), gs['annual'].data)
 
         #-- interpolate to points
         interp.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
         interp.mask[ind] = MI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
-        interp.annual[ind] = ANN.__call__(np.c_[np.floor(tdec[ind]),iy[ind],ix[ind]])
         #-- set interpolation type (1: interpolated)
         interp.interpolation[ind] = 1
 
