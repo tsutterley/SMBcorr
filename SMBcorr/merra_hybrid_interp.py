@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_interp.py
-Written by Tyler Sutterley (05/2020)
+Written by Tyler Sutterley (06/2020)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:
     interp_data = interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
-        VARIABLE='FAC', SIGMA=1.5)
+        VERSION='v1', VARIABLE='FAC', SIGMA=1.5)
 
 INPUTS:
     base_dir: working data directory
@@ -18,12 +18,14 @@ INPUTS:
     Y: y-coordinates to interpolate in projection EPSG
 
 OPTIONS:
+    VERSION: MERRA-2 hybrid model version (v0, v1)
     VARIABLE: MERRA-2 hybrid product to interpolate
         FAC: firn air content
         p_minus_e: precipitation minus evaporation
         melt: snowmelt
     SIGMA: Standard deviation for Gaussian kernel
     FILL_VALUE: output fill_value for invalid points
+    EXTRAPOLATE: create a regression model to extrapolate out in time
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -40,6 +42,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 06/2020: updated for version 1 of MERRA-2 Hybrid
     Updated 05/2020: reduced to interpolation function.  output masked array
     Written 10/2019
 """
@@ -67,13 +70,17 @@ def set_projection(REGION):
 
 #-- PURPOSE: read and interpolate MERRA-2 hybrid firn corrections
 def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
-    VARIABLE='FAC', SIGMA=1.5, FILL_VALUE=None):
+    VERSION='v1', VARIABLE='FAC', SIGMA=1.5, FILL_VALUE=None,
+    EXTRAPOLATE=False):
 
     #-- set the input netCDF4 file for the variable of interest
-    if VARIABLE in ('FAC'):
-        hybrid_file='gsfc_{0}_{1}.nc'.format(VARIABLE,REGION.lower())
-    elif VARIABLE in ('p_minus_e','melt'):
+    if VARIABLE in ('FAC','cum_smb_anomaly','height'):
+        hybrid_file='gsfc_fdm_{0}_{1}.nc'.format(VERSION,REGION.lower())
+    if VARIABLE in ('FAC') and (VERSION == 'v0'):
+        hybrid_file='gsfc_{0}_{1}.nc'.format('FAC',REGION.lower())
+    elif VARIABLE in ('p_minus_e','melt') and (VERSION == 'v0'):
         hybrid_file='m2_hybrid_{0}_cumul_{1}.nc'.format(VARIABLE,REGION.lower())
+
     #-- Open the MERRA-2 Hybrid NetCDF file for reading
     fileID = netCDF4.Dataset(os.path.join(base_dir,hybrid_file), 'r')
     #-- Get data from each netCDF variable and remove singleton dimensions
@@ -163,7 +170,7 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
 
     #-- check if needing to extrapolate backwards in time
     count = np.count_nonzero((tdec < fd['time'].min()) & valid)
-    if (count > 0):
+    if (count > 0) and EXTRAPOLATE:
         #-- indices of dates before firn model
         ind, = np.nonzero((tdec < fd['time'].min()) & valid)
         #-- calculate a regression model for calculating values
@@ -196,7 +203,7 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
 
     #-- check if needing to extrapolate forward in time
     count = np.count_nonzero((tdec > fd['time'].max()) & valid)
-    if (count > 0):
+    if (count > 0) and EXTRAPOLATE:
         #-- indices of dates after firn model
         ind, = np.nonzero((tdec > fd['time'].max()) & valid)
         #-- calculate a regression model for calculating values

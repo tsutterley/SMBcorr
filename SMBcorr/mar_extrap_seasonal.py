@@ -65,7 +65,7 @@ import scipy.interpolate
 from sklearn.neighbors import KDTree, BallTree
 
 #-- PURPOSE: read and interpolate a seasonal field of MAR outputs
-def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
+def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
     RANGE=[2000,2019], SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0,
     FILL_VALUE=None, EXTRAPOLATE=False):
