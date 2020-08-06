@@ -3,3 +3,4 @@ scipy
 pyproj
 netCDF4
 scikit-learn
+pointCollection @ https://github.com/SmithB/pointCollection/tarball/master

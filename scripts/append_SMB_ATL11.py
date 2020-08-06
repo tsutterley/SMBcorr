@@ -43,9 +43,10 @@ import pointCollection as pc
 def convert_delta_time(delta_time, gps_epoch=1198800018.0):
     # calculate gps time from delta_time
     gps_seconds = gps_epoch + delta_time
-    time_leaps = SMBcorr.count_leap_seconds(gps_seconds)
+    time_leaps = SMBcorr.time.count_leap_seconds(gps_seconds)
     # calculate julian time
-    time_julian = 2444244.5 + (gps_seconds - time_leaps)/86400.0
+    time_julian = 2400000.5 + SMBcorr.time.convert_delta_time(gps_seconds - time_leaps,
+        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date with convert_julian.py
     Y,M,D,h,m,s = SMBcorr.convert_julian(time_julian,FORMAT='tuple')
     # calculate year-decimal time

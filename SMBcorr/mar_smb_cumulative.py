@@ -261,15 +261,15 @@ def mar_smb_cumulative(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
                 #-- runoff from permanent ice covered regions and tundra regions
                 RU1,RU2 = input_products['RUNOFF']
                 ME = input_products['SNOWMELT']
-                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*dinput[RU1] + \
-                    (2.0 - MONTH['MASK'])*dinput[RU2]
+                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*MONTH[RU1] + \
+                    (2.0 - MONTH['MASK'])*MONTH[RU2]
                 #-- REFREEZE = (total) SNOWMELT - RUNOFF
                 MONTH['REFREEZE'] = MONTH[ME] - MONTH['RUNOFF']
             elif (PRODUCT == 'RUNOFF'):
                 #-- runoff from permanent ice covered regions and tundra regions
                 RU1,RU2 = input_products['RUNOFF']
-                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*dinput[RU1] + \
-                    (2.0 - MONTH['MASK'])*dinput[RU2]
+                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*MONTH[RU1] + \
+                    (2.0 - MONTH['MASK'])*MONTH[RU2]
             elif (PRODUCT == 'SMB'):
                 #-- SMB from permanent ice covered regions and tundra regions
                 SMB1,SMB2 = input_products['SMB']

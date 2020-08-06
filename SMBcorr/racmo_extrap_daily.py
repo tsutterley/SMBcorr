@@ -66,6 +66,7 @@ import numpy as np
 import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
+from sklearn.neighbors import KDTree, BallTree
 from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
 from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model

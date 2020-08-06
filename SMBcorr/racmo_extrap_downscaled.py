@@ -132,6 +132,8 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     #-- output extrapolated arrays of variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),dtype=np.float)
+    extrap_data.data[:] = extrap_data.fill_value
+    extrap_data.mask = np.zeros((npts),dtype=np.bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -167,6 +169,7 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
             #-- spatially extrapolate using inverse distance weighting
             extrap_data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)
+            extrap_data
         #-- set interpolation type (1: interpolated in time)
         extrap_data.interpolation[ind] = 1
 
@@ -237,11 +240,12 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
         #-- set interpolation type (3: extrapolated forward in time)
         extrap_data.interpolation[ind] = 3
 
+    #-- complete mask if any invalid in data
+    invalid, = np.nonzero(extrap_data.data == extrap_data.fill_value)
+    extrap_data.mask[invalid] = True
     #-- replace fill value if specified
     if FILL_VALUE:
-        ind, = np.nonzero(extrap_type == 0)
-        extrap_data.data[ind] = FILL_VALUE
-        extrap_data.mask[ind] = True
+        extrap_data.data[extrap_data.mask] = FILL_VALUE
         extrap_data.fill_value = FILL_VALUE
 
     #-- close the NetCDF files

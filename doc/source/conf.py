@@ -22,7 +22,7 @@ copyright = '2020, Tyler C. Sutterley'
 author = 'Tyler C. Sutterley'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.0.1'
+release = '0.0.0.2'
 
 
 # -- General configuration ---------------------------------------------------
