@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_mean.py
-Written by Tyler Sutterley (09/2019)
+Written by Tyler Sutterley (08/2020)
 Interpolates the mean of downscaled RACMO products to spatial coordinates
 
 CALLING SEQUENCE:
@@ -40,6 +40,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 UPDATE HISTORY:
+    Updated 08/2020: attempt delaunay triangulation using different options
     Updated 09/2019: read subsets of DS1km netCDF4 file to save memory
     Written 09/2019
 """
@@ -54,6 +55,42 @@ import netCDF4
 import numpy as np
 import scipy.spatial
 import scipy.interpolate
+
+#-- PURPOSE: find a valid Delaunay triangulation for coordinates x0 and y0
+#-- http://www.qhull.org/html/qhull.htm#options
+#-- Attempt 1: standard qhull options Qt Qbb Qc Qz
+#-- Attempt 2: rescale and center the inputs with option QbB
+#-- Attempt 3: joggle the inputs to find a triangulation with option QJ
+#-- if no passing triangulations: exit with empty list
+def find_valid_triangulation(x0,y0):
+    #-- Attempt 1: try with standard options Qt Qbb Qc Qz
+    #-- Qt: triangulated output, all facets will be simplicial
+    #-- Qbb: scale last coordinate to [0,m] for Delaunay triangulations
+    #-- Qc: keep coplanar points with nearest facet
+    #-- Qz: add point-at-infinity to Delaunay triangulation
+
+    #-- Attempt 2 in case of qhull error from Attempt 1 try Qt Qc QbB
+    #-- Qt: triangulated output, all facets will be simplicial
+    #-- Qc: keep coplanar points with nearest facet
+    #-- QbB: scale input to unit cube centered at the origin
+
+    #-- Attempt 3 in case of qhull error from Attempt 2 try QJ QbB
+    #-- QJ: joggle input instead of merging facets
+    #-- QbB: scale input to unit cube centered at the origin
+
+    #-- try each set of qhull_options
+    points = np.concatenate((x0[:,None],y0[:,None]),axis=1)
+    for i,opt in enumerate(['Qt Qbb Qc Qz','Qt Qc QbB','QJ QbB']):
+        try:
+            triangle = scipy.spatial.Delaunay(points.data, qhull_options=opt)
+        except scipy.spatial.qhull.QhullError:
+            pass
+        else:
+            return (i+1,triangle.vertices)
+
+    #-- if still errors: set vertices as an empty list
+    delaunay_vertices = []
+    return (None,delaunay_vertices)
 
 #-- PURPOSE: read and interpolate downscaled RACMO products
 def interpolate_racmo_mean(base_dir, EPSG, VERSION, tdec, X, Y,
@@ -120,10 +157,15 @@ def interpolate_racmo_mean(base_dir, EPSG, VERSION, tdec, X, Y,
     ix,iy = pyproj.transform(proj1, proj2, X, Y)
     #-- check that input points are within convex hull of valid model points
     xg,yg = np.meshgrid(d['x'],d['y'])
-    points = np.concatenate((xg[i,j,None],yg[i,j,None]),axis=1)
-    triangle = scipy.spatial.Delaunay(points.data, qhull_options='Qt Qbb Qc Qz')
-    interp_points = np.concatenate((ix[:,None],iy[:,None]),axis=1)
-    valid = (triangle.find_simplex(interp_points) >= 0)
+    v,triangle = find_valid_triangulation(xg[i,j],yg[i,j])
+    #-- check where points are within the complex hull of the triangulation
+    if v:
+        interp_points = np.concatenate((ix[:,None],iy[:,None]),axis=1)
+        valid = (triangle.find_simplex(interp_points) >= 0)
+    else:
+        #-- Check ix and iy against the bounds of x and y
+        valid = (ix >= d['x'].min()) & (ix <= d['x'].max()) & \
+            (iy >= d['y'].min()) & (iy <= d['y'].max())
 
     #-- output interpolated arrays of variable
     interp_var = np.zeros_like(tdec,dtype=np.float)

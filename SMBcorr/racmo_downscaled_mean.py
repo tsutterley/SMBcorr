@@ -76,7 +76,7 @@ def get_dimensions(input_dir,VERSION,PRODUCT,GZIP=False):
         pattern = '{0}.(\d+).BN_\d+_\d+_1km.MM.nc'.format(VARIABLE)
         rx = re.compile(pattern, re.VERBOSE)
         infiles = sorted([f for f in os.listdir(input_dir) if rx.match(f)])
-        nt = 12*len(input_files)
+        nt = 12*len(infiles)
         #-- read netCDF file for dataset (could also set memory=None)
         fileID = netCDF4.Dataset(os.path.join(input_dir,infiles[0]), mode='r')
         #-- shape of the input data matrix
@@ -105,7 +105,7 @@ def get_dimensions(input_dir,VERSION,PRODUCT,GZIP=False):
     return (nt,ny,nx)
 
 #-- PURPOSE: read individual yearly netcdf files and calculate mean over period
-def yearly_file_mean(input_dir,VERSION,RACMO_MODEL,PRODUCT,START,END):
+def yearly_file_mean(input_dir,VERSION,RACMO_MODEL,PRODUCT,START,END,GZIP):
     #-- names within netCDF4 files
     VARIABLE = input_products[PRODUCT]
     #-- find input files for years of interest
@@ -129,6 +129,9 @@ def yearly_file_mean(input_dir,VERSION,RACMO_MODEL,PRODUCT,START,END):
     dinput['MASK'] = np.zeros((ny,nx),dtype=np.int8)
     #-- calculate total
     dinput[VARIABLE] = np.zeros((ny,nx))
+    #-- calendar year and month
+    year = np.zeros((nt))
+    month = np.zeros((nt))
 
     #-- for each file of interest
     for t in range(n_files):
@@ -341,7 +344,7 @@ def racmo_downscaled_mean(base_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         SUBDIRECTORY = '{0}_v{1}'.format(VARNAME,VERSION)
         input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY, SUBDIRECTORY)
         dinput = yearly_file_mean(input_dir, VERSION, RACMO_MODEL, PRODUCT,
-            RANGE[0], RANGE[1])
+            RANGE[0], RANGE[1], GZIP)
     elif (VERSION == '2.0'):
         RACMO_MODEL = ['XGRN11','2.3p2']
         var = input_products[PRODUCT]

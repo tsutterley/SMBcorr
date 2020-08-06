@@ -34,6 +34,7 @@ import os
 import re
 import time
 import getopt
+import netCDF4
 import numpy as np
 
 #-- PURPOSE: read monthly MERRA-2 datasets to calculate cumulative anomalies

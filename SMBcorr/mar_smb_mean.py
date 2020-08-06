@@ -73,7 +73,7 @@ def get_dimensions(directory,input_files,XNAME,YNAME):
 #-- PURPOSE: create an output netCDF4 file for the output data fields
 def create_netCDF4(OUTPUT, FILENAME=None, UNITS=None, LONGNAME=None,
     VARNAME=None, LONNAME=None, LATNAME=None, XNAME=None, YNAME=None,
-    TIMENAME=None, MASKNAME=None, TITLE=None, VERBOSE=False):
+    TIMENAME=None, MASKNAME=None, TITLE=None, VERBOSE=False, PROJECTION=None):
     #-- output netCDF4 file
     fileID = netCDF4.Dataset(FILENAME,'w',format="NETCDF4")
     nc = {}
@@ -264,15 +264,15 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
                 #-- runoff from permanent ice covered regions and tundra regions
                 RU1,RU2 = input_products['RUNOFF']
                 ME = input_products['SNOWMELT']
-                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*dinput[RU1] + \
-                    (2.0 - MONTH['MASK'])*dinput[RU2]
+                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*MONTH[RU1] + \
+                    (2.0 - MONTH['MASK'])*MONTH[RU2]
                 #-- REFREEZE = (total) SNOWMELT - RUNOFF
                 MONTH['REFREEZE'] = MONTH[ME] - MONTH['RUNOFF']
             elif (PRODUCT == 'RUNOFF'):
                 #-- runoff from permanent ice covered regions and tundra regions
                 RU1,RU2 = input_products['RUNOFF']
-                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*dinput[RU1] + \
-                    (2.0 - MONTH['MASK'])*dinput[RU2]
+                MONTH['RUNOFF'] = (MONTH['MASK'] - 1.0)*MONTH[RU1] + \
+                    (2.0 - MONTH['MASK'])*MONTH[RU2]
             elif (PRODUCT == 'SMB'):
                 #-- SMB from permanent ice covered regions and tundra regions
                 SMB1,SMB2 = input_products['SMB']

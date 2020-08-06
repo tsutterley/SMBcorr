@@ -7,7 +7,7 @@ SMBcorr
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/tsutterley/SMBcorr/master)
 [![Binder](https://binder.pangeo.io/badge.svg)](https://binder.pangeo.io/v2/gh/tsutterley/SMBcorr/master)
 
-#### Python-based tools for correcting altimetry data for surface mass balance and firn processes
+#### Python-based tools for correcting altimetry data for surface mass balance and firn processes  
 
 - [`convert_calendar_decimal.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/convert_calendar_decimal.md) - Converts from calendar date into decimal years taking into account leap years  
 - [`convert_julian.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/convert_julian.md) - Return the calendar date and time given Julian date  
@@ -33,13 +33,15 @@ SMBcorr
 - [`racmo_interp_firn_height.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/racmo_interp_firn_height.md) - Interpolates and extrapolates firn heights to times and coordinates using surface splines  
 - [`racmo_interp_mean.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/racmo_interp_mean.md) - Interpolates the mean of downscaled RACMO products to spatial coordinates using surface splines  
 - [`regress_model.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/regress_model.md) - Estimates a modeled time series for extrapolation by least-squares regression  
+- [`time.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/time.rst) - Utilities for calculating time operations  
+- [`utilities.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/utilities.rst) - Download and management utilities for syncing time and auxiliary files  
 
 #### Dependencies
  - [numpy: Scientific Computing Tools For Python](https://www.numpy.org)  
  - [scipy: Scientific Tools for Python](https://www.scipy.org/)  
  - [pyproj: Python interface to PROJ library](https://pypi.org/project/pyproj/)  
  - [netCDF4: Python interface to the netCDF C library](https://unidata.github.io/netcdf4-python/)  
- - [scikit-learn: Machine Learning in Python](https://scikit-learn.org/stable/index.html)
+ - [scikit-learn: Machine Learning in Python](https://scikit-learn.org/stable/index.html)  
 
 #### Download
 The program homepage is:  
@@ -47,8 +49,8 @@ https://github.com/tsutterley/SMBcorr
 A zip archive of the latest version is available directly at:  
 https://github.com/tsutterley/SMBcorr/archive/master.zip  
 
-#### Disclaimer  
-This program is not sponsored or maintained by the Universities Space Research Association (USRA) or NASA.  It is provided here for your convenience but _with no guarantees whatsoever_.  
+#### Disclaimer
+This program is not sponsored or maintained by the Universities Space Research Association (USRA) or NASA.  It is provided here for your convenience but _with no guarantees whatsoever_.
 
 #### License
-The content of this project is licensed under the [Creative Commons Attribution 4.0 Attribution license](https://creativecommons.org/licenses/by/4.0/) and the underlying source code is licensed under the [MIT license](LICENSE).  
+The content of this project is licensed under the [Creative Commons Attribution 4.0 Attribution license](https://creativecommons.org/licenses/by/4.0/) and the source code is licensed under the [MIT license](LICENSE).

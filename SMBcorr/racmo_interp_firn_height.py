@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_firn_height.py
-Written by Tyler Sutterley (04/2020)
+Written by Tyler Sutterley (08/2020)
 Interpolates and extrapolates firn heights to times and coordinates
 
 INPUTS:
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2020: attempt delaunay triangulation using different options
     Updated 04/2020: reduced to interpolation function.  output masked array
     Updated 10/2019: Gaussian average firn fields before interpolation
     Updated 08/2019: convert to model coordinates (rotated pole lat/lon)
@@ -61,6 +62,42 @@ import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
 from SMBcorr.regress_model import regress_model
+
+#-- PURPOSE: find a valid Delaunay triangulation for coordinates x0 and y0
+#-- http://www.qhull.org/html/qhull.htm#options
+#-- Attempt 1: standard qhull options Qt Qbb Qc Qz
+#-- Attempt 2: rescale and center the inputs with option QbB
+#-- Attempt 3: joggle the inputs to find a triangulation with option QJ
+#-- if no passing triangulations: exit with empty list
+def find_valid_triangulation(x0,y0):
+    #-- Attempt 1: try with standard options Qt Qbb Qc Qz
+    #-- Qt: triangulated output, all facets will be simplicial
+    #-- Qbb: scale last coordinate to [0,m] for Delaunay triangulations
+    #-- Qc: keep coplanar points with nearest facet
+    #-- Qz: add point-at-infinity to Delaunay triangulation
+
+    #-- Attempt 2 in case of qhull error from Attempt 1 try Qt Qc QbB
+    #-- Qt: triangulated output, all facets will be simplicial
+    #-- Qc: keep coplanar points with nearest facet
+    #-- QbB: scale input to unit cube centered at the origin
+
+    #-- Attempt 3 in case of qhull error from Attempt 2 try QJ QbB
+    #-- QJ: joggle input instead of merging facets
+    #-- QbB: scale input to unit cube centered at the origin
+
+    #-- try each set of qhull_options
+    points = np.concatenate((x0[:,None],y0[:,None]),axis=1)
+    for i,opt in enumerate(['Qt Qbb Qc Qz','Qt Qc QbB','QJ QbB']):
+        try:
+            triangle = scipy.spatial.Delaunay(points.data, qhull_options=opt)
+        except scipy.spatial.qhull.QhullError:
+            pass
+        else:
+            return (i+1,triangle.vertices)
+
+    #-- if still errors: set vertices as an empty list
+    delaunay_vertices = []
+    return (None,delaunay_vertices)
 
 #-- PURPOSE: read and interpolate RACMO2.3 firn corrections
 def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
@@ -128,7 +165,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
     #-- Get data from each netCDF variable and remove singleton dimensions
     fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
     #-- verify mask object for interpolating data
-    fd[VARIABLE].mask |= (fd[VARIABLE].data[c:c+t,:,:] == fv)
+    fd[VARIABLE].mask = (fd[VARIABLE].data[:,:,:] == fv)
     fd['lon'] = fileID.variables['lon'][:,:].copy()
     fd['lat'] = fileID.variables['lat'][:,:].copy()
     fd['time'] = fileID.variables['time'][:].copy()
@@ -186,10 +223,15 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
     ix,iy = rotate_coordinates(ilon, ilat, rot_lon, rot_lat)
 
     #-- check that input points are within convex hull of smoothed model points
-    points = np.concatenate((xg[ii,jj,None],yg[ii,jj,None]),axis=1)
-    triangle = scipy.spatial.Delaunay(points.data, qhull_options='Qt Qbb Qc Qz')
-    interp_points = np.concatenate((ix[:,None],iy[:,None]),axis=1)
-    valid = (triangle.find_simplex(interp_points) >= 0)
+    v,triangle = find_valid_triangulation(xg[ii,jj],yg[i,j])
+    #-- check where points are within the complex hull of the triangulation
+    if v:
+        interp_points = np.concatenate((ix[:,None],iy[:,None]),axis=1)
+        valid = (triangle.find_simplex(interp_points) >= 0)
+    else:
+        #-- Check ix and iy against the bounds of x and y
+        valid = (ix >= fd['x'].min()) & (ix <= fd['x'].max()) & \
+            (iy >= fd['y'].min()) & (iy <= fd['y'].max())
 
     #-- output interpolated arrays of firn variable (height or firn air content)
     npts = len(tdec)
@@ -265,7 +307,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
         #-- spatially interpolate mask to coordinates
         mspl = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
             fd['mask'].T, kx=1, ky=1)
-        interp_mask[ind] = mspl.ev(ix[ind],iy[ind])
+        interp_data.mask[ind] = mspl.ev(ix[ind],iy[ind]).astype(np.bool)
         #-- create interpolated time series for calculating regression model
         for k in range(N):
             kk = nt - N + k
