@@ -80,11 +80,11 @@ def find_valid_triangulation(x0,y0):
         except scipy.spatial.qhull.QhullError:
             pass
         else:
-            return (i+1,triangle.vertices)
+            return (i+1,triangle)
 
-    #-- if still errors: set vertices as an empty list
-    delaunay_vertices = []
-    return (None,delaunay_vertices)
+    #-- if still errors: set triangle as an empty list
+    triangle = []
+    return (None,triangle)
 
 #-- PURPOSE: read and interpolate a mean field of MAR outputs
 def interpolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
@@ -118,10 +118,6 @@ def interpolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((ny,nx), fill_value=FILL_VALUE)
     gs[VARIABLE].mask = np.ones((ny,nx), dtype=np.bool)
-    #-- calculate cumulative sum of gaussian filtered values
-    cumulative = np.zeros((ny,nx))
-    gs['CUMULATIVE'] = np.ma.zeros((ny,nx), fill_value=FILL_VALUE)
-    gs['CUMULATIVE'].mask = np.ones((ny,nx), dtype=np.bool)
     #-- Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
         #-- surface type
@@ -206,10 +202,10 @@ def interpolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         ind, = np.nonzero(valid)
         #-- create an interpolator for model variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (fd['y'],fd['x']), gs['CUMULATIVE'].data)
+            (fd['y'],fd['x']), gs[VARIABLE].data)
         #-- create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
-            (fd['y'],fd['x']), gs['CUMULATIVE'].mask)
+            (fd['y'],fd['x']), gs[VARIABLE].mask)
         #-- interpolate to points
         interp.data[ind] = RGI.__call__(np.c_[iy[ind],ix[ind]])
         interp.mask[ind] = MI.__call__(np.c_[iy[ind],ix[ind]])

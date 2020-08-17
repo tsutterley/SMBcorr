@@ -93,11 +93,11 @@ def find_valid_triangulation(x0,y0):
         except scipy.spatial.qhull.QhullError:
             pass
         else:
-            return (i+1,triangle.vertices)
+            return (i+1,triangle)
 
-    #-- if still errors: set vertices as an empty list
-    delaunay_vertices = []
-    return (None,delaunay_vertices)
+    #-- if still errors: set triangle as an empty list
+    triangle = []
+    return (None,triangle)
 
 #-- PURPOSE: read and interpolate daily RACMO2.3 outputs
 def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
