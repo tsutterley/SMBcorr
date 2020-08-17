@@ -87,10 +87,6 @@ def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((ny,nx), fill_value=FILL_VALUE)
     gs[VARIABLE].mask = np.ones((ny,nx), dtype=np.bool)
-    #-- calculate cumulative sum of gaussian filtered values
-    cumulative = np.zeros((ny,nx))
-    gs['CUMULATIVE'] = np.ma.zeros((ny,nx), fill_value=FILL_VALUE)
-    gs['CUMULATIVE'].mask = np.ones((ny,nx), dtype=np.bool)
     #-- Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
         #-- surface type
@@ -165,8 +161,8 @@ def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     power_inverse_distance = dist**(-POWER)
     s = np.sum(power_inverse_distance)
     w = power_inverse_distance/s
-    #-- variable for times before and after tdec
-    var1 = gs['CUMULATIVE'][i,j]
+    #-- variable for valid points
+    var1 = gs[VARIABLE][i,j]
     #-- spatially extrapolate using inverse distance weighting
     extrap.data[:] = np.sum(w*var1[indices],axis=1)
 
