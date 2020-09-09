@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 time.py
-Written by Tyler Sutterley (07/2020)
+Written by Tyler Sutterley (09/2020)
 Utilities for calculating time operations
 
 PYTHON DEPENDENCIES:
@@ -114,9 +114,9 @@ def get_leap_seconds():
     -------
     GPS time (seconds since 1980-01-06T00:00:00) of leap seconds
     """
-    leap_secs = SMBcorr.utilities.get_data_path(['data','leap-seconds.list'])
+    FILE = SMBcorr.utilities.get_data_path(['data','leap-seconds.list'])
     #-- find line with file expiration as delta time
-    with open(leap_secs,'r') as fid:
+    with open(FILE,'r') as fid:
         secs, = [re.findall(r'\d+',i).pop() for i in fid.read().splitlines()
             if re.match(r'^(?=#@)',i)]
     #-- check that leap seconds file is still valid
@@ -124,7 +124,7 @@ def get_leap_seconds():
     today = datetime.datetime.now()
     update_leap_seconds() if (expiry < today) else None
     #-- get leap seconds
-    leap_UTC,TAI_UTC = np.loadtxt(SMBcorr.utilities.get_data_path(leap_secs)).T
+    leap_UTC,TAI_UTC=np.loadtxt(SMBcorr.utilities.get_data_path(FILE)).T
     #-- TAI time is ahead of GPS by 19 seconds
     TAI_GPS = 19.0
     #-- convert leap second epochs from NTP to GPS
@@ -158,9 +158,8 @@ def update_leap_seconds(verbose=False, mode=0o775):
     #-- try downloading from NIST ftp servers
     HOST = ['ftp.nist.gov','pub','time','iers',FILE]
     try:
-        SMBcorr.utilities.from_ftp(HOST,timeout=20,
-            local=SMBcorr.utilities.get_data_path(LOCAL),hash=HASH,
-            verbose=verbose,mode=mode)
+        SMBcorr.utilities.from_ftp(HOST, timeout=20, local=LOCAL,
+            hash=HASH, verbose=verbose, mode=mode)
     except:
         pass
     else:
@@ -169,9 +168,8 @@ def update_leap_seconds(verbose=False, mode=0o775):
     #-- try downloading from Internet Engineering Task Force (IETF) mirror
     REMOTE = ['https://www.ietf.org','timezones','data',FILE]
     try:
-        SMBcorr.utilities.from_http(REMOTE,timeout=5,
-            local=SMBcorr.utilities.get_data_path(LOCAL),hash=HASH,
-            verbose=verbose,mode=mode)
+        SMBcorr.utilities.from_http(REMOTE, timeout=5, local=LOCAL,
+            hash=HASH, verbose=verbose, mode=mode)
     except:
         pass
     else:

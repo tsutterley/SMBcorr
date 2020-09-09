@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_ATL11.py
-Written by Tyler Sutterley (06/2020)
+Written by Tyler Sutterley (09/2020)
 Interpolates daily model firn estimates to the coordinates of an ATL11 file
 
 CALLING SEQUENCE:
@@ -24,6 +24,8 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 09/2020: added MARv3.11.2 6km outputs
+    Updated 08/2020: added MERRA2-hybrid subversions
     Updated 06/2020: verify masked values are set to fill_value
     Updated 05/2020: reduce variables imported from HDF5
         add crossover reading and interpolation.  add more models
@@ -83,6 +85,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     # models['GL']['MAR'].append('MARv3.10-ERA')
     # models['GL']['MAR'].append('MARv3.11-NCEP')
     models['GL']['MAR'].append('MARv3.11-ERA')
+    models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
@@ -96,14 +99,15 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     # MERRA2-hybrid
     models['GL']['MERRA2-hybrid'] = []
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
 
     for model_version in models[REGION][MODEL]:
         if (MODEL == 'MAR'):
-            match_object=re.match('(MARv\d+\.\d+(.\d+)?)',model_version)
+            match_object=re.match(r'(MARv\d+\.\d+(.\d+)?)',model_version)
             MAR_VERSION=match_object.group(0)
             MAR_REGION=dict(GL='Greenland',AA='Antarctic')[REGION]
             # model subdirectories
@@ -112,6 +116,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             SUBDIRECTORY['GL']['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
             SUBDIRECTORY['GL']['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
             SUBDIRECTORY['GL']['MARv3.11-ERA']=['ERA_1958-2019-15km','daily_15km']
+            SUBDIRECTORY['GL']['MARv3.11.2-ERA-6km']=['6km_ERA5']
             SUBDIRECTORY['GL']['MARv3.11.2-ERA-7.5km']=['7.5km_ERA5']
             SUBDIRECTORY['GL']['MARv3.11.2-ERA-10km']=['10km_ERA5']
             SUBDIRECTORY['GL']['MARv3.11.2-ERA-15km']=['15km_ERA5']
@@ -125,6 +130,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             KWARGS['GL']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
             KWARGS['GL']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
             KWARGS['GL']['MARv3.11-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            KWARGS['GL']['MARv3.11.2-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
             KWARGS['GL']['MARv3.11.2-ERA-7.5km'] = dict(XNAME='X12_203',YNAME='Y20_377')
             KWARGS['GL']['MARv3.11.2-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
             KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
@@ -148,7 +154,10 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             LONGNAME = {}
             LONGNAME['zsurf'] = "Snow Height Change"
         elif (MODEL == 'MERRA2-hybrid'):
-            MERRA2_VERSION,=re.findall('GSFC-fdm-(.*?)$',model_version)
+            merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
+            # get MERRA-2 version and major version
+            MERRA2_VERSION = merra2_regex.match(model_version).group(1)
+            MERRA2_MAJOR_VERSION = merra2_regex.match(model_version).group(2)
             # MERRA-2 hybrid directory
             DIRECTORY=os.path.join(base_dir,'MERRA2_hybrid',MERRA2_VERSION)
             MERRA2_REGION = dict(AA='ais',GL='gris')[REGION]
@@ -218,16 +227,16 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         # read and interpolate 5-day MERRA2-Hybrid outputs
                         FAC = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                             MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VERSION=MERRA2_VERSION, VARIABLE='FAC', SIGMA=1.5,
-                            FILL_VALUE=np.nan)
+                            VERSION=MERRA2_MAJOR_VERSION, VARIABLE='FAC',
+                            SIGMA=1.5, FILL_VALUE=np.nan)
                         smb = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                             MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VERSION=MERRA2_VERSION, VARIABLE='cum_smb_anomaly', SIGMA=1.5,
-                            FILL_VALUE=np.nan)
+                            VERSION=MERRA2_MAJOR_VERSION, VARIABLE='cum_smb_anomaly',
+                            SIGMA=1.5, FILL_VALUE=np.nan)
                         height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                             MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VERSION=MERRA2_VERSION, VARIABLE='height', SIGMA=1.5,
-                            FILL_VALUE=np.nan)
+                            VERSION=MERRA2_MAJOR_VERSION, VARIABLE='height',
+                            SIGMA=1.5, FILL_VALUE=np.nan)
                         # set attributes to output for iteration
                         OUTPUT['zfirn'].data[i,c,xo] = np.copy(FAC.data)
                         OUTPUT['zfirn'].mask[i,c,xo] = np.copy(FAC.mask)
@@ -293,16 +302,16 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     # read and interpolate 5-day MERRA2-Hybrid outputs
                     FAC = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                        VERSION=MERRA2_VERSION, VARIABLE='FAC', SIGMA=1.5,
-                        FILL_VALUE=np.nan)
+                        VERSION=MERRA2_MAJOR_VERSION, VARIABLE='FAC',
+                        SIGMA=1.5, FILL_VALUE=np.nan)
                     smb = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                        VERSION=MERRA2_VERSION, VARIABLE='cum_smb_anomaly', SIGMA=1.5,
-                        FILL_VALUE=np.nan)
+                        VERSION=MERRA2_MAJOR_VERSION, VARIABLE='cum_smb_anomaly',
+                        SIGMA=1.5, FILL_VALUE=np.nan)
                     height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                        VERSION=MERRA2_VERSION, VARIABLE='height', SIGMA=1.5,
-                        FILL_VALUE=np.nan)
+                        VERSION=MERRA2_MAJOR_VERSION, VARIABLE='height',
+                        SIGMA=1.5, FILL_VALUE=np.nan)
                     # set attributes to output for iteration
                     OUTPUT['zfirn'].data[i,c] = np.copy(FAC.data)
                     OUTPUT['zfirn'].mask[i,c] = np.copy(FAC.mask)

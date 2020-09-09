@@ -113,7 +113,9 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- set the input netCDF4 file for the variable of interest
     if VARIABLE in ('FAC','cum_smb_anomaly','height'):
         hybrid_file='gsfc_fdm_{0}_{1}.nc'.format(VERSION,REGION.lower())
-    if VARIABLE in ('FAC') and (VERSION == 'v0'):
+    elif VARIABLE in ('smb',):
+        hybrid_file='gsfc_fdm_smb_{0}_{1}.nc'.format(VERSION,REGION.lower())
+    elif VARIABLE in ('FAC') and (VERSION == 'v0'):
         hybrid_file='gsfc_{0}_{1}.nc'.format('FAC',REGION.lower())
     elif VARIABLE in ('p_minus_e','melt') and (VERSION == 'v0'):
         hybrid_file='m2_hybrid_{0}_cumul_{1}.nc'.format(VARIABLE,REGION.lower())
