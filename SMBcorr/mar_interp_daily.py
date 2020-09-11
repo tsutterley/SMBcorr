@@ -108,7 +108,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     EY = np.nanmax(np.floor(tdec)).astype(np.int)
     YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- regular expression pattern for MAR dataset
-    rx = re.compile('{0}-(.*?)-(\d+)(_subset)?.nc$'.format(VERSION,YRS))
+    rx = re.compile(r'{0}-(.*?)-(\d+)(_subset)?.nc$'.format(VERSION,YRS))
 
     #-- MAR model projection: Polar Stereographic (Oblique)
     #-- Earth Radius: 6371229 m
@@ -128,7 +128,8 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             nx = len(fileID.variables[XNAME][:])
             ny = len(fileID.variables[YNAME][:])
-            nt += len(fileID.variables[TIMENAME][:])
+            TIME = fileID.variables[TIMENAME][:]
+            nt += np.count_nonzero(TIME.data != TIME.fill_value)
 
     #-- python dictionary with file variables
     fd = {}
@@ -146,7 +147,8 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         #-- Open the MAR NetCDF file for reading
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
-            t=len(fileID.variables['TIME'][:])
+            TIME = fileID.variables['TIME'][:]
+            t = np.count_nonzero(TIME.data != TIME.fill_value)
             #-- create a masked array with all data
             fd[VARIABLE] = np.ma.zeros((t,ny,nx),fill_value=FILL_VALUE)
             fd[VARIABLE].mask = np.zeros((t,ny,nx),dtype=np.bool)
@@ -161,15 +163,16 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             #-- combine sectors for multi-layered data
             if (np.ndim(tmp) == 4):
                 #-- create mask for combining data
-                MASK=np.zeros((nt,ny,nx))
-                MASK[:,i,j]=FRA[:,0,i,j]
+                MASK=np.zeros((t,ny,nx))
+                MASK[:,i,j]=FRA[:t,0,i,j]
                 #-- combine data
-                fd[VARIABLE][:]=MASK*tmp[:,0,:,:] + (1.0-MASK)*tmp[:,1,:,:]
+                fd[VARIABLE][:]=MASK*tmp[:t,0,:,:] + (1.0-MASK)*tmp[:t,1,:,:]
             else:
                 #-- copy data
-                fd[VARIABLE][:]=tmp.copy()
+                fd[VARIABLE][:]=tmp[:t,:,:].copy()
             #-- verify mask object for interpolating data
             surf_mask = np.broadcast_to(SRF, (t,ny,nx))
+            fd[VARIABLE].mask = fd[VARIABLE].data == fd[VARIABLE].fill_value
             fd[VARIABLE].mask[:,:,:] |= (surf_mask != 4)
             #-- combine mask object through time to create a single mask
             fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
@@ -180,7 +183,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             fd['x']=1000.0*fileID.variables[XNAME][:].copy()
             fd['y']=1000.0*fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables[TIMENAME][:].astype(np.float)
+            delta_time=fileID.variables[TIMENAME][:t].astype(np.float)
             units=fileID.variables[TIMENAME].units
         #-- convert epoch of time to Julian days
         Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
