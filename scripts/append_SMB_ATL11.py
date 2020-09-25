@@ -84,11 +84,12 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     # models['GL']['MAR'].append('MARv3.9-ERA')
     # models['GL']['MAR'].append('MARv3.10-ERA')
     # models['GL']['MAR'].append('MARv3.11-NCEP')
-    models['GL']['MAR'].append('MARv3.11-ERA')
+
+    #models['GL']['MAR'].append('MARv3.11-ERA')
     models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
+    #models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
+    #models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
+    #models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
     models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
     # RACMO
