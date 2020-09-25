@@ -129,7 +129,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             nx = len(fileID.variables[XNAME][:])
             ny = len(fileID.variables[YNAME][:])
             TIME = fileID.variables[TIMENAME][:]
-            nt += np.count_nonzero(TIME.data != TIME.fill_value)
+            try:
+                nt += np.count_nonzero(TIME.data != TIME.fill_value)
+            except AttributeError:
+                nt += len(TIME)
 
     #-- python dictionary with file variables
     fd = {}
@@ -148,7 +151,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
             TIME = fileID.variables['TIME'][:]
-            t = np.count_nonzero(TIME.data != TIME.fill_value)
+            try:
+                t = np.count_nonzero(TIME.data != TIME.fill_value)
+            except AttributeError:
+                t = len(TIME)
             #-- create a masked array with all data
             fd[VARIABLE] = np.ma.zeros((t,ny,nx),fill_value=FILL_VALUE)
             fd[VARIABLE].mask = np.zeros((t,ny,nx),dtype=np.bool)
