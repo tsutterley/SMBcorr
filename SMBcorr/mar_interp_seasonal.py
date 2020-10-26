@@ -104,6 +104,7 @@ def interpolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- regular expression pattern for MAR dataset
     rx = re.compile('MARseasonal(.*?){0}-{1}.nc$'.format(*RANGE))
     #-- find mar seasonal file for RANGE
+    #print(f"mar_interp_seasonal: looking for files matching MARseasonal in directory{DIRECTORY}")
     FILE, = [f for f in os.listdir(DIRECTORY) if rx.match(f)]
     #-- Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:

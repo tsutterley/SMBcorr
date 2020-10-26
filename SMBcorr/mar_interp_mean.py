@@ -102,6 +102,7 @@ def interpolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- regular expression pattern for MAR dataset
     rx = re.compile('MAR_SMBavg(.*?){0}-{1}.nc$'.format(*RANGE))
     #-- find mar mean file for RANGE
+    #print(f"looking for files matching MAR_SMBavg {str(RANGE)} in {DIRECTORY}")
     FILE, = [f for f in os.listdir(DIRECTORY) if rx.match(f)]
     #-- Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:

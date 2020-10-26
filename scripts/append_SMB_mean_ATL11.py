@@ -61,6 +61,7 @@ def set_projection(REGION):
     return projection_flag
 
 def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
+    
     # read input file
     field_dict = {None:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
@@ -82,9 +83,9 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
     # models['GL']['MAR'].append('MARv3.11-NCEP')
     # models['GL']['MAR'].append('MARv3.11-ERA')
     models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
+    #models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
+    #models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
     models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
     # RACMO
@@ -132,11 +133,13 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
             KWARGS['GL']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             MAR_KWARGS=KWARGS[REGION][model_version]
+            MAR_KWARGS['RANGE']=RANGE
             # output variable keys for both direct and derived fields
-            KEYS = ['smb_mean']
+            KEYS = ['smb_mean','zsurf_mean']
             # HDF5 longname attributes for each variable
             LONGNAME = {}
             LONGNAME['smb_mean'] = "Ice Sheet Surface Mass Balance"
+            LONGNAME['zsurf_mean'] = "Mean change in surface height" 
         elif (MODEL == 'RACMO'):
             RACMO_VERSION,RACMO_MODEL=model_version.split('-')
             # output variable keys
@@ -184,6 +187,11 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                         # set attributes to output for iteration
                         OUTPUT['smb_mean'].data[i,c,xo] = np.copy(SMB.data)
                         OUTPUT['smb_mean'].mask[i,c,xo] = np.copy(SMB.mask)
+                        zsurf = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
+                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                             VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        OUTPUT['zsurf_mean'].data[i,c,xo] = np.copy(zsurf.data)
+                        OUTPUT['zsurf_mean'].mask[i,c,xo] = np.copy(zsurf.mask)
                     # elif (MODEL == 'RACMO'):
                     #     # read and interpolate daily RACMO outputs
                     #     SMB = SMBcorr.interpolate_racmo_mean(base_dir, EPSG,
@@ -224,6 +232,12 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                     # set attributes to output for iteration
                     OUTPUT['smb_mean'].data[i,c] = np.copy(SMB.data)
                     OUTPUT['smb_mean'].mask[i,c] = np.copy(SMB.mask)
+                    zsurf = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
+                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
+                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['zsurf_mean'].data[i,c] = np.copy(zsurf.data)
+                    OUTPUT['zsurf_mean'].mask[i,c] = np.copy(zsurf.mask)
                 # elif (MODEL == 'RACMO'):
                 #     # read and interpolate daily RACMO outputs
                 #     SMB = SMBcorr.interpolate_racmo_mean(base_dir, EPSG,
@@ -253,9 +267,13 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
             OUTPUT[key].data[OUTPUT[key].mask] = OUTPUT[key].fill_value
             # output variable to HDF5
             val = '{0}/{1}'.format(model_version,key)
-            h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
-                data=OUTPUT[key], dtype=OUTPUT[key].dtype,
-                compression='gzip', fillvalue=OUTPUT[key].fill_value)
+            if val not in fileID:
+                h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
+                                                data=OUTPUT[key], dtype=OUTPUT[key].dtype,
+                                                compression='gzip', fillvalue=OUTPUT[key].fill_value)
+            else:
+                h5[key]=fileID[val]
+                fileID[val][...]=OUTPUT[key]
             h5[key].attrs['units'] = "m"
             h5[key].attrs['long_name'] = LONGNAME[key]
             h5[key].attrs['coordinates'] = "../delta_time ../latitude ../longitude"
@@ -298,7 +316,6 @@ def main():
             MODELS = arg.split(',')
         elif opt in ("-Y","--year"):
             RANGE = np.array(arg.split(','),dtype=np.int)
-
     # run program with parameters
     for f in arglist:
         for m in MODELS:
