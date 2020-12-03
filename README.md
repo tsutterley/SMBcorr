@@ -33,6 +33,7 @@ SMBcorr
 - [`racmo_interp_firn_height.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/racmo_interp_firn_height.md) - Interpolates and extrapolates firn heights to times and coordinates using surface splines  
 - [`racmo_interp_mean.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/racmo_interp_mean.md) - Interpolates the mean of downscaled RACMO products to spatial coordinates using surface splines  
 - [`regress_model.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/regress_model.md) - Estimates a modeled time series for extrapolation by least-squares regression  
+- [`scale_areas.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/scale_areas.md) - Calculates area scaling factors for a polar stereographic projection
 - [`time.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/time.rst) - Utilities for calculating time operations  
 - [`utilities.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/utilities.rst) - Download and management utilities for syncing time and auxiliary files  
 
