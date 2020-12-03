@@ -38,5 +38,6 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     user_guide/racmo_interp_firn_height.md
     user_guide/racmo_interp_mean.md
     user_guide/regress_model.md
+    user_guide/scale_areas.md
     user_guide/time.rst
     user_guide/utilities.rst
