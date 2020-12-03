@@ -54,7 +54,7 @@ import numpy as np
 def convert_julian(JD, ASTYPE=None, FORMAT='tuple'):
     #-- convert to array if only a single value was imported
     if (np.ndim(JD) == 0):
-        JD = np.array([JD])
+        JD = np.atleast_1d(JD)
         SINGLE_VALUE = True
     else:
         SINGLE_VALUE = False
