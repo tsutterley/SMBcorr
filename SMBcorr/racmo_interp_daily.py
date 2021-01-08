@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_daily.py
-Written by Tyler Sutterley (08/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates daily RACMO products to times and coordinates
 
 INPUTS:
@@ -37,9 +37,8 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    convert_calendar_decimal.py: converts from calendar dates to decimal years
-    convert_julian.py: returns the calendar date and time given a Julian date
     regress_model.py: models a time series using least-squares regression
+    time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
     Updated 08/2020: attempt delaunay triangulation using different options
@@ -59,9 +58,8 @@ import numpy as np
 import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
-from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
-from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
+import SMBcorr.time
 
 #-- PURPOSE: find a valid Delaunay triangulation for coordinates x0 and y0
 #-- http://www.qhull.org/html/qhull.htm#options
@@ -170,17 +168,19 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             proj4_params=fileID.variables['rotated_pole'].proj4_params
             #-- extract delta time and epoch of time
             delta_time=fileID.variables['time'][:].astype(np.float)
-            units=fileID.variables['time'].units
-        #-- convert epoch of time to Julian days
-        Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
-        epoch_julian=calc_julian_day(Y1,M1,D1,HOUR=h1,MINUTE=m1,SECOND=s1)
+            date_string=fileID.variables['time'].units
+        #-- extract epoch and units
+        epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
         #-- calculate time array in Julian days
-        Y2,M2,D2,h2,m2,s2=convert_julian(epoch_julian + delta_time)
+        JD = SMBcorr.time.convert_delta_time(delta_time*to_secs, epoch1=epoch,
+            epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0) + 2400000.5
+        #-- convert from Julian days to calendar dates
+        YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD)
         #-- calculate time in year-decimal
-        fd['time'][c:c+t]=convert_calendar_decimal(Y2,M2,D2,
-            HOUR=h2,MINUTE=m2,SECOND=s2)
+        fd['time'][c:c+t] = SMBcorr.time.convert_calendar_decimal(YY,MM,
+            day=DD,hour=hh,minute=mm,second=ss)
         #-- use a gaussian filter to smooth mask
-        gs['mask']=scipy.ndimage.gaussian_filter(fd['mask'],SIGMA,
+        gs['mask'] = scipy.ndimage.gaussian_filter(fd['mask'],SIGMA,
             mode='constant',cval=0)
         #-- indices of smoothed ice mask
         ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
@@ -209,12 +209,13 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- add to counter
         c += t
 
-    #-- convert projection from input coordinates (EPSG) to model coordinates
+    #-- pyproj transformer for converting from input coordinates (EPSG)
     #-- RACMO models are rotated pole latitude and longitude
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj(proj4_params)
-    #-- calculate rotated pole coordinates of input coordinates
-    ix,iy = pyproj.transform(proj1, proj2, X, Y)
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string(proj4_params)
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    #-- calculate projected coordinates of input coordinates
+    ix,iy = transformer.transform(X, Y)
 
     #-- check that input points are within convex hull of valid model points
     gs['x'],gs['y'] = np.meshgrid(fd['x'],fd['y'])

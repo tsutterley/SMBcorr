@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_interp_daily.py
-Written by Tyler Sutterley (08/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 INPUTS:
@@ -36,11 +36,13 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    convert_calendar_decimal.py: converts from calendar dates to decimal years
-    convert_julian.py: returns the calendar date and time given a Julian date
     regress_model.py: models a time series using least-squares regression
+    time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
+        using utilities from time module for conversions
     Updated 08/2020: attempt delaunay triangulation using different options
     Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average fields before interpolation
@@ -58,9 +60,8 @@ import numpy as np
 import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
-from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
-from SMBcorr.convert_julian import convert_julian
 from SMBcorr.regress_model import regress_model
+import SMBcorr.time
 
 #-- PURPOSE: find a valid Delaunay triangulation for coordinates x0 and y0
 #-- http://www.qhull.org/html/qhull.htm#options
@@ -194,17 +195,19 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             fd['y']=1000.0*fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
             delta_time=fileID.variables[TIMENAME][:t].astype(np.float)
-            units=fileID.variables[TIMENAME].units
-        #-- convert epoch of time to Julian days
-        Y1,M1,D1,h1,m1,s1=[float(d) for d in re.findall('\d+\.\d+|\d+',units)]
-        epoch_julian=calc_julian_day(Y1,M1,D1,HOUR=h1,MINUTE=m1,SECOND=s1)
+            date_string=fileID.variables[TIMENAME].units
+        #-- extract epoch and units
+        epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
         #-- calculate time array in Julian days
-        Y2,M2,D2,h2,m2,s2=convert_julian(epoch_julian + delta_time)
+        JD = SMBcorr.time.convert_delta_time(delta_time*to_secs, epoch1=epoch,
+            epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0) + 2400000.5
+        #-- convert from Julian days to calendar dates
+        YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD)
         #-- calculate time in year-decimal
-        fd['TIME'][c:c+t]=convert_calendar_decimal(Y2,M2,D2,
-            HOUR=h2,MINUTE=m2,SECOND=s2)
+        fd['TIME'][c:c+t] = SMBcorr.time.convert_calendar_decimal(YY,MM,
+            day=DD,hour=hh,minute=mm,second=ss)
         #-- use a gaussian filter to smooth mask
-        gs['MASK']=scipy.ndimage.gaussian_filter(fd['MASK'],SIGMA,
+        gs['MASK'] = scipy.ndimage.gaussian_filter(fd['MASK'],SIGMA,
             mode='constant',cval=0)
         #-- indices of smoothed ice mask
         ii,jj = np.nonzero(np.ceil(gs['MASK']) == 1.0)
@@ -234,10 +237,11 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         c += t
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj(proj4_params)
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string(proj4_params)
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates
-    ix,iy = pyproj.transform(proj1, proj2, X, Y)
+    ix,iy = transformer.transform(X, Y)
 
     #-- check that input points are within convex hull of valid model points
     gs['x'],gs['y'] = np.meshgrid(fd['x'],fd['y'])
@@ -353,11 +357,3 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
 
     #-- return the interpolated values
     return interp
-
-#-- PURPOSE: calculate the Julian day from the calendar date
-def calc_julian_day(YEAR, MONTH, DAY, HOUR=0, MINUTE=0, SECOND=0):
-    JD = 367.*YEAR - np.floor(7.*(YEAR + np.floor((MONTH+9.)/12.))/4.) - \
-        np.floor(3.*(np.floor((YEAR + (MONTH - 9.)/7.)/100.) + 1.)/4.) + \
-        np.floor(275.*MONTH/9.) + DAY + 1721028.5 + HOUR/24. + MINUTE/1440. + \
-        SECOND/86400.
-    return JD

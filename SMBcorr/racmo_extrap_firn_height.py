@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_firn_height.py
-Written by Tyler Sutterley (08/2019)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates firn heights to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -51,6 +51,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 04/2020: reduced to interpolation function.  output masked array
     Updated 10/2019: Gaussian average firn fields before interpolation
     Updated 09/2019: use scipy interpolate to find date indices
@@ -67,7 +69,6 @@ import sys
 import os
 import re
 import pyproj
-import getopt
 import netCDF4
 import numpy as np
 import scipy.ndimage
@@ -154,9 +155,12 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
         gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
 
     #-- convert RACMO latitude and longitude to input coordinates (EPSG)
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj("+init=EPSG:{0:d}".format(4326))
-    xg,yg = pyproj.transform(proj2, proj1, fd['lon'], fd['lat'])
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    direction = pyproj.enums.TransformDirection.INVERSE
+    #-- convert projection from model coordinates
+    xg,yg = transformer.transform(fd['lon'], fd['lat'], direction=direction)
 
     #-- construct search tree from original points
     #-- can use either BallTree or KDTree algorithms

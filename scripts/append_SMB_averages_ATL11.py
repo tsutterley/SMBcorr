@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_averages_ATL11.py
-Written by Tyler Sutterley (09/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates seasonal averages of model firn estimates to the coordinates
     of an ATL11 file
 
@@ -25,15 +25,15 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 01/2021: using utilities from time module for conversions
     Updated 09/2020: added MARv3.11.2 6km outputs and MERRA2-hybrid subversions
     Written 06/2020
 """
-import sys
 import os
 import re
-import getopt
-import SMBcorr
 import h5py
+import SMBcorr
+import argparse
 import numpy as np
 import pointCollection as pc
 
@@ -43,14 +43,15 @@ def convert_delta_time(delta_time, gps_epoch=1198800018.0):
     gps_seconds = gps_epoch + delta_time
     time_leaps = SMBcorr.time.count_leap_seconds(gps_seconds)
     # calculate julian time
-    time_julian = 2400000.5 + SMBcorr.time.convert_delta_time(gps_seconds - time_leaps,
+    julian = 2400000.5 + SMBcorr.time.convert_delta_time(gps_seconds - time_leaps,
         epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-    # convert to calendar date with convert_julian.py
-    Y,M,D,h,m,s = SMBcorr.convert_julian(time_julian,FORMAT='tuple')
+    # convert to calendar date
+    Y,M,D,h,m,s = SMBcorr.time.convert_julian(julian,FORMAT='tuple')
     # calculate year-decimal time
-    time_decimal = SMBcorr.convert_calendar_decimal(Y,M,DAY=D,HOUR=h,MINUTE=m,SECOND=s)
+    decimal = SMBcorr.time.convert_calendar_decimal(Y,M,day=D,
+        hour=h,minute=m,second=s)
     # return both the Julian and year-decimal formatted dates
-    return dict(julian=time_julian, decimal=time_decimal)
+    return dict(julian=julian, decimal=decimal)
 
 # PURPOSE: set the projection parameters based on the region name
 def set_projection(REGION):
@@ -331,47 +332,45 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
         # close the output HDF5 file
         fileID.close()
 
-# PURPOSE: help module to describe the optional input parameters
-def usage():
-    print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
-    print(' -D X, --directory=X\tWorking data directory')
-    print(' -R X, --region=X\tRegion of model to interpolate')
-    print(' -M X, --model=X\tRegional climate model to run')
-    print(' -Y X, --year=X\t\tRange of years to use in climatology\n')
-
-# Main program that calls append_SMB_ATL11()
+# Main program that calls append_SMB_averages_ATL11()
 def main():
     # Read the system arguments listed after the program
-    long_options = ['help','directory=','region=','model=','year=']
-    optlist,arglist = getopt.getopt(sys.argv[1:], 'hD:R:M:Y:', long_options)
-
+    parser = argparse.ArgumentParser(
+        description="""Interpolates mean estimates of model firn
+            variable to the coordinates of an ATL11 file
+            """
+    )
+    # command line parameters
+    parser.add_argument('infile',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        help='ICESat-2 ATL11 file to run')
     # data directory
-    base_dir = None
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
     # region of firn model
-    REGION = 'GL'
+    parser.add_argument('--region','-R',
+        metavar='REGION', type=str, nargs='+',
+        default=['GL'], choices=('AA','GL'),
+        help='Region of model to interpolate')
     # surface mass balance product
-    MODELS = ['MAR']
+    parser.add_argument('--model','-M',
+        metavar='MODEL', type=str, nargs='+',
+        default=['MAR'], choices=('MAR','RACMO','MERRA2-hybrid'),
+        help='Regional climate model to run')
     # range of years to use for climatology
-    RANGE = [2000,2019]
-    # extract parameters
-    for opt, arg in optlist:
-        if opt in ('-h','--help'):
-            usage()
-            sys.exit()
-        elif opt in ("-D","--directory"):
-            base_dir = os.path.expanduser(arg)
-        elif opt in ("-R","--region"):
-            REGION = arg
-        elif opt in ("-M","--model"):
-            MODELS = arg.split(',')
-        elif opt in ("-Y","--year"):
-            RANGE = np.array(arg.split(','),dtype=np.int)
+    parser.add_argument('--year','-Y',
+        metavar=('START','END'), type=int, nargs=2,
+        default=[2000,2019],
+        help='Range of years to use in climatology')
+    args = parser.parse_args()
 
     # run program with parameters
-    for f in arglist:
-        for m in MODELS:
-            append_SMB_averages_ATL11(os.path.expanduser(f),base_dir,
-                REGION,m,RANGE=RANGE)
+    for f in args.infile:
+        for m in args.model:
+            append_SMB_averages_ATL11(f,args.directory,
+                args.region,m,RANGE=args.year)
 
 # run main program
 if __name__ == '__main__':

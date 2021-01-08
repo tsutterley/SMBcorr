@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_downscaled.py
-Written by Tyler Sutterley (04/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates downscaled RACMO products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -50,6 +50,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 04/2020: reduced to interpolation function.  output masked array
     Updated 09/2019: read subsets of DS1km netCDF4 file to save memory
     Written 09/2019
@@ -60,7 +62,6 @@ import sys
 import os
 import re
 import pyproj
-import getopt
 import netCDF4
 import numpy as np
 import scipy.interpolate
@@ -120,9 +121,12 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     i,j = np.nonzero(d['MASK'])
 
     #-- convert RACMO latitude and longitude to input coordinates (EPSG)
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj("+init=EPSG:{0:d}".format(4326))
-    xg,yg = pyproj.transform(proj2, proj1, d['LON'], d['LAT'])
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    direction = pyproj.enums.TransformDirection.INVERSE
+    #-- convert projection from model coordinates
+    xg,yg = transformer.transform(d['LON'], d['LAT'], direction=direction)
 
     #-- construct search tree from original points
     #-- can use either BallTree or KDTree algorithms

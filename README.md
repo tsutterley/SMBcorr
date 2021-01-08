@@ -9,8 +9,6 @@ SMBcorr
 
 #### Python-based tools for correcting altimetry data for surface mass balance and firn processes  
 
-- [`convert_calendar_decimal.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/convert_calendar_decimal.md) - Converts from calendar date into decimal years taking into account leap years  
-- [`convert_julian.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/convert_julian.md) - Return the calendar date and time given Julian date  
 - [`mar_extrap_daily.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_extrap_daily.md) - Interpolates and extrapolates daily MAR products to times and coordinates using inverse distance weighting  
 - [`mar_extrap_seasonal.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_extrap_seasonal.md) - Interpolates and extrapolates seasonal MAR products to times and coordinates using inverse distance weighting  
 - [`mar_interp_daily.py`](https://github.com/tsutterley/SMBcorr/blob/master/doc/source/user_guide/mar_interp_daily.md) - Interpolates and extrapolates daily MAR products to times and coordinates using surface splines  
@@ -41,6 +39,7 @@ SMBcorr
  - [numpy: Scientific Computing Tools For Python](https://www.numpy.org)  
  - [scipy: Scientific Tools for Python](https://www.scipy.org/)  
  - [pyproj: Python interface to PROJ library](https://pypi.org/project/pyproj/)  
+ - [dateutil: powerful extensions to datetime](https://dateutil.readthedocs.io/en/stable/)  
  - [netCDF4: Python interface to the netCDF C library](https://unidata.github.io/netcdf4-python/)  
  - [scikit-learn: Machine Learning in Python](https://scikit-learn.org/stable/index.html)  
 

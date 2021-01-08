@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_firn_height.py
-Written by Tyler Sutterley (08/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates firn heights to times and coordinates
 
 INPUTS:
@@ -40,6 +40,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 08/2020: attempt delaunay triangulation using different options
     Updated 04/2020: reduced to interpolation function.  output masked array
     Updated 10/2019: Gaussian average firn fields before interpolation
@@ -55,7 +57,6 @@ import sys
 import os
 import re
 import pyproj
-import getopt
 import netCDF4
 import numpy as np
 import scipy.spatial
@@ -216,9 +217,11 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
     #-- RACMO models are rotated pole latitude and longitude
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj("+init=EPSG:{0:d}".format(4326))
-    ilon,ilat = pyproj.transform(proj1, proj2, X, Y)
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    #-- convert projection from input coordinates to projected
+    ilon,ilat = transformer.transform(X, Y)
     #-- calculate rotated pole coordinates of input coordinates
     ix,iy = rotate_coordinates(ilon, ilat, rot_lon, rot_lat)
 
