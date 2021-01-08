@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_downscaled.py
-Written by Tyler Sutterley (08/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates downscaled RACMO products to times and coordinates
 
 INPUTS:
@@ -39,6 +39,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 08/2020: attempt delaunay triangulation using different options
     Updated 04/2020: reduced to interpolation function.  output masked array
     Updated 09/2019: read subsets of DS1km netCDF4 file to save memory
@@ -50,7 +52,6 @@ import sys
 import os
 import re
 import pyproj
-import getopt
 import netCDF4
 import numpy as np
 import scipy.spatial
@@ -127,10 +128,13 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     args = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,VARIABLE)
     input_file = '{0}_RACMO{1}_DS1km_v{2}_{3}_cumul.nc'.format(*args)
 
-    #-- convert projection from input coordinates (EPSG) to model coordinates
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj("+init=EPSG:{0:d}".format(3413))
-    ix,iy = pyproj.transform(proj1, proj2, X, Y)
+    #-- pyproj transformer for converting from input coordinates (EPSG)
+    #-- into model coordinates
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(3413))
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    #-- calculate projected coordinates of input coordinates
+    ix,iy = transformer.transform(X, Y)
 
     #-- Open the RACMO NetCDF file for reading
     fileID = netCDF4.Dataset(os.path.join(input_dir,input_file), 'r')

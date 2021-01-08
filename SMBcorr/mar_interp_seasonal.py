@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_interp_seasonal.py
-Written by Tyler Sutterley (08/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates seasonal MAR products to times and coordinates
 Seasonal files are climatology files for each day of the year
 
@@ -37,6 +37,8 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 08/2020: attempt delaunay triangulation using different options
     Written 06/2020
 """
@@ -188,10 +190,12 @@ def interpolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             gs['CUMULATIVE'].mask[t,ii,jj] = False
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj(proj4_params)
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string(proj4_params)
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates
-    ix,iy = pyproj.transform(proj1, proj2, X, Y)
+    ix,iy = transformer.transform(X, Y)
+
 
     #-- check that input points are within convex hull of valid model points
     gs['x'],gs['y'] = np.meshgrid(fd['x'],fd['y'])

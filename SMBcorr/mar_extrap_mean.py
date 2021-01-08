@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_mean.py
-Written by Tyler Sutterley (08/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates mean MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -47,6 +47,8 @@ PYTHON DEPENDENCIES:
         https://github.com/scikit-learn/scikit-learn
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Written 08/2020
 """
 from __future__ import print_function
@@ -138,9 +140,12 @@ def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         gs[VARIABLE].mask[ii,jj] = False
 
     #-- convert MAR latitude and longitude to input coordinates (EPSG)
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj("+init=EPSG:{0:d}".format(4326))
-    xg,yg = pyproj.transform(proj2, proj1, fd['LON'], fd['LAT'])
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    direction = pyproj.enums.TransformDirection.INVERSE
+    #-- convert projection from model coordinates
+    xg,yg = transformer.transform(fd['LON'], fd['LAT'], direction=direction)
 
     #-- construct search tree from original points
     #-- can use either BallTree or KDTree algorithms

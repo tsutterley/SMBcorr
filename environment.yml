@@ -7,9 +7,9 @@ dependencies:
   - numpy
   - scipy
   - pyproj
+  - python-dateutil
   - netCDF4
   - scikit-learn
   - pip
   - pip:
      - git+https://github.com/SmithB/pointCollection.git
-  

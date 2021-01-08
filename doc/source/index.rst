@@ -13,9 +13,6 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     :maxdepth: 1
     :caption: User Guide:
 
-    user_guide/convert_calendar_decimal.md
-    user_guide/convert_julian.md
-    user_guide/count_leap_seconds.md
     user_guide/mar_extrap_daily.md
     user_guide/mar_extrap_seasonal.md
     user_guide/mar_interp_daily.md

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_mean.py
-Written by Tyler Sutterley (09/2019)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates downscaled RACMO products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -48,6 +48,8 @@ PYTHON DEPENDENCIES:
         https://github.com/scikit-learn/scikit-learn
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 04/2020: reduced to interpolation function.  output masked array
     Updated 09/2019: read subsets of DS1km netCDF4 file to save memory
     Written 09/2019
@@ -58,7 +60,6 @@ import sys
 import os
 import re
 import pyproj
-import getopt
 import netCDF4
 import numpy as np
 import scipy.interpolate
@@ -126,9 +127,12 @@ def extrapolate_racmo_mean(base_dir, EPSG, VERSION, PRODUCT, tdec, X, Y,
     var1 = MEAN[i,j]
 
     #-- convert RACMO latitude and longitude to input coordinates (EPSG)
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj("+init=EPSG:{0:d}".format(4326))
-    xg,yg = pyproj.transform(proj2, proj1, d['LON'], d['LAT'])
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    direction = pyproj.enums.TransformDirection.INVERSE
+    #-- convert projection from model coordinates
+    xg,yg = transformer.transform(d['LON'], d['LAT'], direction=direction)
 
     #-- construct search tree from original points
     #-- can use either BallTree or KDTree algorithms
@@ -167,121 +171,3 @@ def extrapolate_racmo_mean(base_dir, EPSG, VERSION, PRODUCT, tdec, X, Y,
 
     #-- return the extrapolated values
     return (extrap_var,extrap_type,fv)
-
-#-- PURPOSE: interpolate RACMO products to a set of coordinates and times
-#-- wrapper function to extract EPSG and print to terminal
-def racmo_extrap_mean(base_dir, VERSION, PRODUCT, RANGE=[],
-    COORDINATES=None, DATES=None, CSV=None, FILL_VALUE=None):
-
-    #-- this is the projection of the coordinates being extrapolated into
-    EPSG = "EPSG:{0:d}".format(3413)
-
-    #-- read coordinates and dates from a csv file (X,Y,year decimal)
-    if CSV:
-        X,Y,tdec = np.loadtxt(CSV,delimiter=',').T
-    else:
-        #-- regular expression pattern for extracting x and y coordinates
-        numerical_regex = '([-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?)'
-        regex = re.compile('\[{0},{0}\]'.format(numerical_regex))
-        #-- number of coordinates
-        npts = len(regex.findall(COORDINATES))
-        #-- x and y coordinates of interpolation points
-        X = np.zeros((npts))
-        Y = np.zeros((npts))
-        for i,XY in enumerate(regex.findall(COORDINATES)):
-            X[i],Y[i] = np.array(XY, dtype=np.float)
-        #-- convert dates to ordinal days (count of days of the Common Era)
-        tdec = np.array(DATES, dtype=np.float)
-
-    #-- read and interpolate/extrapolate RACMO2.3 products
-    vi,itype,fv = extrapolate_racmo_mean(base_dir, EPSG, VERSION, PRODUCT,
-        tdec, X, Y, RANGE=RANGE, FILL_VALUE=FILL_VALUE)
-    interpolate_types = ['invalid','extrapolated','backward','forward']
-    for v,t in zip(vi,itype):
-        print(v,interpolate_types[t])
-
-#-- PURPOSE: help module to describe the optional input parameters
-def usage():
-    print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
-    print(' -D X, --directory=X\tWorking data directory')
-    print(' --version=X\t\tDownscaled RACMO Version')
-    print('\t1.0: RACMO2.3/XGRN11')
-    print('\t2.0: RACMO2.3p2/XGRN11')
-    print('\t3.0: RACMO2.3p2/FGRN055')
-    print(' --product:\t\tRACMO product to calculate')
-    print('\tSMB: Surface Mass Balance')
-    print('\tPRECIP: Precipitation')
-    print('\tRUNOFF: Melt Water Runoff')
-    print('\tSNOWMELT: Snowmelt')
-    print('\tREFREEZE: Melt Water Refreeze')
-    print(' --mean:\t\tStart and end year of mean (separated by commas)')
-    print(' --coordinate=X\t\tPolar Stereographic X and Y of point')
-    print(' --date=X\t\tDates to interpolate in year-decimal format')
-    print(' --csv=X\t\tRead dates and coordinates from a csv file')
-    print(' --fill-value\t\tReplace invalid values with fill value\n')
-
-#-- Main program that calls racmo_extrap_mean()
-def main():
-    #-- Read the system arguments listed after the program
-    long_options = ['help','directory=','version=','product=','mean=',
-        'coordinate=','date=','csv=','fill-value=']
-    optlist,arglist = getopt.getopt(sys.argv[1:], 'hD:', long_options)
-
-    #-- data directory
-    base_dir = os.getcwd()
-    #-- Downscaled version
-    VERSION = '3.0'
-    #-- Products to calculate cumulative
-    PRODUCTS = ['SMB']
-    #-- mean range
-    RANGE = [1961,1990]
-    #-- coordinates and times to run
-    COORDINATES = None
-    DATES = None
-    #-- read coordinates and dates from csv file
-    CSV = None
-    #-- invalid value (default is nan)
-    FILL_VALUE = np.nan
-    #-- extract parameters
-    for opt, arg in optlist:
-        if opt in ('-h','--help'):
-            usage()
-            sys.exit()
-        elif opt in ("-D","--directory"):
-            base_dir = os.path.expanduser(arg)
-        elif opt in ("--version"):
-            VERSION = arg
-        elif opt in ("--product"):
-            PRODUCTS = arg.split(',')
-        elif opt in ("--mean"):
-            RANGE = np.array(arg.split(','),dtype=np.int)
-        elif opt in ("--coordinate"):
-            COORDINATES = arg
-        elif opt in ("--date"):
-            DATES = arg.split(',')
-        elif opt in ("--csv"):
-            CSV = os.path.expanduser(arg)
-        elif opt in ("--fill-value"):
-            FILL_VALUE = eval(arg)
-
-    #-- data product longnames
-    longname = {}
-    longname['SMB'] = 'Cumulative Surface Mass Balance Anomalies'
-    longname['PRECIP'] = 'Cumulative Precipitation Anomalies'
-    longname['RUNOFF'] = 'Cumulative Runoff Anomalies'
-    longname['SNOWMELT'] = 'Cumulative Snowmelt Anomalies'
-    longname['REFREEZE'] = 'Cumulative Melt Water Refreeze Anomalies'
-
-    #-- for each product
-    for p in PRODUCTS:
-        #-- check that product was entered correctly
-        if p not in longname.keys():
-            raise IOError('{0} not in valid RACMO products'.format(p))
-        #-- run program with parameters
-        racmo_extrap_mean(base_dir, VERSION, p, RANGE=RANGE,
-            COORDINATES=COORDINATES, DATES=DATES, CSV=CSV,
-            FILL_VALUE=FILL_VALUE)
-
-#-- run main program
-if __name__ == '__main__':
-    main()

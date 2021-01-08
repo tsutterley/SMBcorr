@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_interp.py
-Written by Tyler Sutterley (08/2020)
+Written by Tyler Sutterley (01/2021)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
@@ -42,6 +42,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 01/2021: using conversion protocols following pyproj-2 updates
+        https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 08/2020: attempt delaunay triangulation using different options
     Updated 06/2020: updated for version 1 of MERRA-2 Hybrid
     Updated 05/2020: reduced to interpolation function.  output masked array
@@ -53,7 +55,6 @@ import sys
 import os
 import re
 import pyproj
-import getopt
 import netCDF4
 import numpy as np
 import scipy.spatial
@@ -170,11 +171,12 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         gs[VARIABLE].mask[t,:,:] = (gs['mask'] == 0.0)
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
-    #-- MERRA-2 Hybrid models are rotated pole latitude and longitude
     MODEL_EPSG = set_projection(REGION)
-    proj1 = pyproj.Proj("+init={0}".format(EPSG))
-    proj2 = pyproj.Proj("+init={0}".format(MODEL_EPSG))
-    ix,iy = pyproj.transform(proj1, proj2, X, Y)
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(MODEL_EPSG))
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    #-- calculate projected coordinates of input coordinates
+    ix,iy = transformer.transform(X, Y)
 
     #-- check that input points are within convex hull of smoothed model points
     v,triangle = find_valid_triangulation(xg[ii,jj],yg[ii,jj])
