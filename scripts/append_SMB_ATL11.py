@@ -81,14 +81,15 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     models = dict(AA={}, GL={})
     # MAR
     models['GL']['MAR'] = []
-    # models['GL']['MAR'].append('MARv3.9-ERA')
-    # models['GL']['MAR'].append('MARv3.10-ERA')
-    # models['GL']['MAR'].append('MARv3.11-NCEP')
-    models['GL']['MAR'].append('MARv3.11-ERA')
+    ## models['GL']['MAR'].append('MARv3.9-ERA')
+    ## models['GL']['MAR'].append('MARv3.10-ERA')
+    ## models['GL']['MAR'].append('MARv3.11-NCEP')
+
+    ##models['GL']['MAR'].append('MARv3.11-ERA')
     models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
+    ##models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
+    ##models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
     models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
     # RACMO
@@ -138,7 +139,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             MAR_KWARGS=KWARGS[REGION][model_version]
             # output variable keys for both direct and derived fields
-            KEYS = ['zsurf','zfirn','zmelt','zsmb','zaccum']
+            KEYS = ['zsurf','zfirn','zmelt','zsmb','zaccum','SMB']
             # HDF5 longname attributes for each variable
             LONGNAME = {}
             LONGNAME['zsurf'] = "Snow Height Change"
@@ -146,6 +147,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             LONGNAME['zmelt'] = "Snow Height Change due to Surface Melt"
             LONGNAME['zsmb'] = "Snow Height Change due to Surface Mass Balance"
             LONGNAME['zaccum'] = "Snow Height Change due to Surface Accumulation"
+            LONGNAME['SMB'] = 'cumulative SMB'
         elif (MODEL == 'RACMO'):
             RACMO_VERSION,RACMO_MODEL=model_version.split('-')
             # output variable keys
@@ -190,6 +192,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     tdec = convert_delta_time(D11.delta_time[i,c,xo])['decimal']
                     if (MODEL == 'MAR'):
                         # read and interpolate daily MAR outputs
+                        SMB =  SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                            VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
                         ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
                             VARIABLE='ZN4', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
@@ -200,6 +205,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
                             VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
                         # set attributes to output for iteration
+                        OUTPUT['SMB'].data[i,c,xo] = np.copy(SMB.data)
+                        OUTPUT['SMB'].mask[i,c,xo] = np.copy(SMB.mask)
+                        OUTPUT['zfirn'].interpolation[i,c,xo] = np.copy(SMB.interpolation)
                         OUTPUT['zfirn'].data[i,c,xo] = np.copy(ZN4.data)
                         OUTPUT['zfirn'].mask[i,c,xo] = np.copy(ZN4.mask)
                         OUTPUT['zfirn'].interpolation[i,c,xo] = np.copy(ZN4.interpolation)
@@ -265,6 +273,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                 tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
                 if (MODEL == 'MAR'):
                     # read and interpolate daily MAR outputs
+                    SMB = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
+                        VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
                     ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
                         VARIABLE='ZN4', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
@@ -275,6 +286,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
                         VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
                     # set attributes to output for iteration
+                    OUTPUT['SMB'].data[i,c] = np.copy(SMB.data)
+                    OUTPUT['SMB'].mask[i,c] = np.copy(SMB.mask)
+                    OUTPUT['SMB'].interpolation[i,c] = np.copy(SMB.interpolation)
                     OUTPUT['zfirn'].data[i,c] = np.copy(ZN4.data)
                     OUTPUT['zfirn'].mask[i,c] = np.copy(ZN4.mask)
                     OUTPUT['zfirn'].interpolation[i,c] = np.copy(ZN4.interpolation)
@@ -325,7 +339,8 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')
-        fileID.create_group(model_version)
+        if model_version not in fileID:
+            fileID.create_group(model_version)
         h5 = {}
         for key in KEYS:
             # verify mask values
@@ -334,9 +349,13 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             OUTPUT[key].data[OUTPUT[key].mask] = OUTPUT[key].fill_value
             # output variable to HDF5
             val = '{0}/{1}'.format(model_version,key)
-            h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
-                data=OUTPUT[key], dtype=OUTPUT[key].dtype,
-                compression='gzip', fillvalue=OUTPUT[key].fill_value)
+            if val not in fileID:
+                h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
+                                                data=OUTPUT[key], dtype=OUTPUT[key].dtype,
+                                                compression='gzip', fillvalue=OUTPUT[key].fill_value)
+            else:
+                h5[key]=fileID[val]
+                fileID[val][...]=OUTPUT[key]
             h5[key].attrs['units'] = "m"
             h5[key].attrs['long_name'] = LONGNAME[key]
             h5[key].attrs['coordinates'] = "../delta_time ../latitude ../longitude"

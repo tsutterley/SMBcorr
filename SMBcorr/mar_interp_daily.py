@@ -119,7 +119,11 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         "+a=6371229 +no_defs")
 
     #-- create list of files to read
-    input_files=sorted([f for f in os.listdir(DIRECTORY) if rx.match(f)])
+    try:
+        input_files=sorted([f for f in os.listdir(DIRECTORY) if rx.match(f)])
+    except Exception as e:
+        print(f"failed to find files matching {VERSION} in {DIRECTORY}")
+        raise(e)
 
     #-- calculate number of time steps to read
     nt = 0
