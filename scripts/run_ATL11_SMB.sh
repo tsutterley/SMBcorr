@@ -1,12 +1,15 @@
 
-dest_dir=/Volumes/ice2/ben/MAR/ATL11_with_corrections/temp
+dest_dir=/Volumes/ice2/ben/MAR/ATL11_with_corrections/rel002
 #xover_file=$dest_dir/test_xovers.h5
 
-xover_file=$dest_dir/007_crossover_data_v1.h5
-AT_file=$dest_dir/rel007_dump_every_4th.h5
+
+xover_file=$dest_dir/rel002_crossover_data.h5
+AT_file=$dest_dir/rel002_dump_every_2nd.h5
 
 echo "Crossover_file: "$xover_file
 echo "Along-track file: "$AT_file
+
+[ -f $xover_file ] && [ -f $AT_file ] && echo "yep"
 #exit
 
 echo "SMB" 
