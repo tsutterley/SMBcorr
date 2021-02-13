@@ -97,7 +97,9 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
     # MERRA2-hybrid
     models['GL']['MERRA2-hybrid'] = []
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
+    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
@@ -149,10 +151,16 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
             LONGNAME = {}
             LONGNAME['smb_mean'] = "Ice Sheet Surface Mass Balance"
         elif (MODEL == 'MERRA2-hybrid'):
+            # regular expression pattern for extracting version
             merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
             # get MERRA-2 version and major version
             MERRA2_VERSION = merra2_regex.match(model_version).group(1)
-            MERRA2_MAJOR_VERSION = merra2_regex.match(model_version).group(2)
+            if MERRA2_VERSION in ('v0','v1','v1.0'):
+                MERRA2_FILE_VERSION = merra2_regex.match(model_version).group(2)
+                VARIABLES = ['smb']
+            else:
+                MERRA2_FILE_VERSION = MERRA2_VERSION.replace('.','_')
+                VARIABLES = ['SMB']
             # MERRA-2 hybrid directory
             DIRECTORY=os.path.join(base_dir,'MERRA2_hybrid',MERRA2_VERSION)
             MERRA2_REGION = dict(AA='ais',GL='gris')[REGION]
@@ -205,7 +213,7 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                     #     # read and interpolate 5-day MERRA2-Hybrid outputs
                     #     smb = SMBcorr.interpolate_merra_hybrid_mean(DIRECTORY, EPSG,
                     #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='cum_smb_anomaly',
+                    #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
                     #         SIGMA=1.5, FILL_VALUE=np.nan)
                     #     # set attributes to output for iteration
                     #     OUTPUT['smb_mean'].data[i,c,xo] = np.copy(smb.data)
@@ -251,7 +259,7 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                 #     # read and interpolate 5-day MERRA2-Hybrid outputs
                 #     smb = SMBcorr.interpolate_merra_hybrid_mean(DIRECTORY, EPSG,
                 #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='cum_smb_anomaly',
+                #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
                 #         SIGMA=1.5, FILL_VALUE=np.nan)
                 #     # set attributes to output for iteration
                 #     OUTPUT['smb_mean'].data[i,c] = np.copy(smb.data)

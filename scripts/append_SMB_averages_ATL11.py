@@ -153,10 +153,16 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             LONGNAME = {}
             LONGNAME['zsurf_ave'] = "Snow Height Change"
         elif (MODEL == 'MERRA2-hybrid'):
+            # regular expression pattern for extracting version
             merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
             # get MERRA-2 version and major version
             MERRA2_VERSION = merra2_regex.match(model_version).group(1)
-            MERRA2_MAJOR_VERSION = merra2_regex.match(model_version).group(2)
+            if MERRA2_VERSION in ('v0','v1','v1.0'):
+                MERRA2_FILE_VERSION = merra2_regex.match(model_version).group(2)
+                VARIABLES = ['FAC','cum_smb_anomaly','height']
+            else:
+                MERRA2_FILE_VERSION = MERRA2_VERSION.replace('.','_')
+                VARIABLES = ['FAC','SMB_a','h_a']
             # MERRA-2 hybrid directory
             DIRECTORY=os.path.join(base_dir,'MERRA2_hybrid',MERRA2_VERSION)
             MERRA2_REGION = dict(AA='ais',GL='gris')[REGION]
@@ -221,15 +227,15 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
                     #     # read and interpolate 5-day MERRA2-Hybrid outputs
                     #     FAC = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
                     #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='FAC',
+                    #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
                     #         SIGMA=1.5, FILL_VALUE=np.nan)
                     #     smb = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
                     #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='cum_smb_anomaly',
+                    #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[1],
                     #         SIGMA=1.5, FILL_VALUE=np.nan)
                     #     height = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
                     #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='height',
+                    #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[2],
                     #         SIGMA=1.5, FILL_VALUE=np.nan)
                     #     # set attributes to output for iteration
                     #     OUTPUT['zfirn_ave'].data[i,c,xo] = np.copy(FAC.data)
@@ -288,15 +294,15 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
                 #     # read and interpolate 5-day MERRA2-Hybrid outputs
                 #     FAC = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
                 #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='FAC',
+                #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
                 #         SIGMA=1.5, FILL_VALUE=np.nan)
                 #     smb = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
                 #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='cum_smb_anomaly',
+                #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[1],
                 #         SIGMA=1.5, FILL_VALUE=np.nan)
                 #     height = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
                 #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VERSION=MERRA2_MAJOR_VERSION, VARIABLE='height',
+                #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[2],
                 #         SIGMA=1.5, FILL_VALUE=np.nan)
                 #     # set attributes to output for iteration
                 #     OUTPUT['zfirn_ave'].data[i,c] = np.copy(FAC.data)

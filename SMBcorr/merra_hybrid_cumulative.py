@@ -1,22 +1,23 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_cumulative.py
-Written by Tyler Sutterley (10/2019)
+Written by Tyler Sutterley (02/2021)
 Calculates cumulative anomalies of MERRA-2 hybrid surface mass balance products
     MERRA-2 Hybrid model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:
-    python merra_hybrid_cumulative.py --directory=<path> --region=gris \
-        --mean=1980,1995 --product=p_minus_e
+    python merra_hybrid_cumulative.py --directory <path> --region gris \
+        --mean 1980 1995 --product p_minus_e
 
 COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working data directory
-    -R X, --region=X: Region to interpolate (gris, ais)
-    --mean: Start and end year of mean (separated by commas)
+    -D X, --directory X: Working data directory
+    -R X, --region X: Region to calculate (gris, ais)
+    --mean: Start and end year of mean
     --product: MERRA-2 hybrid product to calculate
         p_minus_e: Precipitation minus Evaporation
         melt: Snowmelt
-    -M X, --mode=X: Local permissions mode of the directories and files
+    -G, --gzip: netCDF4 file is locally gzip compressed
+    -M X, --mode X: Local permissions mode of the directories and files
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -26,6 +27,8 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
+    Updated 02/2021: using argparse to set parameters
+        added gzip compression option
     Written 10/2019
 """
 from __future__ import print_function
@@ -33,20 +36,32 @@ from __future__ import print_function
 import sys
 import os
 import re
+import gzip
 import time
-import getopt
+import uuid
 import netCDF4
+import argparse
 import numpy as np
 
 #-- PURPOSE: read and interpolate MERRA-2 hybrid surface mass balance variables
-def merra_hybrid_cumulative(base_dir, REGION, DIRECTORY=None,
-    VARIABLE='p_minus_e', RANGE=None, MODE=0o775):
+def merra_hybrid_cumulative(base_dir, REGION, VERSION, VARIABLE='p_minus_e',
+    RANGE=None, GZIP=False, MODE=0o775):
 
     #-- set the input netCDF4 file for the variable of interest
-    if VARIABLE in ('p_minus_e','melt'):
-        hybrid_file = 'm2_hybrid_p_minus_e_melt_{0}.nc'.format(REGION.lower())
+    suffix = '.gz' if GZIP else ''
+    if VARIABLE in ('p_minus_e','melt') and (VERSION == 'v0'):
+        args = (REGION.lower(),suffix)
+        hybrid_file = 'm2_hybrid_p_minus_e_melt_{0}.nc{1}'.format(*args)
+
     #-- Open the MERRA-2 Hybrid NetCDF file for reading
-    fileID = netCDF4.Dataset(os.path.join(base_dir,hybrid_file), 'r')
+    if GZIP:
+        #-- read as in-memory (diskless) netCDF4 dataset
+        with gzip.open(os.path.join(base_dir,hybrid_file),'r') as f:
+            fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=f.read())
+    else:
+        #-- read netCDF4 dataset
+        fileID = netCDF4.Dataset(os.path.join(base_dir,hybrid_file), 'r')
+
     #-- Get data from each netCDF variable and remove singleton dimensions
     fd = {}
     DATA = np.squeeze(fileID.variables[VARIABLE][:].copy())
@@ -80,16 +95,10 @@ def merra_hybrid_cumulative(base_dir, REGION, DIRECTORY=None,
         CUMULATIVE += (DATA[t,i,j] - MEAN[i,j])
         fd[VARIABLE][t,i,j] = CUMULATIVE.copy()
 
-    #-- set directory to base directory if None
-    if DIRECTORY is None:
-        DIRECTORY = os.path.expanduser(base_dir)
-    #-- create output directory if non-existent
-    if not os.access(DIRECTORY, os.F_OK):
-        os.makedirs(DIRECTORY,MODE)
     #-- output MERRA-2 data file for cumulative data
     FILE = 'm2_hybrid_{0}_cumul_{1}.nc'.format(VARIABLE,REGION.lower())
     #-- opening NetCDF file for writing
-    fileID = netCDF4.Dataset(os.path.join(DIRECTORY,FILE),'w',format="NETCDF4")
+    fileID = netCDF4.Dataset(os.path.join(base_dir,FILE),'w',format="NETCDF4")
 
     #-- Defining the NetCDF dimensions
     fileID.createDimension('x', nx)
@@ -137,59 +146,57 @@ def merra_hybrid_cumulative(base_dir, REGION, DIRECTORY=None,
     #-- Closing the NetCDF file
     fileID.close()
 
-    os.chmod(os.path.join(DIRECTORY,FILE), MODE)
-
-#-- PURPOSE: help module to describe the optional input parameters
-def usage():
-    print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
-    print(' -D X, --directory=X\tWorking data directory')
-    print(' -O X, --output=X\tOutput working data directory')
-    print(' -R X, --region=X\tRegion of firn model to interpolate')
-    print(' --mean\t\t\tStart and end year of mean (separated by commas)')
-    print(' --product\t\tMERRA-2 hybrid product to calculate')
-    print('\tp_minus_e: Precipitation minus Evaporation\n\tmelt: Snowmelt')
-    print(' -M X, --mode=X\t\tPermission mode of directories and files\n')
+    os.chmod(os.path.join(base_dir,FILE), MODE)
 
 #-- Main program that calls merra_hybrid_cumulative()
 def main():
     #-- Read the system arguments listed after the program
-    lopt = ['help','directory=','output=','region=','mean=','product=','mode=']
-    optlist,arglist = getopt.getopt(sys.argv[1:], 'hD:O:R:M:', lopt)
-
-    #-- data directory
-    base_dir = os.getcwd()
-    DIRECTORY = None
+    parser = argparse.ArgumentParser(
+        description="""Reads MERRA-2 Hybrid datafiles to
+            calculate monthly cumulative anomalies in surface
+            mass balance products
+            """
+    )
+    #-- command line parameters
+    #-- working data directory
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
     #-- region of firn model
-    REGION = 'gris'
-    #-- surface mass balance product
-    PRODUCTS = ['p_minus_e','melt']
-    #-- start and end year of mean
-    RANGE = [1980,1995]
-    #-- permissions mode
-    MODE = 0o775
-    #-- extract parameters
-    for opt, arg in optlist:
-        if opt in ('-h','--help'):
-            usage()
-            sys.exit()
-        elif opt in ("-D","--directory"):
-            base_dir = os.path.expanduser(arg)
-        elif opt in ("-O","--output"):
-            DIRECTORY = os.path.expanduser(arg)
-        elif opt in ("-R","--region"):
-            REGION = arg.lower()
-        elif opt in ("--product"):
-            PRODUCTS = arg.split(',')
-        elif opt in ("--mean"):
-            RANGE = np.array(arg.split(','),dtype=np.int)
-        elif opt in ("-M","--mode"):
-            MODE = int(arg,8)
+    parser.add_argument('--region','-R',
+        type=str, default='gris', choices=['gris','ais'],
+        help='Region of firn model to calculate')
+    #-- version of firn model
+    parser.add_argument('--version','-v',
+        type=str, default='v1.1', choices=['v0','v1','v1.1'],
+        help='Version of firn model to calculate')
+    #-- firn model product
+    parser.add_argument('--product','-p',
+        type=str, nargs='+', default=['p_minus_e','melt'],
+        choices=['p_minus_e','melt'],
+        help='MERRA-2 Hybrid product')
+    #-- start and end years to run for mean
+    parser.add_argument('--mean','-m',
+        metavar=('START','END'), type=int, nargs=2,
+        default=[1980,1995],
+        help='Start and end year range for mean')
+    #-- netCDF4 files are gzip compressed
+    parser.add_argument('--gzip','-G',
+        default=False, action='store_true',
+        help='netCDF4 file is locally gzip compressed')
+    #-- permissions mode of the local directories and files (number in octal)
+    parser.add_argument('--mode','-M',
+        type=lambda x: int(x,base=8), default=0o775,
+        help='Permission mode of directories and files')
+    args = parser.parse_args()
 
-    #-- run program with parameters
-    for p in PRODUCTS:
-        merra_hybrid_cumulative(base_dir, REGION, DIRECTORY=DIRECTORY,
-            VARIABLE=p, RANGE=RANGE, MODE=MODE)
+    #-- run program for each input product
+    for PRODUCT in args.product:
+        merra_hybrid_cumulative(args.directory, args.region, args.version,
+            VARIABLE=PRODUCT, RANGE=args.mean, GZIP=args.gzip, MODE=args.mode)
 
 #-- run main program
 if __name__ == '__main__':
     main()
+
