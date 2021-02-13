@@ -87,6 +87,6 @@ if False:
     plt.figure(1); xy0=plt.ginput()[0]; 
     ATL11_file=files[xydh.file_ind[np.argmin(np.abs(xydh.x+1j*xydh.y - (xy0[0]+1j*xy0[1])))].astype(int)]
     plt.figure(); 
-    ATL11_multi_plot(ATL11_file, hemisphere=1)
+    #ATL11_multi_plot(ATL11_file, hemisphere=1)
     
     

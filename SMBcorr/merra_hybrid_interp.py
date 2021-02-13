@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_interp.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (02/2021)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
@@ -26,6 +26,7 @@ OPTIONS:
     SIGMA: Standard deviation for Gaussian kernel
     FILL_VALUE: output fill_value for invalid points
     EXTRAPOLATE: create a regression model to extrapolate out in time
+    GZIP: netCDF4 file is locally gzip compressed
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -42,6 +43,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 02/2021: added new MERRA2-hybrid v1.1 variables
+        added gzip compression option
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 08/2020: attempt delaunay triangulation using different options
@@ -54,6 +57,8 @@ from __future__ import print_function
 import sys
 import os
 import re
+import gzip
+import uuid
 import pyproj
 import netCDF4
 import numpy as np
@@ -109,25 +114,37 @@ def find_valid_triangulation(x0,y0):
 #-- PURPOSE: read and interpolate MERRA-2 hybrid firn corrections
 def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     VERSION='v1', VARIABLE='FAC', SIGMA=1.5, FILL_VALUE=None,
-    EXTRAPOLATE=False):
+    EXTRAPOLATE=False, GZIP=False):
 
+    #-- suffix if compressed
+    suffix = '.gz' if GZIP else ''
     #-- set the input netCDF4 file for the variable of interest
-    if VARIABLE in ('FAC','cum_smb_anomaly','height'):
-        hybrid_file='gsfc_fdm_{0}_{1}.nc'.format(VERSION,REGION.lower())
-    elif VARIABLE in ('smb',):
-        hybrid_file='gsfc_fdm_smb_{0}_{1}.nc'.format(VERSION,REGION.lower())
+    if VARIABLE in ('FAC','cum_smb_anomaly','SMB_a','height','h_a'):
+        args = (VERSION,REGION.lower(),suffix)
+        hybrid_file = 'gsfc_fdm_{0}_{1}.nc{2}'.format(*args)
+    elif VARIABLE in ('smb','SMB','Me','Ra','Sn-Ev'):
+        args = (VERSION,REGION.lower(),suffix)
+        hybrid_file = 'gsfc_fdm_smb_{0}_{1}.nc{2}'.format(*args)
     elif VARIABLE in ('FAC') and (VERSION == 'v0'):
-        hybrid_file='gsfc_{0}_{1}.nc'.format('FAC',REGION.lower())
+        args = ('FAC',REGION.lower(),suffix)
+        hybrid_file = 'gsfc_{0}_{1}.nc{2}'.format(*args)
     elif VARIABLE in ('p_minus_e','melt') and (VERSION == 'v0'):
-        hybrid_file='m2_hybrid_{0}_cumul_{1}.nc'.format(VARIABLE,REGION.lower())
+        args = (VARIABLE,REGION.lower(),suffix)
+        hybrid_file = 'm2_hybrid_{0}_cumul_{1}.nc{2}'.format(*args)
 
     #-- Open the MERRA-2 Hybrid NetCDF file for reading
-    fileID = netCDF4.Dataset(os.path.join(base_dir,hybrid_file), 'r')
+    if GZIP:
+        #-- read as in-memory (diskless) netCDF4 dataset
+        with gzip.open(os.path.join(base_dir,hybrid_file),'r') as f:
+            fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=f.read())
+    else:
+        #-- read netCDF4 dataset
+        fileID = netCDF4.Dataset(os.path.join(base_dir,hybrid_file), 'r')
     #-- Get data from each netCDF variable and remove singleton dimensions
     fd = {}
     fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
-    xg = fileID.variables['x'][:,:].copy()
-    yg = fileID.variables['y'][:,:].copy()
+    xg = fileID.variables['x'][:].copy()
+    yg = fileID.variables['y'][:].copy()
     fd['time'] = fileID.variables['time'][:].copy()
     #-- invalid data value
     fv = np.float(fileID.variables[VARIABLE]._FillValue)
@@ -143,8 +160,11 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- create mask object for interpolating data
     fd['mask'] = np.zeros((nx,ny))
     fd['mask'][i,j] = 1.0
-    #-- extract x and y coordinate arrays from grids
-    fd['x'],fd['y'] = (xg[:,0],yg[0,:])
+    #-- extract x and y coordinate arrays from grids if applicable
+    if (np.ndim(xg) == 2) and (np.ndim(yg) == 2):
+        fd['x'],fd['y'] = (xg[:,0],yg[0,:])
+    else:
+        fd['x'],fd['y'] = (np.copy(xg),np.copy(yg))
 
     #-- use a gaussian filter to smooth mask
     gs = {}

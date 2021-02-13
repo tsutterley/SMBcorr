@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_downscaled_cumulative.py
-Written by Tyler Sutterley (09/2019)
+Written by Tyler Sutterley (02/2021)
 Calculates cumulative anomalies of RACMO surface mass balance products
 
 COMMAND LINE OPTIONS:
@@ -23,9 +23,10 @@ COMMAND LINE OPTIONS:
     -V, --verbose: Verbose output of netCDF4 variables
 
 PROGRAM DEPENDENCIES:
-    convert_calendar_decimal.py: converts from calendar dates to decimal years
+    time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 02/2021: using argparse to set parameters
     Forked 09/2019 from downscaled_cumulative_netcdf.py
     Updated 07/2019: added version 3.0 (RACMO2.3p2 for 1958-2018 from FGRN055)
     Updated 06/2018: using python3 compatible octal and input
@@ -40,11 +41,11 @@ import os
 import re
 import uuid
 import gzip
-import getopt
 import netCDF4
+import argparse
 import numpy as np
 from datetime import date
-from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
+import SMBcorr.time
 
 #-- data product longnames
 longname = {}
@@ -105,8 +106,7 @@ def get_dimensions(input_dir,VERSION,PRODUCT,GZIP=False):
     return (nt,ny,nx)
 
 #-- PURPOSE: read individual yearly netcdf files and calculate mean over period
-def yearly_file_cumulative(input_dir, VERSION, RACMO_MODEL, PRODUCT, MEAN,
-    GZIP=False, VERBOSE=False, MODE=0o775):
+def yearly_file_cumulative(input_dir, VERSION, PRODUCT, MEAN, GZIP=False):
     #-- names within netCDF4 files
     VARIABLE = input_products[PRODUCT]
     #-- find input files for years of interest
@@ -130,9 +130,6 @@ def yearly_file_cumulative(input_dir, VERSION, RACMO_MODEL, PRODUCT, MEAN,
     dinput['MASK'] = np.zeros((ny,nx),dtype=np.int8)
     dinput[VARIABLE] = np.zeros((nt,ny,nx))
     CUMULATIVE = np.zeros((ny,nx))
-    #-- calendar year and month
-    year = np.zeros((nt))
-    month = np.zeros((nt))
     #-- for each file of interest
     for t in range(n_files):
         #-- Open the NetCDF file for reading
@@ -143,14 +140,20 @@ def yearly_file_cumulative(input_dir, VERSION, RACMO_MODEL, PRODUCT, MEAN,
         dinput['x'][:] = fileID.variables['x'][:].copy()
         dinput['y'][:] = fileID.variables['y'][:].copy()
         dinput['MASK'][:,:] = fileID.variables['icemask'][:,:].astype(np.int8)
-        #-- get year from file
-        year[c], = np.array(rx.findall(input_files[t]),dtype=np.float)
+        #-- calculate dates from delta times
+        delta_time = fileID.variables['time'][:].copy()
+        date_string = fileID.variables['time'].units
+        epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
+        #-- calculate time array in Julian days
+        JD = SMBcorr.time.convert_delta_time(delta_time*to_secs, epoch1=epoch,
+            epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0) + 2400000.5
         #-- for each month
         for m in range(12):
-            #-- calendar month
-            month[c] = np.float(m+1)
-            #-- convert to decimal format (using mid-month values)
-            dinput['TIME'][c] = convert_calendar_decimal(year[c], month[c])
+            #-- convert from Julian days to calendar dates
+            YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD[c])
+            #-- calculate time in year-decimal
+            dinput['TIME'][c] = SMBcorr.time.convert_calendar_decimal(YY,MM,
+                day=DD,hour=hh,minute=mm,second=ss)
             #-- extract data and add to total cumulative matrix
             CUMULATIVE += (fileID.variables[VARIABLE][m,:,:].copy() - MEAN)
             dinput[VARIABLE][c,:,:] = CUMULATIVE.copy()
@@ -163,8 +166,7 @@ def yearly_file_cumulative(input_dir, VERSION, RACMO_MODEL, PRODUCT, MEAN,
     return dinput
 
 #-- PURPOSE: read compressed netCDF4 files and calculate mean over period
-def compressed_file_cumulative(input_dir, VERSION, RACMO_MODEL, PRODUCT,
-    MEAN, GZIP=False, VERBOSE=False, MODE=0o775):
+def compressed_file_cumulative(input_dir, VERSION, PRODUCT, MEAN, GZIP=False):
     #-- names within netCDF4 files
     VARIABLE = input_products[PRODUCT]
     #-- variable of interest
@@ -221,23 +223,24 @@ def compressed_file_cumulative(input_dir, VERSION, RACMO_MODEL, PRODUCT,
     dinput['MASK'] = np.zeros((ny,nx),dtype=np.int8)
     dinput['MASK'][ii,jj] = 1
 
-    #-- dates in year-decimal format
-    dinput['TIME'] = np.zeros((nt))
+    #-- calculate dates from delta times
+    #-- Months since 1958-01-15 at 00:00:00
+    delta_time = fileID.variables['time'][:].copy()
+    date_string = fileID.variables['time'].units
+    epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
+    #-- calculate time array in Julian days
+    JD = SMBcorr.time.convert_delta_time(delta_time*to_secs, epoch1=epoch,
+        epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0) + 2400000.5
+    #-- convert from Julian days to calendar dates
+    YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD)
+    #-- calculate time in year-decimal
+    dinput['TIME'] = SMBcorr.time.convert_calendar_decimal(YY,MM,
+        day=DD,hour=hh,minute=mm,second=ss)
+
     #-- calculate cumulative
     CUMULATIVE = np.zeros((ny,nx))
     dinput[VARNAME] = np.zeros((nt,ny,nx))
-    #-- calculate dates
-    #-- Months since 1958-01-15 at 00:00:00
-    itime = np.array(fileID.variables['time'][:])
-    year = np.zeros((nt))
-    month = np.zeros((nt))
     for t in range(nt):
-        #-- divide t by 12 to get the year
-        year[t] = 1958 + np.floor(t/12.0)
-        #-- use the modulus operator to get the month
-        month[t] = (t % 12) + 1
-        #-- convert to decimal format (using mid-month values)
-        dinput['TIME'][t] = convert_calendar_decimal(year[t], month[t])
         #-- extract data and add to total cumulative matrix
         CUMULATIVE += (fileID.variables[VARNAME][t,:,:].copy() - MEAN)
         dinput[VARNAME][t,:,:] = CUMULATIVE.copy()
@@ -357,11 +360,10 @@ def racmo_downscaled_cumulative(base_dir, VERSION, PRODUCT, RANGE=[1961,1990],
 
     #-- calculate cumulative
     if (VERSION == '1.0'):
-        dinput = yearly_file_cumulative(input_dir, VERSION, RACMO_MODEL,
-            PRODUCT, MEAN, VERBOSE=VERBOSE, MODE=MODE)
+        dinput = yearly_file_cumulative(input_dir, VERSION, PRODUCT, MEAN)
     elif VERSION in ('2.0','3.0'):
-        dinput = compressed_file_cumulative(input_dir, VERSION, RACMO_MODEL,
-            PRODUCT, MEAN, GZIP=GZIP, VERBOSE=VERBOSE, MODE=MODE)
+        dinput = compressed_file_cumulative(input_dir, VERSION, PRODUCT,
+            MEAN, GZIP=GZIP)
 
     #-- output cumulative as netCDF4 file
     args = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,PRODUCT)
@@ -375,72 +377,60 @@ def racmo_downscaled_cumulative(base_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     #-- change the permissions mode
     os.chmod(os.path.join(input_dir,output_file),MODE)
 
-#-- PURPOSE: help module to describe the optional input parameters
-def usage():
-    print('\nHelp: {0}'.format(os.path.basename(sys.argv[0])))
-    print(' -D X, --directory=X\tSet the base data directory')
-    print(' --version=X\t\tDownscaled RACMO Version')
-    print('\t1.0: RACMO2.3/XGRN11')
-    print('\t2.0: RACMO2.3p2/XGRN11')
-    print('\t3.0: RACMO2.3p2/FGRN055')
-    print(' --product:\t\tRACMO product to calculate')
-    print('\tSMB: Surface Mass Balance')
-    print('\tPRECIP: Precipitation')
-    print('\tRUNOFF: Melt Water Runoff')
-    print('\tSNOWMELT: Snowmelt')
-    print('\tREFREEZE: Melt Water Refreeze')
-    print(' --mean:\t\tStart and end year of mean (separated by commas)')
-    print(' -G, --gzip\t\tInput netCDF data files are compressed (*.gz)')
-    print(' -M X, --mode=X\t\tPermission mode of directories and files created')
-    print(' -V, --verbose\t\tVerbose output of netCDF4 variables\n')
-
-#-- This is the main part of the program that calls the individual modules
+#-- Main program that calls racmo_downscaled_cumulative()
 def main():
-    #-- Read the system arguments listed after the program and run the analyses
-    #--    with the specific parameters.
-    long_options = ['help','directory=','version=','product=','mean=','gzip',
-        'verbose','mode=']
-    optlist, input_files=getopt.getopt(sys.argv[1:],'hD:GVM:',long_options)
-
+    #-- Read the system arguments listed after the program
+    parser = argparse.ArgumentParser(
+        description="""Calculates cumulative anomalies of
+            RACMO downscaled surface mass balance products
+            """
+    )
     #-- command line parameters
-    base_dir = os.getcwd()
+    #-- working data directory
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
     #-- Downscaled version
-    VERSION = '3.0'
+    #-- 1.0: RACMO2.3/XGRN11
+    #-- 2.0: RACMO2.3p2/XGRN11
+    #-- 3.0: RACMO2.3p2/FGRN055
+    parser.add_argument('--version','-v',
+        type=str, default='3.0', choices=['1.0','2.0','3.0'],
+        help='Downscaled RACMO Version')
     #-- Products to calculate cumulative
-    PRODUCTS = ['SMB']
-    #-- mean range
-    RANGE = [1961,1990]
-    GZIP = False
-    VERBOSE = False
-    MODE = 0o775
-    for opt, arg in optlist:
-        if opt in ('-h','--help'):
-            usage()
-            sys.exit()
-        elif opt in ("-D","--directory"):
-            base_dir = os.path.expanduser(arg)
-        elif opt in ("--version"):
-            VERSION = arg
-        elif opt in ("--product"):
-            PRODUCTS = arg.split(',')
-        elif opt in ("--mean"):
-            RANGE = np.array(arg.split(','),dtype=np.int)
-        elif opt in ("-G","--gzip"):
-            GZIP = True
-        elif opt in ("-V","--verbose"):
-            VERBOSE = True
-        elif opt in ("-M","--mode"):
-            MODE = int(arg,8)
+    parser.add_argument('--product','-p',
+        type=str, nargs='+', default=['SMB'],
+        choices=input_products.keys(),
+        help='RACMO product to calculate')
+    #-- start and end years to run for mean
+    parser.add_argument('--mean','-m',
+        metavar=('START','END'), type=int, nargs=2,
+        default=[1961,1990],
+        help='Start and end year range for mean')
+    #-- netCDF4 files are gzip compressed
+    parser.add_argument('--gzip','-G',
+        default=False, action='store_true',
+        help='netCDF4 file is locally gzip compressed')
+    #-- verbose output of processing run
+    #-- print information about each input and output file
+    parser.add_argument('--verbose','-V',
+        default=False, action='store_true',
+        help='Verbose output of run')
+    #-- permissions mode of the local directories and files (number in octal)
+    parser.add_argument('--mode','-M',
+        type=lambda x: int(x,base=8), default=0o775,
+        help='Permission mode of directories and files')
+    args = parser.parse_args()
 
-    #-- for each product
-    for p in PRODUCTS:
-        #-- check that product was entered correctly
-        if p not in longname.keys():
-            raise IOError('{0} not in valid RACMO products'.format(p))
+    #-- run program for each input product
+    for PRODUCT in args.product:
         #-- run downscaled cumulative program with parameters
-        racmo_downscaled_cumulative(base_dir, VERSION, p, RANGE=RANGE,
-            GZIP=GZIP, VERBOSE=VERBOSE, MODE=MODE)
+        racmo_downscaled_cumulative(args.directory, args.version, PRODUCT,
+            RANGE=args.mean, GZIP=args.gzip, VERBOSE=args.verbose,
+            MODE=args.mode)
 
 #-- run main program
 if __name__ == '__main__':
     main()
+
