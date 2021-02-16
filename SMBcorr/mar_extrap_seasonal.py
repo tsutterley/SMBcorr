@@ -157,7 +157,7 @@ def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             gs['CUMULATIVE'].mask[t,ii,jj] = False
 
     #-- convert MAR latitude and longitude to input coordinates (EPSG)
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     direction = pyproj.enums.TransformDirection.INVERSE

@@ -130,7 +130,7 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
 
     #-- pyproj transformer for converting from input coordinates (EPSG)
     #-- into model coordinates
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(3413))
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates

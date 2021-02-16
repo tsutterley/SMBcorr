@@ -237,7 +237,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         c += t
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_string(proj4_params)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates

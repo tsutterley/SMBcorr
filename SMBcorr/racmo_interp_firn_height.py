@@ -217,7 +217,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
     #-- RACMO models are rotated pole latitude and longitude
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- convert projection from input coordinates to projected

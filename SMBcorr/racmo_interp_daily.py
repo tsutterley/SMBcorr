@@ -211,7 +211,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- pyproj transformer for converting from input coordinates (EPSG)
     #-- RACMO models are rotated pole latitude and longitude
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_string(proj4_params)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates
