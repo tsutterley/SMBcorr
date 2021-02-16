@@ -192,13 +192,15 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                         # read and interpolate daily MAR outputs
                         SMB = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                            VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan,
+                            RANGE=RANGE, **MAR_KWARGS)
                         # set attributes to output for iteration
                         OUTPUT['smb_mean'].data[i,c,xo] = np.copy(SMB.data)
                         OUTPUT['smb_mean'].mask[i,c,xo] = np.copy(SMB.mask)
                         zsurf = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
-                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                             VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                            VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan,
+                            RANGE=RANGE, **MAR_KWARGS)
                         OUTPUT['zsurf_mean'].data[i,c,xo] = np.copy(zsurf.data)
                         OUTPUT['zsurf_mean'].mask[i,c,xo] = np.copy(zsurf.mask)
                     # elif (MODEL == 'RACMO'):
@@ -214,7 +216,7 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                     #     smb = SMBcorr.interpolate_merra_hybrid_mean(DIRECTORY, EPSG,
                     #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
                     #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
-                    #         SIGMA=1.5, FILL_VALUE=np.nan)
+                    #         SIGMA=1.5, FILL_VALUE=np.nan, RANGE=RANGE)
                     #     # set attributes to output for iteration
                     #     OUTPUT['smb_mean'].data[i,c,xo] = np.copy(smb.data)
                     #     OUTPUT['smb_mean'].mask[i,c,xo] = np.copy(smb.mask)
@@ -237,13 +239,15 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                     # read and interpolate daily MAR outputs
                     SMB = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan,
+                        RANGE=RANGE, **MAR_KWARGS)
                     # set attributes to output for iteration
                     OUTPUT['smb_mean'].data[i,c] = np.copy(SMB.data)
                     OUTPUT['smb_mean'].mask[i,c] = np.copy(SMB.mask)
                     zsurf = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan,
+                        RANGE=RANGE, **MAR_KWARGS)
                     # set attributes to output for iteration
                     OUTPUT['zsurf_mean'].data[i,c] = np.copy(zsurf.data)
                     OUTPUT['zsurf_mean'].mask[i,c] = np.copy(zsurf.mask)
@@ -260,7 +264,7 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                 #     smb = SMBcorr.interpolate_merra_hybrid_mean(DIRECTORY, EPSG,
                 #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
                 #         VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
-                #         SIGMA=1.5, FILL_VALUE=np.nan)
+                #         SIGMA=1.5, FILL_VALUE=np.nan, RANGE=RANGE)
                 #     # set attributes to output for iteration
                 #     OUTPUT['smb_mean'].data[i,c] = np.copy(smb.data)
                 #     OUTPUT['smb_mean'].mask[i,c] = np.copy(smb.mask)
