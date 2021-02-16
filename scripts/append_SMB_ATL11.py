@@ -391,7 +391,7 @@ def main():
         help='Working data directory')
     # region of firn model
     parser.add_argument('--region','-R',
-        metavar='REGION', type=str, nargs='+',
+        metavar='REGION', type=str,
         default=['GL'], choices=('AA','GL'),
         help='Region of model to interpolate')
     # surface mass balance product
