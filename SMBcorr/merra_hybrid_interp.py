@@ -192,7 +192,7 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
     MODEL_EPSG = set_projection(REGION)
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(MODEL_EPSG))
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates

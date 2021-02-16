@@ -162,7 +162,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
 
     #-- pyproj transformer for converting to input coordinates (EPSG)
     MODEL_EPSG = set_projection(REGION)
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(MODEL_EPSG))
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     direction = pyproj.enums.TransformDirection.INVERSE
