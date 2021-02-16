@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 u"""
 mar_smb_mean.py
-Written by Tyler Sutterley (11/2019)
+Written by Tyler Sutterley (02/2021)
 Calculates the temporal mean of MAR surface mass balance products
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
-    --directory=X: set the full path to the MAR data directory
-    --version=X: Downscaled MAR Version
+    --directory X: set the full path to the MAR data directory
+    --version X: MAR version to run
         v3.5.2
         v3.9
         v3.10
         v3.11
-    --product: MAR product to calculate
+    -d, --downscaled: run downscaled MAR
+    -p X, --product X: MAR product to calculate
         SMB: Surface Mass Balance
         PRECIP: Precipitation
         SNOWFALL: Snowfall
@@ -21,13 +22,16 @@ COMMAND LINE OPTIONS:
         SNOWMELT: Snowmelt
         REFREEZE: Melt Water Refreeze
         SUBLIM = Sublimation
-    --mean: Start and end year of mean (separated by commas)
-    -M X, --mode=X: Permission mode of directories and files created
+    -m X, --mean X: Start and end year of mean
+    -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Verbose output of netCDF4 variables
 
+PROGRAM DEPENDENCIES:
+    time.py: utilities for calculating time operations
+
 UPDATE HISTORY:
-    Updated 11/2019: calculate ELA as zero-contour of mean field
-        using legacycontour._cntr (longterm should switch to scikit-image)
+    Updated 02/2021: using argparse to set parameters
+        using utilities from time module for conversions
     Written 11/2019
 """
 from __future__ import print_function, division
@@ -35,13 +39,10 @@ from __future__ import print_function, division
 import sys
 import os
 import re
-import getopt
-import pyproj
 import netCDF4
-import builtins
-import traceback
+import argparse
 import numpy as np
-from SMBcorr.convert_calendar_decimal import convert_calendar_decimal
+import SMBcorr.time
 
 #-- data product longnames
 longname = {}
@@ -219,10 +220,14 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         #-- extract model x and y
         MEAN['x'][:] = fileID.variables[XNAME][:].copy()
         MEAN['y'][:] = fileID.variables[YNAME][:].copy()
-        #-- get reanalysis and year from file
-        reanalysis,year = rx.findall(input_file).pop()
-        #-- convert from months since year start to calendar month
-        months = fileID.variables[TIMENAME][:].copy() + 1.0
+        #-- extract delta time and epoch of time
+        delta_time = fileID.variables[TIMENAME][:].astype(np.float)
+        date_string = fileID.variables[TIMENAME].units
+        #-- extract epoch and units
+        epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
+        #-- calculate time array in Julian days
+        JD = SMBcorr.time.convert_delta_time(delta_time*to_secs, epoch1=epoch,
+            epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0) + 2400000.5
         #-- read land/ice mask
         LAND_MASK = fileID.variables['MSK'][:,:].copy()
         #-- finding valid points only from land mask
@@ -242,11 +247,13 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         #-- invalid value from MAR product
         FILL_VALUE = fileID.variables['SMB']._FillValue
 
-        #-- for each month
-        for m,mon in enumerate(months):
-            #-- calculate time in decimal format (m+1 to convert from indice)
-            #-- convert to decimal format (uses matrix algebra for speed)
-            MONTH['TIME'][c] = convert_calendar_decimal(np.float(year),mon)
+        #-- for each Julian Day
+        for m,julian in enumerate(JD):
+            #-- convert from Julian days to calendar dates
+            YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(julian)
+            #-- calculate time in year-decimal
+            MONTH['TIME'][c] = SMBcorr.time.convert_calendar_decimal(YY,MM,
+                day=DD,hour=hh,minute=mm,second=ss)
             #-- read each product of interest contained within the dataset
             #-- read variables for both direct and derived products
             if derived_product:
@@ -305,69 +312,54 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     #-- change the permissions mode
     os.chmod(os.path.join(input_dir,mean_file),MODE)
 
-#-- PURPOSE: help module to describe the optional input parameters
-def usage():
-    print('\nHelp: {0}'.format(os.path.basename(sys.argv[0])))
-    print(' -D X, --directory=X\tSet the base data directory')
-    print(' --version=X\t\tMAR version to run')
-    print('\tv3.5.2\n\tv3.9\n\tv3.10\n\tv3.11')
-    print(' --downscaled\t\tRun downscaled MAR')
-    print(' --product:\t\tMAR product to calculate')
-    print('\tSMB: Surface Mass Balance')
-    print('\tPRECIP: Precipitation')
-    print('\tRUNOFF: Melt Water Runoff')
-    print('\tSNOWMELT: Snowmelt')
-    print('\tREFREEZE: Melt Water Refreeze')
-    print(' --mean:\t\tStart and end year of mean (separated by commas)')
-    print(' -M X, --mode=X\t\tPermission mode of directories and files created')
-    print(' -V, --verbose\t\tVerbose output of netCDF4 variables\n')
-
 #-- This is the main part of the program that calls the individual modules
 def main():
-    #-- Read the system arguments listed after the program and run the analyses
-    #-- with the specific parameters.
-    long_options = ['help','directory=','version=','downscaled','product=',
-        'mean=','verbose','mode=']
-    optlist,arglist = getopt.getopt(sys.argv[1:],'hD:VM:',long_options)
-
+    #-- Read the system arguments listed after the program
+    parser = argparse.ArgumentParser(
+        description="""Calculates the temporal mean of MAR
+            surface mass balance products
+            """
+    )
     #-- command line parameters
-    input_dir = os.getcwd()
+    #-- working data directory
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
     #-- MAR model version
-    VERSION = 'v3.11'
-    DOWNSCALED = False
-    #-- Products to calculate mean
-    PRODUCTS = ['SMB']
+    parser.add_argument('--version','-v',
+        metavar='VERSION', type=str,
+        default='v3.11', choices=['v3.5.2','v3.9','v3.10','v3.11'],
+        help='MAR version to run')
+    #-- Products to calculate cumulative
+    parser.add_argument('--product','-p',
+        metavar='PRODUCT', type=str, nargs='+',
+        default=['SMB'], choices=longname.keys(),
+        help='MAR product to calculate')
     #-- mean range
-    RANGE = [1961,1990]
-    VERBOSE = False
-    MODE = 0o775
-    for opt, arg in optlist:
-        if opt in ('-h','--help'):
-            usage()
-            sys.exit()
-        elif opt in ("-D","--directory"):
-            input_dir = os.path.expanduser(arg)
-        elif opt in ("--version"):
-            VERSION = arg
-        elif opt in ("--downscaled"):
-            DOWNSCALED = True
-        elif opt in ("--product"):
-            PRODUCTS = arg.split(',')
-        elif opt in ("--mean"):
-            RANGE = np.array(arg.split(','),dtype=np.int)
-        elif opt in ("-V","--verbose"):
-            VERBOSE = True
-        elif opt in ("-M","--mode"):
-            MODE = int(arg,8)
+    parser.add_argument('--mean','-m',
+        metavar=('START','END'), type=int, nargs=2,
+        default=[1961,1990],
+        help='Start and end year range for mean')
+    #-- run Downscaled version of MAR
+    parser.add_argument('--downscaled','-d',
+        default=False, action='store_true',
+        help='Run downscaled MAR')
+    #-- verbose output of processing run
+    parser.add_argument('--verbose','-V',
+        default=False, action='store_true',
+        help='Verbose output of netCDF4 variables')
+    #-- permissions mode of the local directories and files (number in octal)
+    parser.add_argument('--mode','-M',
+        type=lambda x: int(x,base=8), default=0o775,
+        help='Permission mode of directories and files')
+    args = parser.parse_args()
 
-    #-- for each product
-    for p in PRODUCTS:
-        #-- check that product was entered correctly
-        if p not in longname.keys():
-            raise IOError('{0} not in valid MAR products'.format(p))
-        #-- run mean program with parameters
-        mar_smb_mean(input_dir, VERSION, p, RANGE=RANGE, DOWNSCALED=DOWNSCALED,
-            VERBOSE=VERBOSE, MODE=MODE)
+    #-- run program for each input product
+    for PRODUCT in args.product:
+        mar_smb_mean(args.directory, args.version, PRODUCT,
+            RANGE=args.mean, DOWNSCALED=args.downscaled,
+            VERBOSE=args.verbose, MODE=args.mode)
 
 #-- run main program
 if __name__ == '__main__':
