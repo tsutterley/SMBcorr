@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_SMB_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (07/2024)
 Interpolates daily firn model estimates to the times and locations of
     ICESat-2 ATL11 annual land ice height data
 
@@ -24,7 +24,7 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://h5py.org
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
     merra_hybrid_interp.py: interpolates GSFC MERRA-2 hybrid products
 
 UPDATE HISTORY:
+    Updated 07/2024: only append crossovers group if there are valid crossovers
     Updated 08/2022: use argparse descriptions within documentation
     Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
     Updated 05/2021: make GSFC MERRA-2 compression keyword an option
@@ -342,8 +343,6 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
             OUTPUT['AT'][key].interpolation = np.zeros((n_points,n_cycles),dtype=np.uint8)
         # if running ATL11 crossovers
         if CROSSOVERS:
-            # add to group
-            groups.append('XT')
             # shape of across-track data
             n_cross, = fileID[ptx][XT]['delta_time'].shape
             # across-track (XT) reference point, latitude, longitude and time
@@ -363,6 +362,9 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
                 OUTPUT['XT'][key] = np.ma.empty((n_cross),fill_value=fv)
                 OUTPUT['XT'][key].mask = np.ones((n_cross),dtype=bool)
                 OUTPUT['XT'][key].interpolation = np.zeros((n_cross),dtype=np.uint8)
+            # add to group
+            if np.any(n_cross):
+                groups.append('XT')
 
         # extract lat/lon and convert to polar stereographic
         X,Y = transformer.transform(longitude['AT'],longitude['AT'])

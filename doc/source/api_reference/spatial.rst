@@ -4,8 +4,7 @@ spatial
 
 Utilities for reading, writing and operating on spatial data
 
- - Can read ascii, netCDF4, HDF5 or geotiff files
- - Can output to ascii, netCDF4, HDF5 or geotiff files
+- Can read/write ascii, netCDF4, HDF5, (cloud optimized) geotiff and (geo)parquet
 
 Calling Sequence
 ----------------
@@ -84,4 +83,4 @@ General Methods
 
 .. autofunction:: SMBcorr.spatial._zhu_closed_form
 
-.. autofunction:: SMBcorr.spatial.scale_areas
+.. autofunction:: SMBcorr.spatial.scale_factors

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (08/2024)
 Download and management utilities for syncing time and auxiliary files
 
 PYTHON DEPENDENCIES:
@@ -9,6 +9,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 08/2024: generalize hash function to use any available algorithm
     Updated 06/2022: add NASA Common Metadata Repository (CMR) queries
         added function to build GES DISC subsetting API requests
     Updated 04/2022: updated docstrings to numpy documentation format
@@ -84,27 +85,25 @@ def get_hash(local, algorithm='MD5'):
     ----------
     local: obj or str
         BytesIO object or path to file
-    algorithm: str, default 'MD5'
+    algorithm: str, default 'md5'
         hashing algorithm for checksum validation
-
-            - ``'MD5'``: Message Digest
-            - ``'sha1'``: Secure Hash Algorithm
     """
     # check if open file object or if local file exists
     if isinstance(local, io.IOBase):
-        if (algorithm == 'MD5'):
-            return hashlib.md5(local.getvalue()).hexdigest()
-        elif (algorithm == 'sha1'):
-            return hashlib.sha1(local.getvalue()).hexdigest()
+        # generate checksum hash for a given type
+        if algorithm in hashlib.algorithms_available:
+            return hashlib.new(algorithm, local.getvalue()).hexdigest()
+        else:
+            raise ValueError(f'Invalid hashing algorithm: {algorithm}')
     elif os.access(os.path.expanduser(local),os.F_OK):
         # generate checksum hash for local file
         # open the local_file in binary read mode
         with open(os.path.expanduser(local), 'rb') as local_buffer:
             # generate checksum hash for a given type
-            if (algorithm == 'MD5'):
-                return hashlib.md5(local_buffer.read()).hexdigest()
-            elif (algorithm == 'sha1'):
-                return hashlib.sha1(local_buffer.read()).hexdigest()
+            if algorithm in hashlib.algorithms_available:
+                return hashlib.new(algorithm, local_buffer.read()).hexdigest()
+            else:
+                raise ValueError(f'Invalid hashing algorithm: {algorithm}')
     else:
         return ''
 

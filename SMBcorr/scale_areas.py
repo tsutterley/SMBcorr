@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 u"""
-scale_areas.py
+scale_factors.py
 Written by Tyler Sutterley (12/2020)
 Calculates area scaling factors for a polar stereographic projection
 
@@ -40,7 +40,7 @@ UPDATE HISTORY
 """
 import numpy as np
 
-def scale_areas(lat, flat=1.0/298.257223563, ref=70.0):
+def scale_factors(lat, flat=1.0/298.257223563, reference_latitude=70.0):
     """
     Calculates area scaling factors for a polar stereographic projection
 
@@ -59,7 +59,7 @@ def scale_areas(lat, flat=1.0/298.257223563, ref=70.0):
     """
     #-- convert latitude from degrees to positive radians
     theta = np.abs(lat)*np.pi/180.0
-    theta_ref = np.abs(ref)*np.pi/180.0
+    theta_ref = np.abs(reference_latitude)*np.pi/180.0
     #-- square of the eccentricity of the ellipsoid
     #-- ecc2 = (1-b**2/a**2) = 2.0*flat - flat^2
     ecc2 = 2.0*flat - flat**2

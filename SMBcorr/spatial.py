@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 spatial.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (08/2024)
 
 Utilities for reading, writing and operating on spatial data
 
@@ -22,6 +22,7 @@ PROGRAM DEPENDENCIES:
     constants.py: calculate reference parameters for common ellipsoids
 
 UPDATE HISTORY:
+    Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 08/2023: remove possible crs variables from output fields list
         place PyYAML behind try/except statement to reduce build size
     Updated 05/2023: use datetime parser within SMBcorr.time module
@@ -173,7 +174,7 @@ def from_file(filename: str, format: str, **kwargs):
         dinput = from_netCDF4(filename, **kwargs)
     elif (format == 'HDF5'):
         dinput = from_HDF5(filename, **kwargs)
-    elif (format == 'geotiff'):
+    elif format in ('GTiff','cog'):
         dinput = from_geotiff(filename, **kwargs)
     else:
         raise ValueError(f'Invalid format {format}')
@@ -704,7 +705,7 @@ def to_netCDF4(
     elif kwargs['data_type'] in ('grid',):
         kwargs.pop('data_type')
         _grid_netCDF4(fileID, output, attributes, **kwargs)
-    elif  kwargs['data_type'] in ('time series',):
+    elif kwargs['data_type'] in ('time series',):
         kwargs.pop('data_type')
         _time_series_netCDF4(fileID, output, attributes, **kwargs)
     # add attribute for date created
@@ -916,7 +917,7 @@ def to_geotiff(
         **kwargs
     ):
     """
-    Write data to a geotiff file
+    Write data to a (cloud optimized) geotiff file
 
     Parameters
     ----------
@@ -1614,7 +1615,7 @@ def _zhu_closed_form(
     # return latitude, longitude and height
     return (lon, lat, h)
 
-def scale_areas(
+def scale_factors(
         lat: np.ndarray,
         flat: float = _wgs84.flat,
         ref: float = 70.0

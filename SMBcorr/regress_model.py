@@ -71,7 +71,7 @@ def regress_model(t_in, d_in, t_out,
     # calculate epoch for calculating relative times
     if isinstance(RELATIVE, (list, np.ndarray)):
         t_rel = t_in[RELATIVE].mean()
-    elif isinstance(RELATIVE, (float, int, np.float_, np.int_)):
+    elif isinstance(RELATIVE, (float, int, np.float64, np.int_)):
         t_rel = np.copy(RELATIVE)
     elif (RELATIVE == Ellipsis):
         t_rel = t_in[RELATIVE].mean()

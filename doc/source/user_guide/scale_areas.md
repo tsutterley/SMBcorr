@@ -1,14 +1,14 @@
-scale_areas.py
+scale_factors.py
 ==============
 
 - Calculates area scaling factors for a polar stereographic projection
 
 #### Calling Sequence
 ```python
-from SMBcorr.scale_areas import scale_areas
-scale = scale_areas(latitude, ref=70.0)
+from SMBcorr.scale_factors import scale_factors
+scale = scale_factors(latitude, reference_latitude=70.0)
 ```
-[Source code](https://github.com/tsutterley/SMBcorr/blob/master/SMBcorr/scale_areas.py)
+[Source code](https://github.com/tsutterley/SMBcorr/blob/master/SMBcorr/scale_factors.py)
 
 #### Inputs
 - `lat`: input latitude array (degrees North)
