@@ -113,13 +113,19 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- Get data from each netCDF variable and remove singleton dimensions
     fd = {}
     fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
-    xg = fileID.variables['x'][:,:].copy()
-    yg = fileID.variables['y'][:,:].copy()
     fd['time'] = fileID.variables['time'][:].copy()
     #-- invalid data value
     fv = np.float(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(fd[VARIABLE])
+    #-- extract x and y coordinate arrays from grids if applicable
+    if (np.ndim(fileID.variables['x'][:]) == 2):
+        xg = fileID.variables['x'][:].copy()
+        yg = fileID.variables['y'][:].copy()
+        fd['x'],fd['y'] = (xg[:,0],yg[0,:])
+    else:
+        fd['x'] = fileID.variables['x'][:].copy()
+        fd['y'] = fileID.variables['y'][:].copy()
     #-- close the NetCDF files
     fileID.close()
     #-- time is year decimal at time step 5 days
@@ -130,11 +136,6 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- create mask object for interpolating data
     fd['mask'] = np.zeros((nx,ny))
     fd['mask'][i,j] = 1.0
-    #-- extract x and y coordinate arrays from grids if applicable
-    if (np.ndim(xg) == 2) and (np.ndim(yg) == 2):
-        fd['x'],fd['y'] = (xg[:,0],yg[0,:])
-    else:
-        fd['x'],fd['y'] = (np.copy(xg),np.copy(yg))
 
     #-- use a gaussian filter to smooth mask
     gs = {}
@@ -163,7 +164,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- pyproj transformer for converting to input coordinates (EPSG)
     MODEL_EPSG = set_projection(REGION)
     crs1 = pyproj.CRS.from_string(EPSG)
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(MODEL_EPSG))
+    crs2 = pyproj.CRS.from_string(MODEL_EPSG)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     direction = pyproj.enums.TransformDirection.INVERSE
     #-- convert projection from model coordinates

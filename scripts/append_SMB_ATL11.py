@@ -25,6 +25,7 @@ PYTHON DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
+        set a keyword argument dict with standard and optional parameters
     Updated 01/2021: using utilities from time module for conversions
     Updated 09/2020: added MARv3.11.2 6km outputs
     Updated 08/2020: added MERRA2-hybrid subversions
@@ -109,7 +110,11 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
 
+    # for each model to append to ATL11
     for model_version in models[REGION][MODEL]:
+        # keyword arguments for all models
+        KWARGS = dict(SIGMA=1.5, FILL_VALUE=np.nan)
+        # set model specific parameters
         if (MODEL == 'MAR'):
             match_object=re.match(r'(MARv\d+\.\d+(.\d+)?)',model_version)
             MAR_VERSION=match_object.group(0)
@@ -128,19 +133,19 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             SUBDIRECTORY['GL']['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
             MAR_MODEL=SUBDIRECTORY[REGION][model_version]
             DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
-            # variable coordinates
-            KWARGS=dict(AA={}, GL={})
-            KWARGS['GL']['MARv3.9-ERA'] = dict(XNAME='X10_153',YNAME='Y21_288')
-            KWARGS['GL']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
-            KWARGS['GL']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
-            KWARGS['GL']['MARv3.11-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
-            KWARGS['GL']['MARv3.11.2-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
-            KWARGS['GL']['MARv3.11.2-ERA-7.5km'] = dict(XNAME='X12_203',YNAME='Y20_377')
-            KWARGS['GL']['MARv3.11.2-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
-            KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
-            KWARGS['GL']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
-            KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
-            MAR_KWARGS=KWARGS[REGION][model_version]
+            # keyword arguments for variable coordinates
+            MAR_KWARGS=dict(AA={}, GL={})
+            MAR_KWARGS['GL']['MARv3.9-ERA'] = dict(XNAME='X10_153',YNAME='Y21_288')
+            MAR_KWARGS['GL']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            MAR_KWARGS['GL']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            MAR_KWARGS['GL']['MARv3.11-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            MAR_KWARGS['GL']['MARv3.11.2-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
+            MAR_KWARGS['GL']['MARv3.11.2-ERA-7.5km'] = dict(XNAME='X12_203',YNAME='Y20_377')
+            MAR_KWARGS['GL']['MARv3.11.2-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
+            MAR_KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            MAR_KWARGS['GL']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            MAR_KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            KWARGS.update(MAR_KWARGS[REGION][model_version])
             # output variable keys for both direct and derived fields
             KEYS = ['zsurf','zfirn','zmelt','zsmb','zaccum','SMB']
             # HDF5 longname attributes for each variable
@@ -163,15 +168,19 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
             # get MERRA-2 version and major version
             MERRA2_VERSION = merra2_regex.match(model_version).group(1)
-            if MERRA2_VERSION in ('v0','v1','v1.0'):
-                MERRA2_FILE_VERSION = merra2_regex.match(model_version).group(2)
-                VARIABLES = ['FAC','cum_smb_anomaly','height']
-            else:
-                MERRA2_FILE_VERSION = MERRA2_VERSION.replace('.','_')
-                VARIABLES = ['FAC','SMB_a','h_a']
             # MERRA-2 hybrid directory
             DIRECTORY=os.path.join(base_dir,'MERRA2_hybrid',MERRA2_VERSION)
+            # MERRA-2 region name from ATL11 region
             MERRA2_REGION = dict(AA='ais',GL='gris')[REGION]
+            # keyword arguments for MERRA-2 interpolation programs
+            if MERRA2_VERSION in ('v0','v1','v1.0'):
+                KWARGS['VERSION'] = merra2_regex.match(model_version).group(2)
+                VARIABLES = ['FAC','cum_smb_anomaly','height']
+            else:
+                KWARGS['VERSION'] = MERRA2_VERSION.replace('.','_')
+                VARIABLES = ['FAC','SMB_a','h_a']
+            # use compressed files
+            KWARGS['GZIP'] = True
             # output variable keys for both direct and derived fields
             KEYS = ['zsurf','zfirn','zsmb']
             # HDF5 longname attributes for each variable
@@ -203,16 +212,16 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         # read and interpolate daily MAR outputs
                         SMB =  SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                            VARIABLE='SMB', **KWARGS)
                         ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN4', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                            VARIABLE='ZN4', **KWARGS)
                         ZN5 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN5', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                            VARIABLE='ZN5', **KWARGS)
                         ZN6 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                             MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                            VARIABLE='ZN6', **KWARGS)
                         # set attributes to output for iteration
                         OUTPUT['SMB'].data[i,c,xo] = np.copy(SMB.data)
                         OUTPUT['SMB'].mask[i,c,xo] = np.copy(SMB.mask)
@@ -235,7 +244,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         # read and interpolate daily RACMO outputs
                         hgtsrf = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
                             RACMO_MODEL, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='hgtsrf', SIGMA=1.5, FILL_VALUE=np.nan)
+                            VARIABLE='hgtsrf', **KWARGS)
                         # set attributes to output for iteration
                         OUTPUT['zsurf'].data[i,c,xo] = np.copy(hgtsrf.data)
                         OUTPUT['zsurf'].mask[i,c,xo] = np.copy(hgtsrf.mask)
@@ -244,16 +253,13 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         # read and interpolate 5-day MERRA2-Hybrid outputs
                         FAC = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                             MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
-                            SIGMA=1.5, FILL_VALUE=np.nan)
+                            VARIABLE=VARIABLES[0], **KWARGS)
                         smb = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                             MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[1],
-                            SIGMA=1.5, FILL_VALUE=np.nan)
+                            VARIABLE=VARIABLES[1], **KWARGS)
                         height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                             MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[2],
-                            SIGMA=1.5, FILL_VALUE=np.nan)
+                            VARIABLE=VARIABLES[2], **KWARGS)
                         # set attributes to output for iteration
                         OUTPUT['zfirn'].data[i,c,xo] = np.copy(FAC.data)
                         OUTPUT['zfirn'].mask[i,c,xo] = np.copy(FAC.mask)
@@ -284,16 +290,16 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     # read and interpolate daily MAR outputs
                     SMB = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        VARIABLE='SMB', **KWARGS)
                     ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN4', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        VARIABLE='ZN4', **KWARGS)
                     ZN5 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN5', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        VARIABLE='ZN5', **KWARGS)
                     ZN6 = SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
                         MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
+                        VARIABLE='ZN6', **KWARGS)
                     # set attributes to output for iteration
                     OUTPUT['SMB'].data[i,c] = np.copy(SMB.data)
                     OUTPUT['SMB'].mask[i,c] = np.copy(SMB.mask)
@@ -316,7 +322,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     # read and interpolate daily RACMO outputs
                     hgtsrf = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
                         RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='hgtsrf', SIGMA=1.5, FILL_VALUE=np.nan)
+                        VARIABLE='hgtsrf', **KWARGS)
                     # set attributes to output for iteration
                     OUTPUT['zsurf'].data[i,c] = np.copy(hgtsrf.data)
                     OUTPUT['zsurf'].mask[i,c] = np.copy(hgtsrf.mask)
@@ -325,16 +331,13 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     # read and interpolate 5-day MERRA2-Hybrid outputs
                     FAC = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                        VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[0],
-                        SIGMA=1.5, FILL_VALUE=np.nan)
+                        VARIABLE=VARIABLES[0], **KWARGS)
                     smb = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                        VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[1],
-                        SIGMA=1.5, FILL_VALUE=np.nan)
+                        VARIABLE=VARIABLES[1], **KWARGS)
                     height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                        VERSION=MERRA2_FILE_VERSION, VARIABLE=VARIABLES[2],
-                        SIGMA=1.5, FILL_VALUE=np.nan)
+                        VARIABLE=VARIABLES[2], **KWARGS)
                     # set attributes to output for iteration
                     OUTPUT['zfirn'].data[i,c] = np.copy(FAC.data)
                     OUTPUT['zfirn'].mask[i,c] = np.copy(FAC.mask)
@@ -360,8 +363,8 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             val = '{0}/{1}'.format(model_version,key)
             if val not in fileID:
                 h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
-                                                data=OUTPUT[key], dtype=OUTPUT[key].dtype,
-                                                compression='gzip', fillvalue=OUTPUT[key].fill_value)
+                    data=OUTPUT[key], dtype=OUTPUT[key].dtype,
+                    compression='gzip', fillvalue=OUTPUT[key].fill_value)
             else:
                 h5[key]=fileID[val]
                 fileID[val][...]=OUTPUT[key]
