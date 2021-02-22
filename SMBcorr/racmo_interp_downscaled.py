@@ -159,7 +159,7 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     ny = rows.size
     nx = cols.size
     #-- mask object for interpolating data
-    d['MASK'] = np.array(fileID.variables['MASK'][rows, cols], dtype=np.bool)
+    d['MASK'] = np.array(fileID.variables['MASK'][rows, cols], dtype=bool)
     d['x'] = d['x'][cols]
     d['y'] = d['y'][rows]
     i,j = np.nonzero(d['MASK'])
@@ -185,7 +185,7 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     npts = len(tdec)
     interp_data = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
     #-- interpolation mask of invalid values
-    interp_data.mask = np.ones((npts),dtype=np.bool)
+    interp_data.mask = np.ones((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp_data.interpolation = np.zeros((npts),dtype=np.uint8)
 

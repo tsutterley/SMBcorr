@@ -195,12 +195,12 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     MEAN = {}
     MEAN['LON'] = np.zeros((ny,nx))
     MEAN['LAT'] = np.zeros((ny,nx))
-    MEAN['VALID'] = np.zeros((ny,nx),dtype=np.bool)
+    MEAN['VALID'] = np.zeros((ny,nx),dtype=bool)
     MEAN['x'] = np.zeros((nx))
     MEAN['y'] = np.zeros((ny))
     #-- calculate mean data
     MEAN[PRODUCT] = np.ma.zeros((ny,nx),fill_value=-9999.0)
-    MEAN[PRODUCT].mask = np.ones((ny,nx),dtype=np.bool)
+    MEAN[PRODUCT].mask = np.ones((ny,nx),dtype=bool)
     #-- input monthly data
     MONTH = {}
     MONTH['TIME'] = np.zeros((nt))

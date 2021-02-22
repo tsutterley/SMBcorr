@@ -121,7 +121,7 @@ def extrapolate_racmo_mean(base_dir, EPSG, VERSION, PRODUCT, tdec, X, Y,
     #-- extract time (decimal years)
     d['TIME'] = fileID.variables['TIME'][:].copy()
     #-- mask object for interpolating data
-    d['MASK'] = np.array(fileID.variables['MASK'][:],dtype=np.bool)
+    d['MASK'] = np.array(fileID.variables['MASK'][:],dtype=bool)
     i,j = np.nonzero(d['MASK'])
     #-- reduce mean to valid points
     var1 = MEAN[i,j]

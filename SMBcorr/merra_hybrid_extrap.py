@@ -91,9 +91,12 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     if VARIABLE in ('FAC','cum_smb_anomaly','SMB_a','height','h_a'):
         args = (VERSION,REGION.lower(),suffix)
         hybrid_file = 'gsfc_fdm_{0}_{1}.nc{2}'.format(*args)
-    elif VARIABLE in ('smb','SMB','Me','Ra','Sn-Ev'):
+    elif VARIABLE in ('smb','SMB','Me','Ra','Ru','Sn-Ev'):
         args = (VERSION,REGION.lower(),suffix)
         hybrid_file = 'gsfc_fdm_smb_{0}_{1}.nc{2}'.format(*args)
+    elif VARIABLE in ('Me_a','Ra_a','Ru_a','Sn-Ev_a'):
+        args = (VERSION,REGION.lower(),suffix)
+        hybrid_file = 'gsfc_fdm_smb_cumul_{0}_{1}.nc{2}'.format(*args)
     elif VARIABLE in ('FAC') and (VERSION == 'v0'):
         args = ('FAC',REGION.lower(),suffix)
         hybrid_file = 'gsfc_{0}_{1}.nc{2}'.format(*args)
@@ -145,7 +148,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
     #-- use a gaussian filter to smooth each firn field
     gs[VARIABLE] = np.ma.zeros((nt,nx,ny), fill_value=fv)
-    gs[VARIABLE].mask = np.zeros((nt,nx,ny), dtype=np.bool)
+    gs[VARIABLE].mask = np.zeros((nt,nx,ny), dtype=bool)
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((nx,ny))
@@ -178,7 +181,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- output interpolated arrays of variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
-    extrap_data.mask = np.ones((npts),dtype=np.bool)
+    extrap_data.mask = np.ones((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 

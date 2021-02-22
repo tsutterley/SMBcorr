@@ -186,7 +186,7 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle,ncross),fill_value=np.nan)
-                OUTPUT[key].mask = np.ones((nseg,ncycle,ncross),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle,ncross),dtype=bool)
             # for each cycle of ICESat-2 ATL11 data
             for c in range(ncycle):
                 # check that there are valid crossovers
@@ -252,7 +252,7 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
-                OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=bool)
             # check that there are valid elevations
             cycle = [c for c in range(ncycle) if
                 np.any(np.isfinite(D11.delta_time[:,c]))]

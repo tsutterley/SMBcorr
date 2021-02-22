@@ -147,7 +147,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- calculate cumulative sum of gaussian filtered values
     cumulative = np.zeros((ny,nx))
     gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
-    gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
+    gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=bool)
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -162,7 +162,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
                 t = len(TIME)
             #-- create a masked array with all data
             fd[VARIABLE] = np.ma.zeros((t,ny,nx),fill_value=FILL_VALUE)
-            fd[VARIABLE].mask = np.zeros((t,ny,nx),dtype=np.bool)
+            fd[VARIABLE].mask = np.zeros((t,ny,nx),dtype=bool)
             #-- surface type
             SRF=fileID.variables['SRF'][:]
             #-- indices of specified ice mask
@@ -213,7 +213,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         ii,jj = np.nonzero(np.ceil(gs['MASK']) == 1.0)
         #-- use a gaussian filter to smooth each model field
         gs[VARIABLE] = np.ma.zeros((t,ny,nx), fill_value=FILL_VALUE)
-        gs[VARIABLE].mask = np.ones((t,ny,nx), dtype=np.bool)
+        gs[VARIABLE].mask = np.ones((t,ny,nx), dtype=bool)
         #-- for each time
         for tt in range(t):
             #-- replace fill values before smoothing data
@@ -259,7 +259,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- output interpolated arrays of model variable
     npts = len(tdec)
     interp = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
-    interp.mask = np.ones((npts),dtype=np.bool)
+    interp.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     interp.data[:] = interp.fill_value
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
@@ -293,7 +293,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         #-- calculate a regression model for calculating values
         #-- spatially interpolate model variable to coordinates
         DATA = np.zeros((count,N))
-        MASK = np.zeros((count,N),dtype=np.bool)
+        MASK = np.zeros((count,N),dtype=bool)
         TIME = np.zeros((N))
         #-- create interpolated time series for calculating regression model
         for k in range(N):
@@ -326,7 +326,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         #-- calculate a regression model for calculating values
         #-- spatially interpolate model variable to coordinates
         DATA = np.zeros((count,N))
-        MASK = np.zeros((count,N),dtype=np.bool)
+        MASK = np.zeros((count,N),dtype=bool)
         TIME = np.zeros((N))
         #-- create interpolated time series for calculating regression model
         for k in range(N):

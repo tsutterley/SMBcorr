@@ -111,7 +111,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- calculate cumulative sum of gaussian filtered values
     cumulative = np.zeros((ny,nx))
     gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
-    gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
+    gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=bool)
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -126,7 +126,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
                 t = len(TIME)
             #-- create a masked array with all data
             fd[VARIABLE] = np.ma.zeros((t,ny,nx),fill_value=FILL_VALUE)
-            fd[VARIABLE].mask = np.zeros((t,ny,nx),dtype=np.bool)
+            fd[VARIABLE].mask = np.zeros((t,ny,nx),dtype=bool)
             #-- surface type
             SRF=fileID.variables['SRF'][:]
             #-- indices of specified ice mask
@@ -177,7 +177,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         ii,jj = np.nonzero(np.ceil(gs['MASK']) == 1.0)
         #-- use a gaussian filter to smooth each model field
         gs[VARIABLE] = np.ma.zeros((t,ny,nx), fill_value=FILL_VALUE)
-        gs[VARIABLE].mask = np.ones((t,ny,nx), dtype=np.bool)
+        gs[VARIABLE].mask = np.ones((t,ny,nx), dtype=bool)
         #-- for each time
         for tt in range(t):
             #-- replace fill values before smoothing data
@@ -216,7 +216,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- output interpolated arrays of output variable
     npts = len(tdec)
     extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
-    extrap.mask = np.ones((npts),dtype=np.bool)
+    extrap.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     extrap.data[:] = extrap.fill_value
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)

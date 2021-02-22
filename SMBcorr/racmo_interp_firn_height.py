@@ -189,7 +189,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
     ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
     #-- use a gaussian filter to smooth each firn field
     gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=np.bool)
+    gs[VARIABLE].mask = np.ma.zeros((nt,ny,nx), dtype=bool)
     for t in range(nt):
         #-- replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
@@ -239,7 +239,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
     #-- output interpolated arrays of firn variable (height or firn air content)
     npts = len(tdec)
     interp_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
-    interp_data.mask = np.ones((npts),dtype=np.bool)
+    interp_data.mask = np.ones((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
@@ -272,7 +272,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
         N = 365
         #-- spatially interpolate firn elevation or air content to coordinates
         FIRN = np.zeros((count,N))
-        MASK = np.zeros((count,N),dtype=np.bool)
+        MASK = np.zeros((count,N),dtype=bool)
         T = np.zeros((N))
         #-- create interpolated time series for calculating regression model
         for k in range(N):
@@ -305,12 +305,12 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
         N = 365
         #-- spatially interpolate firn elevation or air content to coordinates
         FIRN = np.zeros((count,N))
-        MASK = np.zeros((count,N),dtype=np.bool)
+        MASK = np.zeros((count,N),dtype=bool)
         T = np.zeros((N))
         #-- spatially interpolate mask to coordinates
         mspl = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
             fd['mask'].T, kx=1, ky=1)
-        interp_data.mask[ind] = mspl.ev(ix[ind],iy[ind]).astype(np.bool)
+        interp_data.mask[ind] = mspl.ev(ix[ind],iy[ind]).astype(bool)
         #-- create interpolated time series for calculating regression model
         for k in range(N):
             kk = nt - N + k

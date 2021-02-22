@@ -83,12 +83,12 @@ def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     fd = {}
     #-- create a masked array with all data
     fd[VARIABLE] = np.ma.zeros((ny,nx),fill_value=FILL_VALUE)
-    fd[VARIABLE].mask = np.zeros((ny,nx),dtype=np.bool)
+    fd[VARIABLE].mask = np.zeros((ny,nx),dtype=bool)
     #-- python dictionary with gaussian filtered variables
     gs = {}
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((ny,nx), fill_value=FILL_VALUE)
-    gs[VARIABLE].mask = np.ones((ny,nx), dtype=np.bool)
+    gs[VARIABLE].mask = np.ones((ny,nx), dtype=bool)
     #-- Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
         #-- surface type
@@ -156,7 +156,7 @@ def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     npts = len(tdec)
     #-- output interpolated arrays of output variable
     extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
-    extrap.mask = np.ones((npts),dtype=np.bool)
+    extrap.mask = np.ones((npts),dtype=bool)
 
     #-- query the search tree to find the NN closest points
     xy2 = np.concatenate((X[:,None],Y[:,None]),axis=1)

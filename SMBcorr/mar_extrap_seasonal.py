@@ -87,16 +87,16 @@ def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     fd['TIME'] = np.arange(nt)/365.0
     #-- create a masked array with all data
     fd[VARIABLE] = np.ma.zeros((nt,ny,nx),fill_value=FILL_VALUE)
-    fd[VARIABLE].mask = np.zeros((nt,ny,nx),dtype=np.bool)
+    fd[VARIABLE].mask = np.zeros((nt,ny,nx),dtype=bool)
     #-- python dictionary with gaussian filtered variables
     gs = {}
     #-- use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
-    gs[VARIABLE].mask = np.ones((nt,ny,nx), dtype=np.bool)
+    gs[VARIABLE].mask = np.ones((nt,ny,nx), dtype=bool)
     #-- calculate cumulative sum of gaussian filtered values
     cumulative = np.zeros((ny,nx))
     gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
-    gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
+    gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=bool)
     #-- Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
         #-- surface type
@@ -175,7 +175,7 @@ def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     npts = len(tdec)
     #-- output interpolated arrays of output variable
     extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
-    extrap.mask = np.ones((npts),dtype=np.bool)
+    extrap.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     extrap.data[:] = extrap.fill_value
     #-- find indices for linearly interpolating in time

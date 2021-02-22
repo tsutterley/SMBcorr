@@ -104,7 +104,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
     models['GL']['MERRA2-hybrid'] = []
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
+    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
     models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
@@ -175,19 +175,20 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             # keyword arguments for MERRA-2 interpolation programs
             if MERRA2_VERSION in ('v0','v1','v1.0'):
                 KWARGS['VERSION'] = merra2_regex.match(model_version).group(2)
-                VARIABLES = ['FAC','cum_smb_anomaly','height']
+                VARIABLES = ['FAC','cum_smb_anomaly','height','runoff_anomaly']
             else:
                 KWARGS['VERSION'] = MERRA2_VERSION.replace('.','_')
-                VARIABLES = ['FAC','SMB_a','h_a']
+                VARIABLES = ['FAC','SMB_a','h_a','Me_a']
             # use compressed files
             KWARGS['GZIP'] = True
             # output variable keys for both direct and derived fields
-            KEYS = ['zsurf','zfirn','zsmb']
+            KEYS = ['zsurf','zfirn','zsmb','zmelt']
             # HDF5 longname attributes for each variable
             LONGNAME = {}
             LONGNAME['zsurf'] = "Snow Height Change"
             LONGNAME['zfirn'] = "Snow Height Change due to Compaction"
             LONGNAME['zsmb'] = "Snow Height Change due to Surface Mass Balance"
+            LONGNAME['zmelt'] = "Snow Height Change due to Surface Melt"
 
         # check if running crossover or along track
         if (D11.h_corr.ndim == 3):
@@ -195,7 +196,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle,ncross),fill_value=np.nan)
-                OUTPUT[key].mask = np.ones((nseg,ncycle,ncross),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle,ncross),dtype=bool)
                 OUTPUT[key].interpolation = np.zeros((nseg,ncycle,ncross),dtype=np.uint8)
             # for each cycle of ICESat-2 ATL11 data
             for c in range(ncycle):
@@ -260,6 +261,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                             MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
                             VARIABLE=VARIABLES[2], **KWARGS)
+                        melt = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
+                            MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                            VARIABLE=VARIABLES[3], **KWARGS)
                         # set attributes to output for iteration
                         OUTPUT['zfirn'].data[i,c,xo] = np.copy(FAC.data)
                         OUTPUT['zfirn'].mask[i,c,xo] = np.copy(FAC.mask)
@@ -270,12 +274,15 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                         OUTPUT['zsmb'].data[i,c,xo] = np.copy(smb.data)
                         OUTPUT['zsmb'].mask[i,c,xo] = np.copy(smb.mask)
                         OUTPUT['zsmb'].interpolation[i,c,xo] = np.copy(smb.interpolation)
+                        OUTPUT['zmelt'].data[i,c,xo] = np.copy(melt.data)
+                        OUTPUT['zmelt'].mask[i,c,xo] = np.copy(melt.mask)
+                        OUTPUT['zmelt'].interpolation[i,c,xo] = np.copy(melt.interpolation)
         else:
             # allocate for output height for along-track data
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
-                OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=bool)
                 OUTPUT[key].interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
             # check that there are valid elevations
             cycle = [c for c in range(ncycle) if
@@ -338,6 +345,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
                         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
                         VARIABLE=VARIABLES[2], **KWARGS)
+                    melt = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
+                        MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
+                        VARIABLE=VARIABLES[3], **KWARGS)
                     # set attributes to output for iteration
                     OUTPUT['zfirn'].data[i,c] = np.copy(FAC.data)
                     OUTPUT['zfirn'].mask[i,c] = np.copy(FAC.mask)
@@ -348,6 +358,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL):
                     OUTPUT['zsmb'].data[i,c] = np.copy(smb.data)
                     OUTPUT['zsmb'].mask[i,c] = np.copy(smb.mask)
                     OUTPUT['zsmb'].interpolation[i,c] = np.copy(smb.interpolation)
+                    OUTPUT['zmelt'].data[i,c] = np.copy(melt.data)
+                    OUTPUT['zmelt'].mask[i,c] = np.copy(melt.mask)
+                    OUTPUT['zmelt'].interpolation[i,c] = np.copy(melt.interpolation)
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')

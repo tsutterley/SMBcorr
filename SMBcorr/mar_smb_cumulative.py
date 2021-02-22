@@ -194,12 +194,12 @@ def mar_smb_cumulative(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     CUMUL = {}
     CUMUL['LON'] = np.zeros((ny,nx))
     CUMUL['LAT'] = np.zeros((ny,nx))
-    CUMUL['VALID'] = np.zeros((ny,nx),dtype=np.bool)
+    CUMUL['VALID'] = np.zeros((ny,nx),dtype=bool)
     CUMUL['x'] = np.zeros((nx))
     CUMUL['y'] = np.zeros((ny))
     #-- calculate cumulative anomalies
     CUMUL[PRODUCT] = np.ma.zeros((ny,nx),fill_value=-9999.0)
-    CUMUL[PRODUCT].mask = np.ones((ny,nx),dtype=np.bool)
+    CUMUL[PRODUCT].mask = np.ones((ny,nx),dtype=bool)
     #-- input monthly data
     MONTH = {}
     MONTH['MASK'] = np.zeros((ny,nx))

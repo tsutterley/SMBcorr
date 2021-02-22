@@ -150,7 +150,7 @@ def interpolate_racmo_mean(base_dir, EPSG, VERSION, tdec, X, Y,
     #-- extract time (decimal years)
     d['TIME'] = fileID.variables['TIME'][:].copy()
     #-- mask object for interpolating data
-    d['MASK'] = np.array(fileID.variables['MASK'][:],dtype=np.bool)
+    d['MASK'] = np.array(fileID.variables['MASK'][:],dtype=bool)
     i,j = np.nonzero(d['MASK'])
 
     #-- pyproj transformer for converting from input coordinates (EPSG)
@@ -177,7 +177,7 @@ def interpolate_racmo_mean(base_dir, EPSG, VERSION, tdec, X, Y,
     #-- type designating algorithm used (1: interpolate, 2: backward, 3:forward)
     interp_type = np.zeros_like(tdec,dtype=np.uint8)
     #-- interpolation mask of invalid values
-    interp_mask = np.zeros_like(tdec,dtype=np.bool)
+    interp_mask = np.zeros_like(tdec,dtype=bool)
 
     #-- find days that can be interpolated
     if np.any(valid):

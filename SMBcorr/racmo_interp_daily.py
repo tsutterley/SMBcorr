@@ -140,7 +140,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     #-- calculate cumulative sum of gaussian filtered values
     cumulative = np.zeros((ny,nx))
     gs['cumulative'] = np.ma.zeros((nt,ny,nx), fill_value=fv)
-    gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=np.bool)
+    gs['cumulative'].mask = np.zeros((nt,ny,nx), dtype=bool)
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
@@ -150,7 +150,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             #-- number of time variables within file
             t=len(fileID.variables['time'][:])
             fd[VARIABLE] = np.ma.zeros((t,ny,nx),fill_value=fv)
-            fd[VARIABLE].mask = np.ones((t,ny,nx),dtype=np.bool)
+            fd[VARIABLE].mask = np.ones((t,ny,nx),dtype=bool)
             #-- Get data from netCDF variable and remove singleton dimensions
             tmp=np.squeeze(fileID.variables[VARIABLE][:])
             fd[VARIABLE][:] = scale_factor*tmp
@@ -186,7 +186,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         ii,jj = np.nonzero(np.ceil(gs['mask']) == 1.0)
         #-- use a gaussian filter to smooth each model field
         gs[VARIABLE] = np.ma.zeros((t,ny,nx), fill_value=fv)
-        gs[VARIABLE].mask = np.ones((t,ny,nx), dtype=np.bool)
+        gs[VARIABLE].mask = np.ones((t,ny,nx), dtype=bool)
         #-- for each time
         for tt in range(t):
             #-- replace fill values before smoothing data
@@ -232,7 +232,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     #-- output interpolated arrays of model variable
     npts = len(tdec)
     interp = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
-    interp.mask = np.ones((npts),dtype=np.bool)
+    interp.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     interp.data[:] = interp.fill_value
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
@@ -266,7 +266,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- calculate a regression model for calculating values
         #-- spatially interpolate model variable to coordinates
         DATA = np.zeros((count,N))
-        MASK = np.zeros((count,N),dtype=np.bool)
+        MASK = np.zeros((count,N),dtype=bool)
         TIME = np.zeros((N))
         #-- create interpolated time series for calculating regression model
         for k in range(N):
@@ -299,7 +299,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         #-- calculate a regression model for calculating values
         #-- spatially interpolate model variable to coordinates
         DATA = np.zeros((count,N))
-        MASK = np.zeros((count,N),dtype=np.bool)
+        MASK = np.zeros((count,N),dtype=bool)
         TIME = np.zeros((N))
         #-- create interpolated time series for calculating regression model
         for k in range(N):

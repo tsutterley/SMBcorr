@@ -117,7 +117,7 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     #-- extract time (decimal years)
     d['TIME'] = fileID.variables['TIME'][:].copy()
     #-- mask object for interpolating data
-    d['MASK'] = np.array(fileID.variables['MASK'][:],dtype=np.bool)
+    d['MASK'] = np.array(fileID.variables['MASK'][:],dtype=bool)
     i,j = np.nonzero(d['MASK'])
 
     #-- convert RACMO latitude and longitude to input coordinates (EPSG)
@@ -137,7 +137,7 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),dtype=np.float)
     extrap_data.data[:] = extrap_data.fill_value
-    extrap_data.mask = np.zeros((npts),dtype=np.bool)
+    extrap_data.mask = np.zeros((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
