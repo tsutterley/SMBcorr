@@ -28,7 +28,7 @@ do
 
     echo "SMB"
     append_SMB_ATL11.py --directory /Volumes/ice3/tyler/ \
-        --model MERRA2-hybrid --region GL $atl11_file
+        --model MAR MERRA2-hybrid --region GL $atl11_file
 
     # # echo "SMB averages"
     # # append_SMB_averages_ATL11.py --directory /Volumes/ice3/tyler/ \

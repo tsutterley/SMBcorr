@@ -25,7 +25,9 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
-    Updated 02/2021: set a keyword argument dict with parameters
+    Updated 02/2021: added new MERRA2-hybrid v1.1 variables
+        added new MARv3.11.5 Greenland outputs
+        set a keyword argument dict with standard and optional parameters
     Updated 01/2021: using utilities from time module for conversions
     Updated 09/2020: added MARv3.11.2 6km outputs and MERRA2-hybrid subversions
     Written 06/2020
@@ -83,17 +85,23 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
     # models['GL']['MAR'].append('MARv3.10-ERA')
     # models['GL']['MAR'].append('MARv3.11-NCEP')
     # models['GL']['MAR'].append('MARv3.11-ERA')
-    #models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
-    #models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
-    #models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
-    models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
+    # models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
+    # models['GL']['MAR'].append('MARv3.11.5-ERA-6km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-10km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-15km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-20km')
+
     # RACMO
     models['GL']['RACMO'] = []
     # models['GL']['RACMO'].append('RACMO2.3-XGRN11')
     # models['GL']['RACMO'].append('RACMO2.3p2-XGRN11')
     models['GL']['RACMO'].append('RACMO2.3p2-FGRN055')
+
     # MERRA2-hybrid
     models['GL']['MERRA2-hybrid'] = []
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
@@ -124,6 +132,10 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             SUBDIRECTORY['GL']['MARv3.11.2-ERA-15km']=['15km_ERA5']
             SUBDIRECTORY['GL']['MARv3.11.2-ERA-20km']=['20km_ERA5']
             SUBDIRECTORY['GL']['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-6km']=['6km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-10km']=['10km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-15km']=['15km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-20km']=['20km_ERA5']
             MAR_MODEL=SUBDIRECTORY[REGION][model_version]
             DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
             # keyword arguments for variable coordinates
@@ -138,6 +150,10 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             MAR_KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
             MAR_KWARGS['GL']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             MAR_KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             KWARGS.update(MAR_KWARGS[REGION][model_version])
             # output variable keys for both direct and derived fields
             KEYS = ['zsurf_ave', 'zfirn_ave','zmelt_ave','zsmb_ave','zaccum_ave','SMB']
