@@ -7,14 +7,18 @@ with open("README.md", "r") as fh:
 
 # get install requirements
 with open('requirements.txt') as fh:
-    install_requires = fh.read().splitlines()
+    install_requires = [line.split().pop(0) for line in fh.read().splitlines()]
+
+# get version
+with open('version.txt') as fh:
+    version = fh.read()
 
 # list of all scripts to be included with package
 scripts=[os.path.join('scripts',f) for f in os.listdir('scripts') if f.endswith('.py')]
 
 setup(
     name='SMBcorr',
-    version='0.0.0.2',
+    version=version,
     description='Python-based tools for correcting altimetry data for surface mass balance and firn processes',
     long_description=long_description,
     long_description_content_type="text/markdown",
