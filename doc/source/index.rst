@@ -9,6 +9,7 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
 
     getting_started/Install.rst
     getting_started/Examples.rst
+    getting_started/Contributing.rst
     getting_started/Citations.rst
 
 .. toctree::
