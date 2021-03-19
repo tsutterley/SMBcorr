@@ -10,15 +10,15 @@ scale = scale_factors(latitude, reference_latitude=70.0)
 ```
 [Source code](https://github.com/tsutterley/SMBcorr/blob/master/SMBcorr/scale_factors.py)
 
-#### Inputs
+#### Arguments
 - `lat`: input latitude array (degrees North)
 
-#### Outputs
-- `scale`: area scaling factors
-
-#### Options
+#### Keyword arguments
 - `flat`: ellipsoidal flattening (default WGS84)
 - `ref`: Standard parallel (latitude with no distortion, e.g. +70/-71)
 
+#### Returns
+- `scale`: area scaling factors
+
 #### Dependencies
-- [numpy: Scientific Computing Tools For Python](https://numpy.org)  
+- [numpy: Scientific Computing Tools For Python](https://numpy.org)
