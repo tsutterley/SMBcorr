@@ -24,7 +24,7 @@ or ``pip``
 
     python3 -m pip install --user .
 
-Alternatively can install the utilities directly from GitHub with ``pip``:
+Alternatively can install the SMB utilities directly from GitHub with ``pip``:
 
 .. code-block:: bash
 

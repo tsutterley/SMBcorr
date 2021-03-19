@@ -5,7 +5,7 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
 
 .. toctree::
     :maxdepth: 2
-    :caption: Getting Started:
+    :caption: Getting Started
 
     getting_started/Install.rst
     getting_started/Examples.rst
@@ -15,9 +15,8 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
 .. toctree::
     :maxdepth: 1
     :hidden:
-    :caption: User Guide:
+    :caption: User Guide
 
-    user_guide/interp_SMB_ICESat2_ATL11.md
     user_guide/regress_model.md
     user_guide/scale_areas.md
     user_guide/time.rst
@@ -26,7 +25,15 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
 .. toctree::
     :maxdepth: 1
     :hidden:
-    :caption: MAR:
+    :caption: Use Cases
+
+    user_guide/interp_SMB_ICESat2_ATL11.md
+
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+    :caption: MAR
 
     user_guide/mar_extrap_daily.md
     user_guide/mar_extrap_seasonal.md
@@ -38,7 +45,7 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
 .. toctree::
     :maxdepth: 1
     :hidden:
-    :caption: MERRA-2:
+    :caption: MERRA-2
 
     user_guide/merra_hybrid_cumulative.md
     user_guide/merra_hybrid_extrap.md
@@ -48,7 +55,7 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
 .. toctree::
     :maxdepth: 1
     :hidden:
-    :caption: RACMO:
+    :caption: RACMO
 
     user_guide/racmo_downscaled_cumulative.md
     user_guide/racmo_downscaled_mean.md

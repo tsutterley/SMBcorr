@@ -11,7 +11,7 @@ interp_data = interpolate_merra_hybrid(DIRECTORY, EPSG, 'gris', tdec, X, Y,
 ```
 [Source code](https://github.com/tsutterley/SMBcorr/blob/master/SMBcorr/merra_hybrid_interp.py)
 
-#### Inputs
+#### Arguments
 - `base_dir`: working data directory
 - `EPSG`: projection of input spatial coordinates
 - `REGION`: region to interpolate
@@ -21,7 +21,7 @@ interp_data = interpolate_merra_hybrid(DIRECTORY, EPSG, 'gris', tdec, X, Y,
 - `X`: x-coordinates to interpolate in projection EPSG
 - `Y`: y-coordinates to interpolate in projection EPSG
 
-#### Options
+#### Keyword arguments
 - `VARIABLE`: MERRA-2 hybrid product to interpolate
     * `FAC`: firn air content
     * `p_minus_e`: precipitation minus evaporation

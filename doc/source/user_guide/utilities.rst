@@ -23,7 +23,7 @@ General Methods
 
     Arguments:
 
-        `relpath`: local relative path as list or string
+        ``relpath``: local relative path as list or string
 
 
 .. method:: SMBcorr.utilities.get_hash(local)
@@ -32,7 +32,7 @@ General Methods
 
     Arguments:
 
-        `local`: path to file
+        ``local``: path to file
 
 
 .. method:: SMBcorr.utilities.ftp_list(HOST,timeout=None,basename=False,pattern=None,sort=False)
@@ -41,17 +41,17 @@ General Methods
 
     Arguments:
 
-        `HOST`: remote ftp host path split as list
+        ``HOST``: remote ftp host path split as list
 
     Keyword arguments:
 
-        `timeout`: timeout in seconds for blocking operations
+        ``timeout``: timeout in seconds for blocking operations
 
-        `basename`: return the file or directory basename instead of the full path
+        ``basename``: return the file or directory basename instead of the full path
 
-        `pattern`: regular expression pattern for reducing list
+        ``pattern``: regular expression pattern for reducing list
 
-        `sort`: sort output list
+        ``sort``: sort output list
 
 
 .. method:: SMBcorr.utilities.from_ftp(HOST,timeout=None,local=None,hash='',chunk=16384,verbose=False,mode=0o775)
@@ -60,21 +60,21 @@ General Methods
 
     Arguments:
 
-        `HOST`: remote ftp host path split as list
+        ``HOST``: remote ftp host path split as list
 
     Keyword arguments:
 
-        `timeout`: timeout in seconds for blocking operations
+        ``timeout``: timeout in seconds for blocking operations
 
-        `local`: path to local file
+        ``local``: path to local file
 
-        `hash`: MD5 hash of local file
+        ``hash``: MD5 hash of local file
 
-        `chunk`: chunk size for transfer encoding
+        ``chunk``: chunk size for transfer encoding
 
-        `verbose`: print file transfer information
+        ``verbose``: print file transfer information
 
-        `mode`: permissions mode of output local file
+        ``mode``: permissions mode of output local file
 
 
 .. method:: SMBcorr.utilities.from_http(HOST,timeout=None,local=None,hash='',chunk=16384,verbose=False,mode=0o775)
@@ -83,18 +83,18 @@ General Methods
 
     Arguments:
 
-        `HOST`: remote http host path split as list
+        ``HOST``: remote http host path split as list
 
     Keyword arguments:
 
-        `timeout`: timeout in seconds for blocking operations
+        ``timeout``: timeout in seconds for blocking operations
 
-        `local`: path to local file
+        ``local``: path to local file
 
-        `hash`: MD5 hash of local file
+        ``hash``: MD5 hash of local file
 
-        `chunk`: chunk size for transfer encoding
+        ``chunk``: chunk size for transfer encoding
 
-        `verbose`: print file transfer information
+        ``verbose``: print file transfer information
 
-        `mode`: permissions mode of output local file
+        ``mode``: permissions mode of output local file

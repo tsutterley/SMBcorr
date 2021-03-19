@@ -2,12 +2,12 @@ interp_SMB_ICESat2_ATL11.py
 ===========================
 
 - Interpolates daily firn model estimates to the times and locations of ICESat-2 ATL11 annual land ice height data
-    * Snow Height Change (zsurf)
-    * Snow Height Change due to Compaction (zfirn)
-    * Snow Height Change due to Surface Melt (zmelt)
-    * Snow Height Change due to Surface Mass Balance (zsmb)
-    * Snow Height Change due to Surface Accumulation (zaccum)
-    * Cumulative Surface Mass Balance (SMB)
+    * Snow Height Change (`zsurf`)
+    * Snow Height Change due to Compaction (`zfirn`)
+    * Snow Height Change due to Surface Melt (`zmelt`)
+    * Snow Height Change due to Surface Mass Balance (`zsmb`)
+    * Snow Height Change due to Surface Accumulation (`zaccum`)
+    * Cumulative Surface Mass Balance (`SMB`)
 - Interpolates firn model estimates for both along-track and across-track locations
 
 #### Calling Sequence
@@ -16,7 +16,7 @@ python interp_SMB_ICESat2_ATL11.py --directory <path_to_directory> input_file
 ```
 [Source code](https://github.com/tsutterley/SMBcorr/blob/master/scripts/interp_SMB_ICESat2_ATL11.py)
 
-#### Inputs
+#### Arguments
 1. `input_file`: input ICESat-2 ATL11 file
 
 #### Command Line Options
