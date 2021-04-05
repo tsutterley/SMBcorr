@@ -1,8 +1,6 @@
-lxml
 numpy
-scipy>=1.10.1
+scipy
 pyproj
 python-dateutil
 netCDF4
 scikit-learn
-#pointCollection @ https://github.com/SmithB/pointCollection/tarball/master

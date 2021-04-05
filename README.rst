@@ -5,15 +5,24 @@ SMBcorr
 |Language|
 |License|
 |Documentation Status|
+|Binder|
+|Pangeo|
 
-.. |Language| image:: https://img.shields.io/badge/python-v3.8-green.svg
+.. |Language| image:: https://img.shields.io/badge/python-v3.7-green.svg
    :target: https://www.python.org/
 
-.. |License| image:: https://img.shields.io/github/license/tsutterley/smbcorr
-   :target: https://github.com/tsutterley/SMBcorr/blob/main/LICENSE
+.. |License| image:: https://img.shields.io/badge/license-MIT-green.svg
+   :target: https://github.com/tsutterley/SMBcorr/blob/master/LICENSE
 
 .. |Documentation Status| image:: https://readthedocs.org/projects/smbcorr/badge/?version=latest
    :target: https://smbcorr.readthedocs.io/en/latest/?badge=latest
+
+.. |Binder| image:: https://mybinder.org/badge_logo.svg
+   :target: https://mybinder.org/v2/gh/tsutterley/SMBcorr/master
+
+.. |Pangeo| image:: https://binder.pangeo.io/badge.svg
+   :target: https://binder.pangeo.io/v2/gh/tsutterley/SMBcorr/master
+
 
 Python-based tools for correcting altimetry data for surface mass balance and firn processes
 
@@ -33,7 +42,7 @@ References
      T. C. Sutterley, I. Velicogna, X. Fettweis, E. Rignot, B. No\ |euml|\ l, and M. van den Broeke,
      "Evaluation of Reconstructions of Snow/Ice Melt in Greenland by Regional Atmospheric
      Climate Models Using Laser Altimetry Data", *Geophysical Research Letters*, 45(16),
-     8324-8333, (2018). `doi: 10.1029/2018GL078645 <https://doi.org/10.1029/2018GL078645>`_
+     8324-8333, (2018). `doi:10.1029/2018GL078645 <https://doi.org/10.1029/2018GL078645>`_
 
 Download
 ########
@@ -41,7 +50,7 @@ Download
 | The program homepage is:
 | https://github.com/tsutterley/SMBcorr
 | A zip archive of the latest version is available directly at:
-| https://github.com/tsutterley/SMBcorr/archive/main.zip
+| https://github.com/tsutterley/SMBcorr/archive/master.zip
 
 Disclaimer
 ##########

@@ -6,17 +6,20 @@ References
 ##########
 
 This software is developed with the goal of supporting science applications for
-the NASA Operation IceBridge and ICESat-2 missions. This work is developed in
-conjunction with other ICESat-2 projects.
+the NASA Operation IceBridge and ICESat-2 missions.
+This work is developed in conjunction with other ICESat-2 projects.
+The programs included in this software have contributed most recently to the following work:
+
+    T. C. Sutterley, I. Velicogna, X. Fettweis, E. Rignot, B. No\ |euml|\ l, and M. van den Broeke,
+    "Evaluation of Reconstructions of Snow/Ice Melt in Greenland by Regional Atmospheric
+    Climate Models Using Laser Altimetry Data", *Geophysical Research Letters*, 45(16),
+    8324-8333, (2018). `doi:10.1029/2018GL078645 <https://doi.org/10.1029/2018GL078645>`_
+
 
 Contributors
 ############
 
-- `Tyler Sutterley (University of Washington) <http://psc.apl.uw.edu/people/investigators/tyler-sutterley/>`_
-- `Ben Smith (University of Washington) <http://psc.apl.uw.edu/people/investigators/ben-smith/>`_
-- `Patrick Alexander (LDEO Columbia University) <https://www.earth.columbia.edu/users/profile/patrick-m-alexander>`_
-- `David Porter (LDEO Columbia University) <https://www.earth.columbia.edu/users/profile/david-f-f-porter>`_
-- `Marco Tedesco (LDEO Columbia University) <https://www.earth.columbia.edu/users/profile/marco-tedesco>`_
+.. include:: ../../../CONTRIBUTORS.rst
 
 Development
 ###########
@@ -52,4 +55,6 @@ This product includes software developed at:
 - Lamont-Doherty Earth Observatory, Columbia University
 - University of Washington, Applied Physics Laboratory, Polar Science Center
 
-It is provided here for your convenience but `with no guarantees whatsoever`.
+It is provided here for your convenience but *with no guarantees whatsoever*.
+
+.. |euml|    unicode:: U+00EB .. LATIN SMALL LETTER E WITH DIAERESIS
