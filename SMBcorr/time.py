@@ -493,7 +493,7 @@ def update_leap_seconds(verbose=False, mode=0o775):
     HASH = SMBcorr.utilities.get_hash(LOCAL)
 
     #-- try downloading from NIST ftp servers
-    HOST = ['ftp.nist.gov','pub','time','iers',FILE]
+    HOST = ['ftp.nist.gov','pub','time',FILE]
     try:
         SMBcorr.utilities.check_ftp_connection(HOST[0])
         SMBcorr.utilities.from_ftp(HOST, timeout=20, local=LOCAL,

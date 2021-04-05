@@ -1,0 +1,5 @@
+- `Patrick Alexander (LDEO Columbia University) <https://www.earth.columbia.edu/users/profile/patrick-m-alexander>`_
+- `David Porter (LDEO Columbia University) <https://www.earth.columbia.edu/users/profile/david-f-f-porter>`_
+- `Ben Smith (University of Washington) <http://psc.apl.uw.edu/people/investigators/ben-smith/>`_
+- `Tyler Sutterley (University of Washington) <http://psc.apl.uw.edu/people/investigators/tyler-sutterley/>`_
+- `Marco Tedesco (LDEO Columbia University) <https://www.earth.columbia.edu/users/profile/marco-tedesco>`_
