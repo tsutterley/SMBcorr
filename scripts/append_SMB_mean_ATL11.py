@@ -1,17 +1,21 @@
 #!/usr/bin/env python
 u"""
 append_SMB_mean_ATL11.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (04/2021)
 Interpolates mean estimates of model firn variable to the coordinates
     of an ATL11 file
 
 CALLING SEQUENCE:
     python append_SMB_mean_ATL11.py --directory=<path> --region=GL <path_to_file>
 
+INPUTS:
+    Merged ATL11 file
+
 COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working data directory
-    -R X, --region=X: Region to interpolate (GL, AA)
-    -M X, --model=X: Regional climate models to run
+    -D X, --directory X: Working data directory
+    -R X, --region X: Region to interpolate (GL, AA)
+    -M X, --model X: Regional climate models to run
+    -V, --verbose: Output information about each created file
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -25,6 +29,7 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
         added new MARv3.11.5 Greenland outputs
         set a keyword argument dict with standard and optional parameters
@@ -32,6 +37,7 @@ UPDATE HISTORY:
     Updated 09/2020: added MARv3.11.2 6km outputs and MERRA2-hybrid subversions
     Written 06/2020
 """
+import sys
 import os
 import re
 import h5py
@@ -64,7 +70,8 @@ def set_projection(REGION):
         projection_flag = 'EPSG:3413'
     return projection_flag
 
-def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
+def append_SMB_mean_ATL11(input_file, base_dir, REGION, MODEL,
+    RANGE=[2000,2019], VERBOSE=False):
 
     # read input file
     field_dict = {None:('delta_time','h_corr','x','y')}
@@ -112,6 +119,7 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
 
     # for each model to append to ATL11
     for model_version in models[REGION][MODEL]:
@@ -157,6 +165,8 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
             MAR_KWARGS['GL']['MARv3.11.5-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
             MAR_KWARGS['GL']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             KWARGS.update(MAR_KWARGS[REGION][model_version])
+            # netCDF4 variable names for direct fields
+            VARIABLES = ['SMB','ZN6']
             # output variable keys for both direct and derived fields
             KEYS = ['smb_mean','zsurf_mean']
             # HDF5 longname attributes for each variable
@@ -165,6 +175,8 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
             LONGNAME['zsurf_mean'] = "Mean change in surface height"
         elif (MODEL == 'RACMO'):
             RACMO_VERSION,RACMO_MODEL=model_version.split('-')
+            # netCDF4 variable names
+            VARIABLES = ['hgtsrf']
             # output variable keys
             KEYS = ['smb_mean']
             # HDF5 longname attributes for each variable
@@ -211,34 +223,44 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                     # convert from delta time to decimal-years
                     tdec = convert_delta_time(D11.delta_time[i,c,xo])['decimal']
                     if (MODEL == 'MAR'):
-                        # read and interpolate daily MAR outputs
-                        SMB = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
-                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='SMB', **KWARGS)
-                        # set attributes to output for iteration
-                        OUTPUT['smb_mean'].data[i,c,xo] = np.copy(SMB.data)
-                        OUTPUT['smb_mean'].mask[i,c,xo] = np.copy(SMB.mask)
-                        zsurf = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
-                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN6', **KWARGS)
-                        OUTPUT['zsurf_mean'].data[i,c,xo] = np.copy(zsurf.data)
-                        OUTPUT['zsurf_mean'].mask[i,c,xo] = np.copy(zsurf.mask)
-                    # elif (MODEL == 'RACMO'):
-                    #     # read and interpolate daily RACMO outputs
-                    #     SMB = SMBcorr.interpolate_racmo_mean(base_dir, EPSG,
-                    #         RACMO_MODEL, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VARIABLE='SMB', **KWARGS)
-                    #     # set attributes to output for iteration
-                    #     OUTPUT['smb_mean'].data[i,c,xo] = np.copy(SMB.data)
-                    #     OUTPUT['smb_mean'].mask[i,c,xo] = np.copy(SMB.mask)
-                    # elif (MODEL == 'MERRA2-hybrid'):
-                    #     # read and interpolate 5-day MERRA2-Hybrid outputs
-                    #     smb = SMBcorr.interpolate_merra_hybrid_mean(DIRECTORY, EPSG,
-                    #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VARIABLE=VARIABLES[0], **KWARGS)
-                    #     # set attributes to output for iteration
-                    #     OUTPUT['smb_mean'].data[i,c,xo] = np.copy(smb.data)
-                    #     OUTPUT['smb_mean'].mask[i,c,xo] = np.copy(smb.mask)
+                        for key,var in zip(KEYS,VARIABLES):
+                            # read and interpolate daily MAR outputs
+                            OUT =  SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                                MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                                VARIABLE=var, **KWARGS)
+                            # set attributes to output for iteration
+                            OUTPUT[key].data[i,c,xo] = np.copy(OUT.data)
+                            OUTPUT[key].mask[i,c,xo] = np.copy(OUT.mask)
+                            OUTPUT[key].interpolation[i,c,xo] = np.copy(OUT.interpolation)
+                        # calculate derived fields
+                        OUTPUT['zsmb_mean'].data[i,c,xo] = OUTPUT['zsurf_mean'].data[i,c,xo] - \
+                            OUTPUT['zfirn_mean'].data[i,c,xo]
+                        OUTPUT['zsmb_mean'].mask[i,c,xo] = OUTPUT['zsurf_mean'].mask[i,c,xo] | \
+                            OUTPUT['zfirn_mean'].mask[i,c,xo]
+                        OUTPUT['zaccum_mean'].data[i,c,xo] = OUTPUT['zsurf_mean'].data[i,c,xo] - \
+                            OUTPUT['zfirn_mean'].data[i,c,xo] - OUTPUT['zmelt_mean'].data[i,c,xo]
+                        OUTPUT['zaccum_mean'].mask[i,c,xo] = OUTPUT['zsurf_mean'].mask[i,c,xo] | \
+                            OUTPUT['zfirn_mean'].mask[i,c,xo] | OUTPUT['zmelt_mean'].mask[i,c,xo]
+                    elif (MODEL == 'RACMO'):
+                        # read and interpolate daily RACMO outputs
+                        for key,var in zip(KEYS,VARIABLES):
+                            OUT = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                                RACMO_MODEL, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                                VARIABLE=var, **KWARGS)
+                            # set attributes to output for iteration
+                            OUTPUT[key].data[i,c,xo] = np.copy(OUT.data)
+                            OUTPUT[key].mask[i,c,xo] = np.copy(OUT.mask)
+                            OUTPUT[key].interpolation[i,c,xo] = np.copy(OUT.interpolation)
+                    elif (MODEL == 'MERRA2-hybrid'):
+                        # read and interpolate 5-day MERRA2-Hybrid outputs
+                        for key,var in zip(KEYS,VARIABLES):
+                            OUT = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
+                                MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                                VARIABLE=var, **KWARGS)
+                            # set attributes to output for iteration
+                            OUTPUT[key].data[i,c,xo] = np.copy(OUT.data)
+                            OUTPUT[key].mask[i,c,xo] = np.copy(OUT.mask)
+                            OUTPUT[key].interpolation[i,c,xo] = np.copy(OUT.interpolation)
         else:
             # allocate for output height for along-track data
             OUTPUT = {}
@@ -255,41 +277,52 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                 # convert from delta time to decimal-years
                 tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
                 if (MODEL == 'MAR'):
-                    # read and interpolate daily MAR outputs
-                    SMB = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
-                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='SMB', **KWARGS)
-                    # set attributes to output for iteration
-                    OUTPUT['smb_mean'].data[i,c] = np.copy(SMB.data)
-                    OUTPUT['smb_mean'].mask[i,c] = np.copy(SMB.mask)
-                    zsurf = SMBcorr.interpolate_mar_mean(DIRECTORY, EPSG,
-                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN6', **KWARGS)
-                    # set attributes to output for iteration
-                    OUTPUT['zsurf_mean'].data[i,c] = np.copy(zsurf.data)
-                    OUTPUT['zsurf_mean'].mask[i,c] = np.copy(zsurf.mask)
-                # elif (MODEL == 'RACMO'):
-                #     # read and interpolate daily RACMO outputs
-                #     SMB = SMBcorr.interpolate_racmo_mean(base_dir, EPSG,
-                #         RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
-                #         VARIABLE='SMB', SIGMA=1.5, FILL_VALUE=np.nan)
-                #     # set attributes to output for iteration
-                #     OUTPUT['smb_mean'].data[i,c] = np.copy(SMB.data)
-                #     OUTPUT['smb_mean'].mask[i,c] = np.copy(SMB.mask)
-                # elif (MODEL == 'MERRA2-hybrid'):
-                #     # read and interpolate 5-day MERRA2-Hybrid outputs
-                #     smb = SMBcorr.interpolate_merra_hybrid_mean(DIRECTORY, EPSG,
-                #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VARIABLE=VARIABLES[0], **KWARGS)
-                #     # set attributes to output for iteration
-                #     OUTPUT['smb_mean'].data[i,c] = np.copy(smb.data)
-                #     OUTPUT['smb_mean'].mask[i,c] = np.copy(smb.mask)
+                    for key,var in zip(KEYS,VARIABLES):
+                        # read and interpolate daily MAR outputs
+                        OUT =  SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                            MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
+                            VARIABLE=var, **KWARGS)
+                        # set attributes to output for iteration
+                        OUTPUT[key].data[i,c] = np.copy(OUT.data)
+                        OUTPUT[key].mask[i,c] = np.copy(OUT.mask)
+                        OUTPUT[key].interpolation[i,c] = np.copy(OUT.interpolation)
+                    # calculate derived fields
+                    OUTPUT['zsmb_mean'].data[i,c] = OUTPUT['zsurf_mean'].data[i,c] - \
+                        OUTPUT['zfirn_mean'].data[i,c]
+                    OUTPUT['zsmb_mean'].mask[i,c] = OUTPUT['zsurf_mean'].mask[i,c] | \
+                        OUTPUT['zfirn_mean'].mask[i,c]
+                    OUTPUT['zaccum'].data[i,c] = OUTPUT['zsurf_mean'].data[i,c] - \
+                        OUTPUT['zfirn_mean'].data[i,c] - OUTPUT['zmelt_mean'].data[i,c]
+                    OUTPUT['zaccum'].mask[i,c] = OUTPUT['zsurf_mean'].mask[i,c] | \
+                        OUTPUT['zfirn_mean'].mask[i,c] | OUTPUT['zmelt_mean'].mask[i,c]
+                elif (MODEL == 'RACMO'):
+                    # read and interpolate daily RACMO outputs
+                    for key,var in zip(KEYS,VARIABLES):
+                        OUT = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                            RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
+                            VARIABLE=var, **KWARGS)
+                        # set attributes to output for iteration
+                        OUTPUT[key].data[i,c] = np.copy(OUT.data)
+                        OUTPUT[key].mask[i,c] = np.copy(OUT.mask)
+                        OUTPUT[key].interpolation[i,c] = np.copy(OUT.interpolation)
+                elif (MODEL == 'MERRA2-hybrid'):
+                    # read and interpolate 5-day MERRA2-Hybrid outputs
+                    for key,var in zip(KEYS,VARIABLES):
+                        OUT = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
+                            MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
+                            VARIABLE=var, **KWARGS)
+                        # set attributes to output for iteration
+                        OUTPUT[key].data[i,c] = np.copy(OUT.data)
+                        OUTPUT[key].mask[i,c] = np.copy(OUT.mask)
+                        OUTPUT[key].interpolation[i,c] = np.copy(OUT.interpolation)
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')
+        print(input_file) if VERBOSE else None
         # fileID.create_group(model_version) if model_version not in fileID.keys() else None
         h5 = {}
         for key in KEYS:
+            print(f'{sys.argv[0]}: writing{key}') if VERBOSE else None
             # verify mask values
             OUTPUT[key].mask |= (OUTPUT[key].data == OUTPUT[key].fill_value) | \
                     np.isnan(OUTPUT[key].data)
@@ -342,13 +375,18 @@ def main():
         metavar=('START','END'), type=int, nargs=2,
         default=[2000,2019],
         help='Range of years to use in climatology')
+    # verbosity settings
+    # verbose will output information about each output file
+    parser.add_argument('--verbose','-V',
+        default=False, action='store_true',
+        help='Output information about each created file')
     args = parser.parse_args()
 
     # run program with parameters
     for f in args.infile:
         for m in args.model:
-            append_SMB_mean_ATL11(f,args.directory,
-                args.region,m,RANGE=args.year)
+            append_SMB_mean_ATL11(f, args.directory, args.region, m,
+                RANGE=args.year, VERBOSE=args.verbose)
 
 # run main program
 if __name__ == '__main__':
