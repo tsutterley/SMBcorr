@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_SMB_ICESat2_ATL11.py
-Written by Tyler Sutterley (03/2021)
+Written by Tyler Sutterley (04/2021)
 Interpolates daily firn model estimates to the times and locations of
     ICESat-2 ATL11 annual land ice height data
 
@@ -33,6 +33,7 @@ PROGRAM DEPENDENCIES:
     merra_hybrid_interp.py: interpolates GSFC MERRA-2 hybrid products
 
 UPDATE HISTORY:
+    Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Written 03/2021
 """
 from __future__ import print_function
@@ -79,6 +80,7 @@ models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
 models['AA']['MERRA2-hybrid'] = []
 models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
 models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
 
 # PURPOSE: set the projection parameters based on the input granule
 def set_projection(GRANULE):
@@ -168,25 +170,29 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
         MAR_KWARGS['GL']['MARv3.11.5-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
         MAR_KWARGS['GL']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
         KWARGS.update(MAR_KWARGS[REGION][model_version])
+        # netCDF4 variable names for direct fields
+        VARIABLES = ['SMB','ZN6','ZN4','ZN5']
         # output variable keys for both direct and derived fields
-        KEYS = ['zsurf','zfirn','zmelt','zsmb','zaccum','SMB']
+        KEYS = ['SMB','zsurf','zfirn','zmelt','zsmb','zaccum']
         # HDF5 longname and description attributes for each variable
         LONGNAME = {}
+        LONGNAME['SMB'] = "Cumulative SMB"
         LONGNAME['zsurf'] = "Height"
         LONGNAME['zfirn'] = "Compaction"
         LONGNAME['zmelt'] = "Surface Melt"
         LONGNAME['zsmb'] = "Surface Mass Balance"
         LONGNAME['zaccum'] = "Surface Accumulation"
-        LONGNAME['SMB'] = "Cumulative SMB"
         DESCRIPTION = {}
+        DESCRIPTION['SMB'] = "Cumulative Surface Mass Balance"
         DESCRIPTION['zsurf'] = "Snow Height Change"
         DESCRIPTION['zfirn'] = "Snow Height Change due to Compaction"
         DESCRIPTION['zmelt'] = "Snow Height Change due to Surface Melt"
         DESCRIPTION['zsmb'] = "Snow Height Change due to Surface Mass Balance"
         DESCRIPTION['zaccum'] = "Snow Height Change due to Surface Accumulation"
-        DESCRIPTION['SMB'] = "Cumulative Surface Mass Balance"
     elif (MODEL == 'RACMO'):
         RACMO_VERSION,RACMO_MODEL=model_version.split('-')
+        # netCDF4 variable names
+        VARIABLES = ['hgtsrf']
         # output variable keys
         KEYS = ['zsurf']
         # HDF5 longname attributes for each variable
@@ -206,13 +212,21 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
         # keyword arguments for MERRA-2 interpolation programs
         if MERRA2_VERSION in ('v0','v1','v1.0'):
             KWARGS['VERSION'] = merra2_regex.match(model_version).group(2)
-            VARIABLES = ['FAC','cum_smb_anomaly','height','runoff_anomaly']
+            # netCDF4 variable names
+            VARIABLES = ['FAC','cum_smb_anomaly','height']
+            # add additional Greenland variables
+            if (MERRA2_REGION == 'gris'):
+                VARIABLES.append('runoff_anomaly')
         else:
             KWARGS['VERSION'] = MERRA2_VERSION.replace('.','_')
-            VARIABLES = ['FAC','SMB_a','h_a','Me_a']
+            # netCDF4 variable names
+            VARIABLES = ['FAC','SMB_a','h_a']
+            # add additional Greenland variables
+            if (MERRA2_REGION == 'gris'):
+                VARIABLES.append('Me_a')
         # use compressed files
         KWARGS['GZIP'] = True
-        # output variable keys for both direct and derived fields
+        # output variable keys
         KEYS = ['zsurf','zfirn','zsmb','zmelt']
         # HDF5 longname and description attributes for each variable
         LONGNAME = {}
@@ -338,72 +352,40 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
             tdec = convert_delta_time(delta_time['AT'][i,c])['decimal']
             if (MODEL == 'MAR') and np.any(valid):
                 # read and interpolate daily MAR outputs
-                SMB = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='SMB', **KWARGS)
-                ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='ZN4', **KWARGS)
-                ZN5 = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='ZN5', **KWARGS)
-                ZN6 = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='ZN6', **KWARGS)
-                # set attributes to output for iteration
-                OUTPUT['AT']['SMB'].data[i,c] = np.copy(SMB.data)
-                OUTPUT['AT']['SMB'].mask[i,c] = np.copy(SMB.mask)
-                OUTPUT['AT']['SMB'].interpolation[i,c] = np.copy(SMB.interpolation)
-                OUTPUT['AT']['zfirn'].data[i,c] = np.copy(ZN4.data)
-                OUTPUT['AT']['zfirn'].mask[i,c] = np.copy(ZN4.mask)
-                OUTPUT['AT']['zfirn'].interpolation[i,c] = np.copy(ZN4.interpolation)
-                OUTPUT['AT']['zsurf'].data[i,c] = np.copy(ZN6.data)
-                OUTPUT['AT']['zsurf'].mask[i,c] = np.copy(ZN6.mask)
-                OUTPUT['AT']['zsurf'].interpolation[i,c] = np.copy(ZN6.interpolation)
-                OUTPUT['AT']['zmelt'].data[i,c] = np.copy(ZN5.data)
-                OUTPUT['AT']['zmelt'].mask[i,c] = np.copy(ZN5.mask)
-                OUTPUT['AT']['zmelt'].interpolation[i,c] = np.copy(ZN5.interpolation)
+                for key,var in zip(KEYS,VARIABLES):
+                    OUT = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
+                        MAR_VERSION, tdec, X[i], Y[i], VARIABLE=var, **KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['AT'][key].data[i,c] = np.copy(OUT.data)
+                    OUTPUT['AT'][key].mask[i,c] = np.copy(OUT.mask)
+                    OUTPUT['AT'][key].interpolation[i,c] = np.copy(OUT.interpolation)
                 # calculate derived fields
-                OUTPUT['AT']['zsmb'].data[i,c] = ZN6.data - ZN4.data
-                OUTPUT['AT']['zsmb'].mask[i,c] = ZN4.mask | ZN6.mask
-                OUTPUT['AT']['zaccum'].data[i,c] = ZN6.data - ZN4.data - ZN5.data
-                OUTPUT['AT']['zaccum'].mask[i,c] = ZN4.mask | ZN5.mask | ZN6.mask
+                OUTPUT['AT']['zsmb'].data[i,c] = OUTPUT['AT']['zsurf'].data[i,c] - \
+                    OUTPUT['AT']['zfirn'].data[i,c]
+                OUTPUT['AT']['zsmb'].mask[i,c] = OUTPUT['AT']['zsurf'].mask[i,c] | \
+                    OUTPUT['AT']['zfirn'].mask[i,c]
+                OUTPUT['AT']['zaccum'].data[i,c] = OUTPUT['AT']['zsurf'].data[i,c] - \
+                    OUTPUT['AT']['zfirn'].data[i,c] - OUTPUT['AT']['zmelt'].data
+                OUTPUT['AT']['zaccum'].mask[i,c] = OUTPUT['AT']['zsurf'].mask[i,c] | \
+                    OUTPUT['AT']['zfirn'].mask[i,c] | OUTPUT['AT']['zmelt'].mask[i,c]
             elif (MODEL == 'RACMO') and np.any(valid):
                 # read and interpolate daily RACMO outputs
-                hgtsrf = SMBcorr.interpolate_racmo_daily(base_dir, proj4_params,
-                    RACMO_MODEL, tdec, X[i], Y[i],
-                    VARIABLE='hgtsrf', **KWARGS)
-                # set attributes to output for iteration
-                OUTPUT['AT']['zsurf'].data[i,c] = np.copy(hgtsrf.data)
-                OUTPUT['AT']['zsurf'].mask[i,c] = np.copy(hgtsrf.mask)
-                OUTPUT['AT']['zsurf'].interpolation[i,c] = np.copy(hgtsrf.interpolation)
+                for key,var in zip(KEYS,VARIABLES):
+                    OUT = SMBcorr.interpolate_racmo_daily(base_dir, proj4_params,
+                        RACMO_MODEL, tdec, X[i], Y[i], VARIABLE=var, **KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['AT'][key].data[i,c] = np.copy(OUT.data)
+                    OUTPUT['AT'][key].mask[i,c] = np.copy(OUT.mask)
+                    OUTPUT['AT'][key].interpolation[i,c] = np.copy(OUT.interpolation)
             elif (MODEL == 'MERRA2-hybrid') and np.any(valid):
                 # read and interpolate 5-day MERRA2-Hybrid outputs
-                FAC = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[0], **KWARGS)
-                smb = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[1], **KWARGS)
-                height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[2], **KWARGS)
-                melt = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[3], **KWARGS)
-                # set attributes to output for iteration
-                OUTPUT['AT']['zfirn'].data[i,c] = np.copy(FAC.data)
-                OUTPUT['AT']['zfirn'].mask[i,c] = np.copy(FAC.mask)
-                OUTPUT['AT']['zfirn'].interpolation[i,c] = np.copy(FAC.interpolation)
-                OUTPUT['AT']['zsurf'].data[i,c] = np.copy(height.data)
-                OUTPUT['AT']['zsurf'].mask[i,c] = np.copy(height.mask)
-                OUTPUT['AT']['zsurf'].interpolation[i,c] = np.copy(height.interpolation)
-                OUTPUT['AT']['zsmb'].data[i,c] = np.copy(smb.data)
-                OUTPUT['AT']['zsmb'].mask[i,c] = np.copy(smb.mask)
-                OUTPUT['AT']['zsmb'].interpolation[i,c] = np.copy(smb.interpolation)
-                OUTPUT['AT']['zmelt'].data[i,c] = np.copy(melt.data)
-                OUTPUT['AT']['zmelt'].mask[i,c] = np.copy(melt.mask)
-                OUTPUT['AT']['zmelt'].interpolation[i,c] = np.copy(melt.interpolation)
+                for key,var in zip(KEYS,VARIABLES):
+                    OUT = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
+                        MERRA2_REGION, tdec, X[i], Y[i], VARIABLE=var, **KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['AT'][key].data[i,c] = np.copy(OUT.data)
+                    OUTPUT['AT'][key].mask[i,c] = np.copy(OUT.mask)
+                    OUTPUT['AT'][key].interpolation[i,c] = np.copy(OUT.interpolation)
 
         #-- if interpolating to ATL11 crossover locations
         if CROSSOVERS:
@@ -416,72 +398,40 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
             tdec = convert_delta_time(delta_time['XT'][i])['decimal']
             if (MODEL == 'MAR') and np.any(valid):
                 # read and interpolate daily MAR outputs
-                SMB = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='SMB', **KWARGS)
-                ZN4 = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='ZN4', **KWARGS)
-                ZN5 = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='ZN5', **KWARGS)
-                ZN6 = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
-                    MAR_VERSION, tdec, X[i], Y[i],
-                    VARIABLE='ZN6', **KWARGS)
-                # set attributes to output for iteration
-                OUTPUT['XT']['SMB'].data[i] = np.copy(SMB.data)
-                OUTPUT['XT']['SMB'].mask[i] = np.copy(SMB.mask)
-                OUTPUT['XT']['SMB'].interpolation[i] = np.copy(SMB.interpolation)
-                OUTPUT['XT']['zfirn'].data[i] = np.copy(ZN4.data)
-                OUTPUT['XT']['zfirn'].mask[i] = np.copy(ZN4.mask)
-                OUTPUT['XT']['zfirn'].interpolation[i] = np.copy(ZN4.interpolation)
-                OUTPUT['XT']['zsurf'].data[i] = np.copy(ZN6.data)
-                OUTPUT['XT']['zsurf'].mask[i] = np.copy(ZN6.mask)
-                OUTPUT['XT']['zsurf'].interpolation[i] = np.copy(ZN6.interpolation)
-                OUTPUT['XT']['zmelt'].data[i] = np.copy(ZN5.data)
-                OUTPUT['XT']['zmelt'].mask[i] = np.copy(ZN5.mask)
-                OUTPUT['XT']['zmelt'].interpolation[i] = np.copy(ZN5.interpolation)
+                for key,var in zip(KEYS,VARIABLES):
+                    OUT = SMBcorr.interpolate_mar_daily(DIRECTORY, proj4_params,
+                        MAR_VERSION, tdec, X[i], Y[i], VARIABLE=var, **KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['XT'][key].data[i] = np.copy(OUT.data)
+                    OUTPUT['XT'][key].mask[i] = np.copy(OUT.mask)
+                    OUTPUT['XT'][key].interpolation[i] = np.copy(OUT.interpolation)
                 # calculate derived fields
-                OUTPUT['XT']['zsmb'].data[i] = ZN6.data - ZN4.data
-                OUTPUT['XT']['zsmb'].mask[i] = ZN4.mask | ZN6.mask
-                OUTPUT['XT']['zaccum'].data[i] = ZN6.data - ZN4.data - ZN5.data
-                OUTPUT['XT']['zaccum'].mask[i] = ZN4.mask | ZN5.mask | ZN6.mask
+                OUTPUT['XT']['zsmb'].data[i] = OUTPUT['XT']['zsurf'].data[i] - \
+                    OUTPUT['XT']['zfirn'].data[i]
+                OUTPUT['XT']['zsmb'].mask[i] = OUTPUT['XT']['zsurf'].mask[i] | \
+                    OUTPUT['XT']['zfirn'].mask[i]
+                OUTPUT['XT']['zaccum'].data[i] = OUTPUT['XT']['zsurf'].data[i] - \
+                    OUTPUT['XT']['zfirn'].data[i] - OUTPUT['AT']['zmelt'].data[i]
+                OUTPUT['XT']['zaccum'].mask[i] = OUTPUT['XT']['zsurf'].mask[i] | \
+                    OUTPUT['XT']['zfirn'].mask[i] | OUTPUT['XT']['zmelt'].mask[i]
             elif (MODEL == 'RACMO') and np.any(valid):
                 # read and interpolate daily RACMO outputs
-                hgtsrf = SMBcorr.interpolate_racmo_daily(base_dir, proj4_params,
-                    RACMO_MODEL, tdec, X[i], Y[i],
-                    VARIABLE='hgtsrf', **KWARGS)
-                # set attributes to output for iteration
-                OUTPUT['XT']['zsurf'].data[i] = np.copy(hgtsrf.data)
-                OUTPUT['XT']['zsurf'].mask[i] = np.copy(hgtsrf.mask)
-                OUTPUT['XT']['zsurf'].interpolation[i] = np.copy(hgtsrf.interpolation)
+                for key,var in zip(KEYS,VARIABLES):
+                    OUT = SMBcorr.interpolate_racmo_daily(base_dir, proj4_params,
+                        RACMO_MODEL, tdec, X[i], Y[i], VARIABLE=var, **KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['XT'][key].data[i] = np.copy(OUT.data)
+                    OUTPUT['XT'][key].mask[i] = np.copy(OUT.mask)
+                    OUTPUT['XT'][key].interpolation[i] = np.copy(OUT.interpolation)
             elif (MODEL == 'MERRA2-hybrid') and np.any(valid):
                 # read and interpolate 5-day MERRA2-Hybrid outputs
-                FAC = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[0], **KWARGS)
-                smb = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[1], **KWARGS)
-                height = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[2], **KWARGS)
-                melt = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
-                    MERRA2_REGION, tdec, X[i], Y[i],
-                    VARIABLE=VARIABLES[3], **KWARGS)
-                # set attributes to output for iteration
-                OUTPUT['XT']['zfirn'].data[i] = np.copy(FAC.data)
-                OUTPUT['XT']['zfirn'].mask[i] = np.copy(FAC.mask)
-                OUTPUT['XT']['zfirn'].interpolation[i] = np.copy(FAC.interpolation)
-                OUTPUT['XT']['zsurf'].data[i] = np.copy(height.data)
-                OUTPUT['XT']['zsurf'].mask[i] = np.copy(height.mask)
-                OUTPUT['XT']['zsurf'].interpolation[i] = np.copy(height.interpolation)
-                OUTPUT['XT']['zsmb'].data[i] = np.copy(smb.data)
-                OUTPUT['XT']['zsmb'].mask[i] = np.copy(smb.mask)
-                OUTPUT['XT']['zsmb'].interpolation[i] = np.copy(smb.interpolation)
-                OUTPUT['XT']['zmelt'].data[i] = np.copy(melt.data)
-                OUTPUT['XT']['zmelt'].mask[i] = np.copy(melt.mask)
-                OUTPUT['XT']['zmelt'].interpolation[i] = np.copy(melt.interpolation)
+                for key,var in zip(KEYS,VARIABLES):
+                    OUT = SMBcorr.interpolate_merra_hybrid(DIRECTORY, proj4_params,
+                        MERRA2_REGION, tdec, X[i], Y[i], VARIABLE=var, **KWARGS)
+                    # set attributes to output for iteration
+                    OUTPUT['XT'][key].data[i] = np.copy(OUT.data)
+                    OUTPUT['XT'][key].mask[i] = np.copy(OUT.mask)
+                    OUTPUT['XT'][key].interpolation[i] = np.copy(OUT.interpolation)
 
         # group attributes for beam
         IS2_atl11_corr_attrs[ptx]['description'] = ('Contains the primary science parameters '

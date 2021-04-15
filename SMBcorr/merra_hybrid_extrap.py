@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_extrap.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (04/2021)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
@@ -49,6 +49,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 04/2021: can reduce input dataset to a temporal subset
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
         added gzip compression option
     Updated 01/2021: using conversion protocols following pyproj-2 updates
@@ -115,13 +116,34 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
 
     #-- Get data from each netCDF variable and remove singleton dimensions
     fd = {}
-    fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
-    fd['time'] = fileID.variables['time'][:].copy()
+    #-- time is year decimal at time step 5 days
+    time_step = 5.0/365.25
+    #-- if extrapolating data: read the full dataset
+    #-- if simply interpolating with fill values: reduce to a subset
+    if EXTRAPOLATE:
+        #-- read time variables
+        fd['time'] = fileID.variables['time'][:].copy()
+        #-- read full dataset and remove singleton dimensions
+        fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
+    else:
+        #-- reduce grids to time period of input buffered by time steps
+        tmin = np.min(tdec) - 2.0*time_step
+        tmax = np.max(tdec) + 2.0*time_step
+        #-- find indices to times
+        nt, = fileID.variables['time'].shape
+        f = scipy.interpolate.interp1d(fileID.variables['time'][:],
+            np.arange(nt), kind='nearest', fill_value=(0,nt))
+        imin,imax = f((tmin,tmax)).astype(np.int)
+        #-- read reduced time variables
+        fd['time'] = fileID.variables['time'][imin:imax+1].copy()
+        #-- read reduced dataset and remove singleton dimensions
+        fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][imin:imax+1,:,:])
     #-- invalid data value
     fv = np.float(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(fd[VARIABLE])
     #-- extract x and y coordinate arrays from grids if applicable
+    #-- else create meshgrids of coordinate arrays
     if (np.ndim(fileID.variables['x'][:]) == 2):
         xg = fileID.variables['x'][:].copy()
         yg = fileID.variables['y'][:].copy()
@@ -129,10 +151,9 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     else:
         fd['x'] = fileID.variables['x'][:].copy()
         fd['y'] = fileID.variables['y'][:].copy()
+        xg,yg = np.meshgrid(fd['x'],fd['y'],indexing='ij')
     #-- close the NetCDF files
     fileID.close()
-    #-- time is year decimal at time step 5 days
-    time_step = 5.0/365.25
 
     #-- indices of specified ice mask
     i,j = np.nonzero(fd[VARIABLE][0,:,:] != fv)
