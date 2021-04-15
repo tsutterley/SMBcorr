@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_SMB_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (04/2021)
 Interpolates daily firn model estimates to the times and locations of
     ICESat-2 ATL11 annual land ice height data
 
@@ -9,7 +9,6 @@ COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -m X, --model X: Regional firn model to run
     -C, --crossovers: Run ATL11 Crossovers
-    -G, --gzip: Model files are gzip compressed
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -24,7 +23,7 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://h5py.org
     netCDF4: Python interface to the netCDF C library
-        https://unidata.github.io/netcdf4-python/netCDF4/index.html
+         https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
@@ -34,10 +33,6 @@ PROGRAM DEPENDENCIES:
     merra_hybrid_interp.py: interpolates GSFC MERRA-2 hybrid products
 
 UPDATE HISTORY:
-    Updated 07/2024: only append crossovers group if there are valid crossovers
-    Updated 08/2022: use argparse descriptions within documentation
-    Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
-    Updated 05/2021: make GSFC MERRA-2 compression keyword an option
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Written 03/2021
 """
@@ -45,27 +40,13 @@ from __future__ import print_function
 
 import os
 import re
-import logging
+import h5py
+import pyproj
 import argparse
 import datetime
-import warnings
 import numpy as np
 import collections
 import SMBcorr
-
-# attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pyproj not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # available models
 models = dict(AA={}, GL={})
@@ -96,12 +77,10 @@ models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
 models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
 models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
 models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
 models['AA']['MERRA2-hybrid'] = []
 models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
 models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
 models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
 
 # PURPOSE: set the projection parameters based on the input granule
 def set_projection(GRANULE):
@@ -132,14 +111,10 @@ def convert_delta_time(delta_time, gps_epoch=1198800018.0):
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
 # calculate and interpolate daily model firn outputs
 def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
-    GZIP=False, VERBOSE=False, MODE=0o775):
-
-    # create logger for verbosity level
-    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
+    VERBOSE=False, MODE=0o775):
 
     # read data from input file
-    logging.info(f'{os.path.basename(FILE)} -->')
+    print('{0} -->'.format(os.path.basename(FILE))) if VERBOSE else None
     # Open the HDF5 file for reading
     fileID = h5py.File(FILE, 'r')
     # output data directory
@@ -227,7 +202,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
         DESCRIPTION['zsurf'] = "Snow Height Change"
     elif (MODEL == 'MERRA2-hybrid'):
         # regular expression pattern for extracting version
-        merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?(\.\d+)?)$')
+        merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
         # get MERRA-2 version and major version
         MERRA2_VERSION = merra2_regex.match(model_version).group(1)
         # MERRA-2 hybrid directory
@@ -250,9 +225,9 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
             if (MERRA2_REGION == 'gris'):
                 VARIABLES.append('Me_a')
         # use compressed files
-        KWARGS['GZIP'] = GZIP
+        KWARGS['GZIP'] = True
         # output variable keys
-        KEYS = ['zfirn','zsmb','zsurf','zmelt']
+        KEYS = ['zsurf','zfirn','zsmb','zmelt']
         # HDF5 longname and description attributes for each variable
         LONGNAME = {}
         LONGNAME['zsurf'] = "Height"
@@ -267,7 +242,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
 
     # pyproj transformer for converting from latitude/longitude
     # into polar stereographic coordinates
-    crs1 = pyproj.CRS.from_epsg(4326)
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
     crs2 = pyproj.CRS.from_string(proj4_params)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
@@ -337,12 +312,14 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
         delta_time['AT'].mask = (delta_time['AT'] == delta_time['AT'].fill_value)
         # allocate for output height for along-track data
         OUTPUT['AT'] = {}
-        for key,var in zip(KEYS,VARIABLES):
+        for key in KEYS:
             OUTPUT['AT'][key] = np.ma.empty((n_points,n_cycles),fill_value=fv)
             OUTPUT['AT'][key].mask = np.ones((n_points,n_cycles),dtype=bool)
             OUTPUT['AT'][key].interpolation = np.zeros((n_points,n_cycles),dtype=np.uint8)
         # if running ATL11 crossovers
         if CROSSOVERS:
+            # add to group
+            groups.append('XT')
             # shape of across-track data
             n_cross, = fileID[ptx][XT]['delta_time'].shape
             # across-track (XT) reference point, latitude, longitude and time
@@ -358,13 +335,10 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
             delta_time['XT'].mask = (delta_time['XT'] == delta_time['XT'].fill_value)
             # allocate for output height for across-track data
             OUTPUT['XT'] = {}
-            for key,var in zip(KEYS,VARIABLES):
+            for key in KEYS:
                 OUTPUT['XT'][key] = np.ma.empty((n_cross),fill_value=fv)
                 OUTPUT['XT'][key].mask = np.ones((n_cross),dtype=bool)
                 OUTPUT['XT'][key].interpolation = np.zeros((n_cross),dtype=np.uint8)
-            # add to group
-            if np.any(n_cross):
-                groups.append('XT')
 
         # extract lat/lon and convert to polar stereographic
         X,Y = transformer.transform(longitude['AT'],longitude['AT'])
@@ -413,7 +387,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
                     OUTPUT['AT'][key].mask[i,c] = np.copy(OUT.mask)
                     OUTPUT['AT'][key].interpolation[i,c] = np.copy(OUT.interpolation)
 
-        # if interpolating to ATL11 crossover locations
+        #-- if interpolating to ATL11 crossover locations
         if CROSSOVERS:
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(longitude['XT'],longitude['XT'])
@@ -696,7 +670,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
     args = (PRD,model_version,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
     # print file information
-    logging.info('\t{0}'.format(file_format.format(*args)))
+    print('\t{0}'.format(file_format.format(*args))) if VERBOSE else None
     HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_corr_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE), CROSSOVERS=CROSSOVERS,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
@@ -829,7 +803,7 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['lineage'] = os.path.basename(INPUT)
+    fileID.attrs['input_files'] = os.path.basename(INPUT)
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:
@@ -865,12 +839,13 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
     # Closing the HDF5 file
     fileID.close()
 
-# PURPOSE: create arguments parser
-def arguments():
+# Main program that calls interp_SMB_ICESat2()
+def main():
+    # Read the system arguments listed after the program
     parser = argparse.ArgumentParser(
         description="""Interpolates daily firn model estimates to times
             and locations of ICESat-2 ATL11 annual land ice height data
@@ -888,17 +863,13 @@ def arguments():
     # firn model
     choices = [v for mdl in models.values() for val in mdl.values() for v in val]
     parser.add_argument('--model','-m',
-        metavar='FIRN', type=str, default='GSFC-fdm-v1.2',
+        metavar='FIRN', type=str, default='GSFC-fdm-v1.1',
         choices=sorted(set(choices)),
         help='Regional firn model to run')
     # run with ATL11 crossovers
     parser.add_argument('--crossovers','-C',
         default=False, action='store_true',
         help='Run ATL11 Crossovers')
-    # use compressed model files
-    parser.add_argument('--gzip','-G',
-        default=False, action='store_true',
-        help='Model files are gzip compressed')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -908,20 +879,13 @@ def arguments():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
-    # return the parser
-    return parser
-
-# Main program that calls interp_SMB_ICESat2()
-def main():
-    # Read the system arguments listed after the program
-    parser = arguments()
     args = parser.parse_args()
 
     # run for each input ATL11 file
     for FILE in args.infile:
         interp_SMB_ICESat2(args.directory, FILE, args.model,
-            CROSSOVERS=args.crossovers, GZIP=args.gzip,
-            VERBOSE=args.verbose, MODE=args.mode)
+            CROSSOVERS=args.crossovers, VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

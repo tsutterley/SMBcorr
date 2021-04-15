@@ -44,6 +44,7 @@ UPDATE HISTORY:
         copy mask variable from interpolation programs
     Written 05/2020
 """
+import sys
 import os
 import re
 import sys
