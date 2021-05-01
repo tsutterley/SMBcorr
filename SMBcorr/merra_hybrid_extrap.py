@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_extrap.py
-Written by Tyler Sutterley (04/2021)
+Written by Tyler Sutterley (05/2021)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
@@ -49,6 +49,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 05/2021: set bounds error to false when reducing temporal range
     Updated 04/2021: can reduce input dataset to a temporal subset
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
         added gzip compression option
@@ -132,7 +133,8 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         #-- find indices to times
         nt, = fileID.variables['time'].shape
         f = scipy.interpolate.interp1d(fileID.variables['time'][:],
-            np.arange(nt), kind='nearest', fill_value=(0,nt))
+            np.arange(nt), kind='nearest', bounds_error=False,
+            fill_value=(0,nt))
         imin,imax = f((tmin,tmax)).astype(np.int)
         #-- read reduced time variables
         fd['time'] = fileID.variables['time'][imin:imax+1].copy()

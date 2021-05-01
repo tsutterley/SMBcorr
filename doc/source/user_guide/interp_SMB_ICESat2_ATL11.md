@@ -49,5 +49,6 @@ python interp_SMB_ICESat2_ATL11.py --directory <path_to_directory> input_file
         - `'GSFC-fdm-v1'`
         - `'GSFC-fdm-v1.1'`
 - `-C`, `--crossovers`: Run ATL11 Crossovers
+- `-G`, `--gzip`: Model files are gzip compressed
 - `-V`, `--verbose`: Output information about each created file
 - `-M X`, `--mode X`: Permission mode of output file
