@@ -88,5 +88,5 @@ where ``<type>`` is one of the following:
 - ``docs``: changing the documentation
 - ``style``: changing the line order or adding comments
 - ``refactor``: changing the names of variables or programs
-- ``ci``: changing the `continuous integration tests <./Contributing.html#continuous-integration>`_ configuration files or scripts
+- ``ci``: changing the `continuous integration <./Contributing.html#continuous-integration>`_ configuration files or scripts
 - ``test``: adding or updating `continuous integration tests <./Contributing.html#continuous-integration>`_

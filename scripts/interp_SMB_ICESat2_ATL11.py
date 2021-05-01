@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_SMB_ICESat2_ATL11.py
-Written by Tyler Sutterley (04/2021)
+Written by Tyler Sutterley (05/2021)
 Interpolates daily firn model estimates to the times and locations of
     ICESat-2 ATL11 annual land ice height data
 
@@ -9,6 +9,7 @@ COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -m X, --model X: Regional firn model to run
     -C, --crossovers: Run ATL11 Crossovers
+    -G, --gzip: Model files are gzip compressed
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -33,6 +34,7 @@ PROGRAM DEPENDENCIES:
     merra_hybrid_interp.py: interpolates GSFC MERRA-2 hybrid products
 
 UPDATE HISTORY:
+    Updated 05/2021: make GSFC MERRA-2 compression keyword an option
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Written 03/2021
 """
@@ -111,7 +113,7 @@ def convert_delta_time(delta_time, gps_epoch=1198800018.0):
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
 # calculate and interpolate daily model firn outputs
 def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
-    VERBOSE=False, MODE=0o775):
+    GZIP=False, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     print('{0} -->'.format(os.path.basename(FILE))) if VERBOSE else None
@@ -225,7 +227,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
             if (MERRA2_REGION == 'gris'):
                 VARIABLES.append('Me_a')
         # use compressed files
-        KWARGS['GZIP'] = True
+        KWARGS['GZIP'] = GZIP
         # output variable keys
         KEYS = ['zsurf','zfirn','zsmb','zmelt']
         # HDF5 longname and description attributes for each variable
@@ -870,6 +872,10 @@ def main():
     parser.add_argument('--crossovers','-C',
         default=False, action='store_true',
         help='Run ATL11 Crossovers')
+    # use compressed model files
+    parser.add_argument('--gzip','-G',
+        default=False, action='store_true',
+        help='Model files are gzip compressed')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -884,8 +890,8 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         interp_SMB_ICESat2(args.directory, FILE, args.model,
-            CROSSOVERS=args.crossovers, VERBOSE=args.verbose,
-            MODE=args.mode)
+            CROSSOVERS=args.crossovers, GZIP=args.gzip,
+            VERBOSE=args.verbose, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
