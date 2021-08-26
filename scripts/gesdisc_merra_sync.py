@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 u"""
 gesdisc_merra_sync.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (09/2019)
 
-Syncs MERRA-2 surface mass balance (SMB) related products from the Goddard
-    Earth Sciences Data and Information Server Center (GES DISC)
+This program syncs MERRA-2 surface mass balance (SMB) related products from the
+    Goddard Earth Sciences Data and Information Server Center
     https://gmao.gsfc.nasa.gov/reanalysis/MERRA-2/
     https://wiki.earthdata.nasa.gov/display/EL/How+To+Access+Data+With+Python
 
@@ -14,60 +14,28 @@ Register with NASA Earthdata Login system:
 Add "NASA GESDISC DATA ARCHIVE" to Earthdata Applications:
     https://urs.earthdata.nasa.gov/approve_app?client_id=e2WVk8Pw6weeLUKZYOxvTQ
 
-tavgM_2d_int (Vertically Integrated Diagnostics) collection:
-    PRECCU (convective rain)
-    PRECLS (large-scale rain)
-    PRECSN (snow)
-    and EVAP (evaporation)
-tavgM_2d_glc (Land Ice Surface Diagnostics) collection:
-    RUNOFF (runoff over glaciated land)
-
 CALLING SEQUENCE:
-    python gesdisc_merra_sync.py --user <username>
+    python gesdisc_merra_sync.py --user=<username>
     where <username> is your NASA Earthdata username
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
-    -U X, --user X: username for NASA Earthdata Login
-    -W X, --password X: password for NASA Earthdata Login
-    -N X, --netrc X: path to .netrc file for authentication
-    -D X, --directory X: working data directory
-    -v X, --version X: MERRA-2 version
-    -Y X, --year X: years to sync
-    -t X, --timeout X: Timeout in seconds for blocking operations
+    -D X, --directory: Working data directory (default: $PYTHONDATA)
+    -Y X, --year=X: years to sync
+    --user: username for NASA Earthdata Login
+    -M X, --mode=X: Local permissions mode of the directories and files synced
     --log: output log of files downloaded
     --list: print files to be transferred, but do not execute transfer
     --clobber: Overwrite existing data in transfer
-    -M X, --mode X: permissions mode of the directories and files synced
 
 PYTHON DEPENDENCIES:
-    numpy: Scientific Computing Tools For Python
-        https://numpy.org
-        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
-    dateutil: powerful extensions to datetime
-        https://dateutil.readthedocs.io/en/stable/
     lxml: Pythonic XML and HTML processing library using libxml2/libxslt
-        https://lxml.de/
+        http://lxml.de/
         https://github.com/lxml/lxml
     future: Compatibility layer between Python 2 and Python 3
-        https://python-future.org/
-
-PROGRAM DEPENDENCIES:
-    utilities.py: download and management utilities for syncing files
+        (http://python-future.org/)
 
 UPDATE HISTORY:
-    Updated 06/2022: use CMR queries to find reanalysis granules
-    Updated 05/2022: use argparse descriptions within sphinx documentation
-    Updated 04/2022: lower case keyword arguments to output spatial
-    Updated 10/2021: using python logging for handling verbose output
-    Updated 06/2021: new last modified date format on GESDISC servers
-    Updated 05/2021: added option for connection timeout (in seconds)
-        use try/except for retrieving netrc credentials
-    Updated 04/2021: set a default netrc file and check access
-        default credentials from environmental variables
-    Updated 02/2021: add back MERRA-2 invariant parameters sync
-    Updated 01/2021: use argparse to set command line parameters
-        using utilities program to build opener and list remote files
     Updated 09/2019: added ssl context to urlopen headers
     Updated 06/2018: using python3 compatible octal, input and urllib
     Updated 03/2018: --directory sets base directory similar to other programs
@@ -81,211 +49,228 @@ UPDATE HISTORY:
     Written 11/2016
 """
 from __future__ import print_function
+import future.standard_library
 
 import sys
 import os
-import time
-import netrc
+import re
+import ssl
+import getopt
 import shutil
 import getpass
-import logging
-import argparse
 import builtins
 import posixpath
-import SMBcorr.utilities
+import lxml.etree
+import calendar, time
+if sys.version_info[0] == 2:
+    from cookielib import CookieJar
+    import urllib2
+else:
+    from http.cookiejar import CookieJar
+    import urllib.request as urllib2
 
-# PURPOSE: sync local MERRA-2 files with GESDISC server
-def gesdisc_merra_sync(DIRECTORY, YEARS=None, VERSION=None, TIMEOUT=None,
+#-- PURPOSE: check internet connection
+def check_connection():
+    #-- attempt to connect to http GESDISC host
+    try:
+        HOST = 'http://disc.sci.gsfc.nasa.gov/'
+        urllib2.urlopen(HOST,timeout=20,context=ssl.SSLContext())
+    except urllib2.URLError:
+        raise RuntimeError('Check internet connection')
+    else:
+        return True
+
+#-- PURPOSE: sync local MERRA-2 files with GESDISC server
+def gesdisc_merra_sync(DIRECTORY, YEARS, USER='', PASSWORD='',
     LOG=False, LIST=False, MODE=None, CLOBBER=False):
-
-    # check if directory exists and recursively create if not
+    #-- recursively create directory if non-existent
     os.makedirs(DIRECTORY,MODE) if not os.path.exists(DIRECTORY) else None
-    # create log file with list of synchronized files (or print to terminal)
+
+    #-- create log file with list of synchronized files (or print to terminal)
     if LOG:
-        # output to log file
-        # format: NASA_GESDISC_MERRA2_sync_2002-04-01.log
+        #-- format: NASA_GESDISC_MERRA2_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
         LOGFILE = 'NASA_GESDISC_MERRA2_sync_{0}.log'.format(today)
-        logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
-            level=logging.INFO)
-        logging.info('NASA MERRA-2 Sync Log ({0})'.format(today))
+        fid = open(os.path.join(DIRECTORY,LOGFILE),'w')
+        print('NASA MERRA-2 Sync Log ({0})'.format(today), file=fid)
     else:
-        # standard output (terminal output)
-        logging.basicConfig(level=logging.INFO)
+        #-- standard output (terminal output)
+        fid = sys.stdout
 
-    # query CMR for model MERRA-2 invariant products
-    ids,urls,mtimes = SMBcorr.utilities.cmr('M2C0NXASM',
-        version=VERSION, provider='GES_DISC', verbose=True)
-    # sync model granules
-    for id,url,mtime in zip(ids,urls,mtimes):
-        # copy file from remote directory comparing modified dates
-        http_pull_file(url, mtime, os.path.join(DIRECTORY,id),
-            TIMEOUT=TIMEOUT, LIST=LIST, CLOBBER=CLOBBER,
-            MODE=MODE)
+    #-- https://docs.python.org/3/howto/urllib2.html#id5
+    #-- create a password manager
+    password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
+    #-- Add the username and password for NASA Earthdata Login system
+    password_mgr.add_password(None, 'https://urs.earthdata.nasa.gov',
+        USER, PASSWORD)
+    #-- compile HTML parser for lxml
+    parser = lxml.etree.HTMLParser()
+    #-- Create cookie jar for storing cookies. This is used to store and return
+    #-- the session cookie given to use by the data server (otherwise will just
+    #-- keep sending us back to Earthdata Login to authenticate).
+    cookie_jar = CookieJar()
+    #-- create "opener" (OpenerDirector instance)
+    opener = urllib2.build_opener(
+        urllib2.HTTPBasicAuthHandler(password_mgr),
+        urllib2.HTTPSHandler(context=ssl.SSLContext()),
+        urllib2.HTTPCookieProcessor(cookie_jar))
+    #-- Now all calls to urllib2.urlopen use our opener.
+    urllib2.install_opener(opener)
+    #-- All calls to urllib2.urlopen will now use handler
+    #-- Make sure not to include the protocol in with the URL, or
+    #-- HTTPPasswordMgrWithDefaultRealm will be confused.
 
-    # for each MERRA-2 product to sync
-    for SHORTNAME in ['M2TMNXINT','M2TMNXGLC']:
-        PRODUCT = '{0}.{1}'.format(SHORTNAME,VERSION)
-        logging.info('PRODUCT={0}'.format(PRODUCT))
-        # for each year to sync
-        for Y in map(str,YEARS):
-            # start and end date for query
-            start_date = '{0}-01-01'.format(Y)
-            end_date = '{0}-12-31'.format(Y)
-            ids,urls,mtimes = SMBcorr.utilities.cmr(SHORTNAME,
-                version=VERSION, start_date=start_date, end_date=end_date,
-                provider='GES_DISC', verbose=True)
-            # recursively create local directory for data
+    #-- MERRA-2 data remote base directory
+    HOST = posixpath.join('http://goldsmr4.gesdisc.eosdis.nasa.gov','data',
+        'MERRA2_MONTHLY')
+
+    #-- compile regular expression operator for years to sync
+    regex_pattern = '|'.join('{0:d}'.format(y) for y in YEARS)
+    R1 = re.compile('({0})'.format(regex_pattern), re.VERBOSE)
+    #-- compile regular expression operator to find MERRA2 files
+    R2 = re.compile('MERRA2_(.*?).nc4(.xml)?', re.VERBOSE)
+
+    #-- for each MERRA-2 product to sync
+    for PRODUCT in ['M2TMNXINT.5.12.4','M2TMNXGLC.5.12.4']:
+        print('PRODUCT={0}'.format(PRODUCT), file=fid)
+        #-- open connection with GESDISC server at remote directory
+        req = urllib2.Request(url=posixpath.join(HOST,PRODUCT))
+        #-- read and parse request for subdirectories (find column names)
+        tree = lxml.etree.parse(urllib2.urlopen(req), parser)
+        colnames = tree.xpath('//tr/td[not(@*)]//a/@href')
+        #-- find remote yearly directories for PRODUCT
+        remote_sub = [sd for sd in colnames if R1.match(sd)]
+        for Y in remote_sub:
+            #-- check if local directory exists and recursively create if not
             if (not os.access(os.path.join(DIRECTORY,PRODUCT,Y), os.F_OK)):
                 os.makedirs(os.path.join(DIRECTORY,PRODUCT,Y), MODE)
-            # sync model granules
-            for id,url,mtime in zip(ids,urls,mtimes):
-                # copy file from remote directory comparing modified dates
-                local_file = os.path.join(DIRECTORY,PRODUCT,Y,id)
-                http_pull_file(url, mtime, local_file,
-                    TIMEOUT=TIMEOUT, LIST=LIST, CLOBBER=CLOBBER,
-                    MODE=MODE)
+            #-- open connection with GESDISC server at remote directory
+            req = urllib2.Request(url=posixpath.join(HOST,PRODUCT,Y))
+            #-- read and parse request for files (find names and modified dates)
+            tree = lxml.etree.parse(urllib2.urlopen(req), parser)
+            colnames = tree.xpath('//tr/td[not(@*)]//a/@href')
+            collastmod = tree.xpath('//tr/td[@align="right"][1]/text()')
+            #-- find remote files for PRODUCT and YEAR
+            remote_file_lines=[i for i,f in enumerate(colnames) if R2.match(f)]
+            for i in remote_file_lines:
+                #-- local and remote versions of the file
+                FILE = colnames[i]
+                local_file = os.path.join(DIRECTORY,PRODUCT,Y,FILE)
+                remote_file = posixpath.join(HOST,PRODUCT,Y,FILE)
+                #-- get last modified date of file and convert into unix time
+                file_date=time.strptime(collastmod[i].rstrip(),'%d-%b-%Y %H:%M')
+                remote_mtime = calendar.timegm(file_date)
+                #-- copy file from remote directory checking modification times
+                http_pull_file(fid, remote_file, remote_mtime, local_file,
+                    LIST, CLOBBER, MODE)
+            #-- close request
+            req = None
 
-    # close log file and set permissions level to MODE
+    #-- close log file and set permissions level to MODE
     if LOG:
+        fid.close()
         os.chmod(os.path.join(DIRECTORY,LOGFILE), MODE)
 
-# PURPOSE: pull file from a remote host checking if file exists locally
-# and if the remote file is newer than the local file
-def http_pull_file(remote_file, remote_mtime, local_file,
-    TIMEOUT=None, LIST=False, CLOBBER=False, MODE=0o775):
-    # if file exists in file system: check if remote file is newer
+#-- PURPOSE: pull file from a remote host checking if file exists locally
+#-- and if the remote file is newer than the local file
+def http_pull_file(fid,remote_file,remote_mtime,local_file,LIST,CLOBBER,MODE):
+    #-- if file exists in file system: check if remote file is newer
     TEST = False
     OVERWRITE = ' (clobber)'
-    # check if local version of file exists
+    #-- check if local version of file exists
     if os.access(local_file, os.F_OK):
-        # check last modification time of local file
+        #-- check last modification time of local file
         local_mtime = os.stat(local_file).st_mtime
-        # if remote file is newer: overwrite the local file
-        if (SMBcorr.utilities.even(remote_mtime) >
-            SMBcorr.utilities.even(local_mtime)):
+        #-- if remote file is newer: overwrite the local file
+        if (remote_mtime > local_mtime):
             TEST = True
             OVERWRITE = ' (overwrite)'
     else:
         TEST = True
         OVERWRITE = ' (new)'
-    # if file does not exist locally, is to be overwritten, or CLOBBER is set
+    #-- if file does not exist locally, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
-        # Printing files transferred
-        logging.info(f'{remote_file} -->')
-        logging.info(f'\t{local_file}{OVERWRITE}\n')
-        # if executing copy command (not only printing the files)
+        #-- Printing files transferred
+        print('{0} --> '.format(remote_file), file=fid)
+        print('\t{0}{1}\n'.format(local_file,OVERWRITE), file=fid)
+        #-- if executing copy command (not only printing the files)
         if not LIST:
-            # Create and submit request. There are a wide range of exceptions
-            # that can be thrown here, including HTTPError and URLError.
-            request = SMBcorr.utilities.urllib2.Request(remote_file)
-            response = SMBcorr.utilities.urllib2.urlopen(request,
-                timeout=TIMEOUT)
-            # chunked transfer encoding size
+            #-- Create and submit request. There are a wide range of exceptions
+            #-- that can be thrown here, including HTTPError and URLError.
+            request = urllib2.Request(remote_file)
+            response = urllib2.urlopen(request)
+            #-- chunked transfer encoding size
             CHUNK = 16 * 1024
-            # copy contents to local file using chunked transfer encoding
-            # transfer should work properly with ascii and binary data formats
+            #-- copy contents to local file using chunked transfer encoding
+            #-- transfer should work properly with ascii and binary data formats
             with open(local_file, 'wb') as f:
                 shutil.copyfileobj(response, f, CHUNK)
-            # keep remote modification time of file and local access time
+            #-- keep remote modification time of file and local access time
             os.utime(local_file, (os.stat(local_file).st_atime, remote_mtime))
             os.chmod(local_file, MODE)
 
-# PURPOSE: create argument parser
-def arguments():
-    parser = argparse.ArgumentParser(
-        description="""Syncs MERRA-2 surface mass balance (SMB) related
-            products from the Goddard Earth Sciences Data and Information
-            Server Center (GES DISC)
-            """
-    )
-    # command line parameters
-    # NASA Earthdata credentials
-    parser.add_argument('--user','-U',
-        type=str, default=os.environ.get('EARTHDATA_USERNAME'),
-        help='Username for NASA Earthdata Login')
-    parser.add_argument('--password','-W',
-        type=str, default=os.environ.get('EARTHDATA_PASSWORD'),
-        help='Password for NASA Earthdata Login')
-    parser.add_argument('--netrc','-N',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.path.join(os.path.expanduser('~'),'.netrc'),
-        help='Path to .netrc file for authentication')
-    # working data directory
-    parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
-        help='Working data directory')
-    # MERRA-2 version
-    parser.add_argument('--version','-v',
-        type=str, default='5.12.4',
-        help='MERRA-2 version')
-    # years to download
-    now = time.gmtime()
-    parser.add_argument('--year','-Y',
-        type=int, nargs='+', default=range(1980,now.tm_year+1),
-        help='Years of model outputs to sync')
-    # connection timeout
-    parser.add_argument('--timeout','-t',
-        type=int, default=360,
-        help='Timeout in seconds for blocking operations')
-    # Output log file in form
-    # NASA_GESDISC_MERRA2_sync_2002-04-01.log
-    parser.add_argument('--log','-l',
-        default=False, action='store_true',
-        help='Output log file')
-    # sync options
-    parser.add_argument('--list','-L',
-        default=False, action='store_true',
-        help='Only print files that could be transferred')
-    parser.add_argument('--clobber','-C',
-        default=False, action='store_true',
-        help='Overwrite existing data in transfer')
-    # permissions mode of the directories and files synced (number in octal)
-    parser.add_argument('--mode','-M',
-        type=lambda x: int(x,base=8), default=0o775,
-        help='Permission mode of directories and files synced')
-    # return the parser
-    return parser
+#-- PURPOSE: help module to describe the optional input parameters
+def usage():
+    print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
+    print(' -D X, --directory=X\t\tWorking data directory')
+    print(' -Y X, --year=X\t\tyears to sync')
+    print(' -U X, --user=X\t\tUsername for NASA Earthdata Login')
+    print(' -M X, --mode=X\t\tPermission mode of directories and files synced')
+    print(' -L, --list\t\tOnly print files that are to be transferred')
+    print(' -C, --clobber\t\tOverwrite existing data in transfer')
+    print(' -l, --log\t\tOutput log file')
+    today = time.strftime('%Y-%m-%d',time.localtime())
+    LOGFILE = 'NASA_GESDISC_MERRA2_sync_{0}.log'.format(today)
+    print('    Log file format: {}\n'.format(LOGFILE))
 
-# This is the main part of the program that calls the individual functions
+#-- Main program that calls gesdisc_merra_sync()
 def main():
-    # Read the system arguments listed after the program
-    parser = arguments()
-    args,_ = parser.parse_known_args()
+    #-- Read the system arguments listed after the program
+    long_options = ['help','directory=','year=','user=','list','log',
+        'mode=','clobber']
+    optlist,arglist = getopt.getopt(sys.argv[1:],'hD:Y:U:LCM:l',long_options)
 
-    # NASA Earthdata hostname
-    URS = 'urs.earthdata.nasa.gov'
-    # get NASA Earthdata credentials
-    try:
-        args.user,_,args.password = netrc.netrc(args.netrc).authenticators(URS)
-    except:
-        # check that NASA Earthdata credentials were entered
-        if not args.user:
-            prompt = 'Username for {0}: '.format(URS)
-            args.user = builtins.input(prompt)
-        # enter password securely from command-line
-        if not args.password:
-            prompt = 'Password for {0}@{1}: '.format(args.user,URS)
-            args.password = getpass.getpass(prompt)
+    #-- command line parameters
+    DIRECTORY = os.getcwd()
+    years = [y for y in range(1980,2020)]
+    USER = ''
+    LIST = False
+    LOG = False
+    #-- permissions mode of the local directories and files (number in octal)
+    MODE = 0o775
+    CLOBBER = False
+    for opt, arg in optlist:
+        if opt in ('-h','--help'):
+            usage()
+            sys.exit()
+        elif opt in ("--directory"):
+            DIRECTORY = os.path.expanduser(arg)
+        elif opt in ("-Y","--year"):
+            years = [int(Y) for Y in arg.split(',')]
+        elif opt in ("-U","--user"):
+            USER = arg
+        elif opt in ("-L","--list"):
+            LIST = True
+        elif opt in ("-l","--log"):
+            LOG = True
+        elif opt in ("-M","--mode"):
+            MODE = int(arg, 8)
+        elif opt in ("-C","--clobber"):
+            CLOBBER = True
 
-    # build a urllib opener for NASA GESDISC
-    # Add the username and password for NASA Earthdata Login system
-    SMBcorr.utilities.build_opener(args.user, args.password,
-        password_manager=True, authorization_header=False)
+    #-- NASA Earthdata hostname
+    HOST = 'urs.earthdata.nasa.gov'
+    #-- check that NASA Earthdata credentials were entered
+    if not USER:
+        USER = builtins.input('Username for {0}: '.format(HOST))
+    #-- enter password securely from command-line
+    PASSWORD = getpass.getpass('Password for {0}@{1}: '.format(USER,HOST))
 
-    # check internet connection before attempting to run program
-    HOST = posixpath.join('http://goldsmr4.gesdisc.eosdis.nasa.gov','data')
-    if SMBcorr.utilities.check_connection(HOST):
-        gesdisc_merra_sync(args.directory,
-            YEARS=args.year,
-            VERSION=args.version,
-            TIMEOUT=args.timeout,
-            LOG=args.log,
-            LIST=args.list,
-            CLOBBER=args.clobber,
-            MODE=args.mode)
+    #-- check internet connection before attempting to run program
+    if check_connection():
+        gesdisc_merra_sync(DIRECTORY, years, USER=USER, PASSWORD=PASSWORD,
+            LOG=LOG, LIST=LIST, MODE=MODE, CLOBBER=CLOBBER)
 
-# run main program
+#-- run main program
 if __name__ == '__main__':
     main()

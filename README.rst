@@ -11,7 +11,7 @@ SMBcorr
 .. |Language| image:: https://img.shields.io/badge/python-v3.7-green.svg
    :target: https://www.python.org/
 
-.. |License| image:: https://img.shields.io/badge/license-MIT-green.svg
+.. |License| image:: https://img.shields.io/github/license/tsutterley/smbcorr
    :target: https://github.com/tsutterley/SMBcorr/blob/master/LICENSE
 
 .. |Documentation Status| image:: https://readthedocs.org/projects/smbcorr/badge/?version=latest
