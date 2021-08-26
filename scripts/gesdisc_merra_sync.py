@@ -21,7 +21,7 @@ CALLING SEQUENCE:
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -D X, --directory: Working data directory (default: $PYTHONDATA)
-    -Y X, --year=X: years to sync separated by commas
+    -Y X, --year=X: years to sync
     --user: username for NASA Earthdata Login
     -M X, --mode=X: Local permissions mode of the directories and files synced
     --log: output log of files downloaded
@@ -85,7 +85,7 @@ def gesdisc_merra_sync(DIRECTORY, YEARS, USER='', PASSWORD='',
     LOG=False, LIST=False, MODE=None, CLOBBER=False):
     #-- recursively create directory if non-existent
     os.makedirs(DIRECTORY,MODE) if not os.path.exists(DIRECTORY) else None
-    
+
     #-- create log file with list of synchronized files (or print to terminal)
     if LOG:
         #-- format: NASA_GESDISC_MERRA2_sync_2002-04-01.log
@@ -213,7 +213,7 @@ def http_pull_file(fid,remote_file,remote_mtime,local_file,LIST,CLOBBER,MODE):
 def usage():
     print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
     print(' -D X, --directory=X\t\tWorking data directory')
-    print(' -Y X, --year=X\t\tYears to sync separated by commas')
+    print(' -Y X, --year=X\t\tyears to sync')
     print(' -U X, --user=X\t\tUsername for NASA Earthdata Login')
     print(' -M X, --mode=X\t\tPermission mode of directories and files synced')
     print(' -L, --list\t\tOnly print files that are to be transferred')
