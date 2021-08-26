@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_cumulative.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (08/2021)
 Calculates cumulative anomalies of MERRA-2 hybrid surface mass balance products
     MERRA-2 Hybrid model outputs provided by Brooke Medley at GSFC
 
@@ -12,6 +12,11 @@ CALLING SEQUENCE:
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -R X, --region X: Region to calculate (gris, ais)
+    -v X, --version X: Version of firn model to calculate
+        v0
+        v1
+        v1.0
+        v1.1
     --mean: Start and end year of mean
     -G, --gzip: netCDF4 file is locally gzip compressed
     -M X, --mode X: Local permissions mode of the directories and files
@@ -24,6 +29,7 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
+    Updated 08/2021: output areas to file if applicable
     Updated 02/2021: using argparse to set parameters
         read and write for all available variables in a file
         added gzip compression option
@@ -44,6 +50,8 @@ import numpy as np
 def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
     MODE=0o775):
 
+    #-- MERRA-2 hybrid directory
+    DIRECTORY = os.path.join(base_dir,VERSION)
     #-- set version parameters
     suffix = '.gz' if GZIP else ''
     if (VERSION == 'v0'):
@@ -53,6 +61,7 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
         output_file = 'm2_hybrid_cumul_{0}.nc{1}'.format(*args)
         #-- names of variables to read
         VARIABLES = ('p_minus_e','melt')
+        AREA = None
         anomaly_flag = '_anomaly'
     elif VERSION in ('v1','v1.0'):
         #-- input and output netCDF4 files
@@ -62,6 +71,7 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
         output_file = 'gsfc_fdm_smb_cumul_{0}_{1}.nc{2}'.format(*args)
         #-- names of variables to read
         VARIABLES = ('runoff','rainfall','snowfall_minus_sublimation')
+        AREA = None
         #-- flag to append to output netCDF4 variables
         anomaly_flag = '_anomaly'
     else:
@@ -72,39 +82,32 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
         output_file = 'gsfc_fdm_smb_cumul_{0}_{1}.nc{2}'.format(*args)
         #-- names of variables to read
         VARIABLES = ('Me','Ra','Ru','Sn-Ev')
+        AREA = 'iArea'
         #-- flag to append to output netCDF4 variables
         anomaly_flag = '_a'
 
     #-- Open the MERRA-2 Hybrid NetCDF file for reading
     if GZIP:
         #-- read as in-memory (diskless) netCDF4 dataset
-        with gzip.open(os.path.join(base_dir,hybrid_file),'r') as f:
+        with gzip.open(os.path.join(DIRECTORY,hybrid_file),'r') as f:
             fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=f.read())
     else:
         #-- read netCDF4 dataset
-        fileID = netCDF4.Dataset(os.path.join(base_dir,hybrid_file), 'r')
+        fileID = netCDF4.Dataset(os.path.join(DIRECTORY,hybrid_file), 'r')
 
     #-- Get data and attribute from each netCDF variable
     fd = {}
-    DATA = {}
     attrs = {}
-    #-- for each variable
-    for v in VARIABLES:
-        #-- copy data and remove singleton dimensions
-        DATA[v] = np.ma.array(fileID.variables[v][:]).squeeze()
-        #-- invalid data value
-        DATA[v].fill_value = np.float(fileID.variables[v]._FillValue)
-        #-- set masks
-        DATA[v].mask = (DATA[v].data == DATA[v].fill_value)
-        #-- get each attribute for variable if applicable
-        attrs[v] = {}
-        for att_name in ['units','long_name','standard_name','comment']:
-            if hasattr(fileID.variables[v],att_name):
-                attrs[v][att_name] = fileID.variables[v].getncattr(att_name)
-        #-- input shape of MERRA-2 Hybrid firn data
-        nt,nx,ny = np.shape(DATA[v])
     #-- input time (year-decimal)
     fd['time'] = fileID.variables['time'][:].copy()
+    #-- extract areas
+    if AREA:
+        fd[AREA] = fileID.variables[AREA][:].copy()
+        #-- get each attribute for area variable if applicable
+        attrs[AREA] = {}
+        for att_name in ['units','long_name','standard_name']:
+            if hasattr(fileID.variables[AREA],att_name):
+                attrs[AREA][att_name]=fileID.variables[AREA].getncattr(att_name)
     #-- extract x and y coordinate arrays from grids if applicable
     #-- else create meshgrids of coordinate arrays
     if (np.ndim(fileID.variables['x'][:]) == 2):
@@ -119,25 +122,40 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
     fileID.close()
     #-- time is year decimal at time step 5 days
     time_step = 5.0/365.25
-
     #-- calculate mean period for MERRA-2
     tt, = np.nonzero((fd['time'] >= RANGE[0]) & (fd['time'] < (RANGE[1]+1)))
-    #-- cumulative mass anomalies calculated by removing mean balance flux
+
+    #-- for each variable
     for v in VARIABLES:
+        #-- copy data and remove singleton dimensions
+        DATA = np.ma.array(fileID.variables[v][:]).squeeze()
+        #-- invalid data value
+        DATA.fill_value = np.float(fileID.variables[v]._FillValue)
+        #-- set masks
+        DATA.mask = (DATA.data == DATA.fill_value)
+        #-- get each attribute for variable if applicable
+        attrs[v] = {}
+        for att_name in ['units','long_name','standard_name','comment']:
+            if hasattr(fileID.variables[v],att_name):
+                attrs[v][att_name] = fileID.variables[v].getncattr(att_name)
+        #-- input shape of MERRA-2 Hybrid firn data
+        nt,nx,ny = np.shape(DATA)
+
+        #-- cumulative mass anomalies calculated by removing mean balance flux
         #-- mean of data for variable (converted from yearly rate)
-        MEAN = np.mean(DATA[v].data[tt,:,:]*time_step, axis=0)
+        MEAN = np.mean(DATA.data[tt,:,:]*time_step, axis=0)
         #-- indices of specified ice mask at the first slice
-        i,j = np.nonzero(~DATA[v].mask[0,:,:])
-        valid_count = np.count_nonzero(~DATA[v].mask[0,:,:])
+        i,j = np.nonzero(~DATA.mask[0,:,:])
+        valid_count = np.count_nonzero(~DATA.mask[0,:,:])
         #-- allocate for output variable
-        fd[v] = np.ma.zeros((nt,nx,ny),fill_value=DATA[v].fill_value)
-        fd[v].mask = (DATA[v].mask | np.isnan(DATA[v].data))
+        fd[v] = np.ma.zeros((nt,nx,ny),fill_value=DATA.fill_value)
+        fd[v].mask = (DATA.mask | np.isnan(DATA.data))
         CUMULATIVE = np.zeros((valid_count))
         #-- calculate output cumulative anomalies for variable
         for t in range(nt):
             #-- convert mass flux from yearly rate and
             #-- calculate cumulative anomalies at time t
-            CUMULATIVE += (DATA[v].data[t,i,j]*time_step - MEAN[i,j])
+            CUMULATIVE += (DATA.data[t,i,j]*time_step - MEAN[i,j])
             fd[v].data[t,i,j] = CUMULATIVE.copy()
         #-- replace masked values with fill value
         fd[v].data[fd[v].mask] = fd[v].fill_value
@@ -149,7 +167,7 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
             format='NETCDF4')
     else:
         #-- opening NetCDF file for writing
-        fileID = netCDF4.Dataset(os.path.join(base_dir,output_file),'w',
+        fileID = netCDF4.Dataset(os.path.join(DIRECTORY,output_file),'w',
             format="NETCDF4")
 
     #-- Defining the NetCDF dimensions
@@ -163,6 +181,10 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
     nc['x'] = fileID.createVariable('x', fd['x'].dtype, ('x',))
     nc['y'] = fileID.createVariable('y', fd['y'].dtype, ('y',))
     nc['time'] = fileID.createVariable('time', fd['time'].dtype, ('time',))
+    #-- output area variable
+    if AREA:
+        nc[AREA] = fileID.createVariable(AREA, fd[AREA].dtype, ('x','y',),
+            fill_value=fd[AREA].fill_value, zlib=True)
     #-- for each output variable
     for v in VARIABLES:
         #-- append anomaly flag
@@ -213,6 +235,13 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
     nc['y'].standard_name = 'projection_y_coordinate'
     nc['y'].grid_mapping = 'Polar_Stereographic'
     nc['y'].units = 'meters'
+    #-- defining attributes for area variable
+    if AREA:
+        #-- set area variable attributes
+        for att_name,att_val in attrs[AREA].items():
+            nc[AREA].setncattr(att_name,att_val)
+        #-- set grid mapping attribute
+        nc[AREA].setncattr('grid_mapping','Polar_Stereographic')
     #-- Defining attributes for variables
     for v in VARIABLES:
         #-- set variable attributes
@@ -239,11 +268,11 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
     #-- write MERRA-2 data file to gzipped file
     if GZIP:
         #-- copy bytes to file
-        with gzip.open(os.path.join(base_dir,output_file), 'wb') as f:
+        with gzip.open(os.path.join(DIRECTORY,output_file), 'wb') as f:
             f.write(nc_buffer)
 
     #-- change the permissions mode
-    os.chmod(os.path.join(base_dir,output_file), MODE)
+    os.chmod(os.path.join(DIRECTORY,output_file), MODE)
 
 #-- Main program that calls merra_hybrid_cumulative()
 def main():
