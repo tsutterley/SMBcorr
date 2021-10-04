@@ -1,15 +1,11 @@
 #!/usr/bin/env python
 u"""
-version.py (11/2023)
+version.py (04/2021)
 Gets version number of a package
 """
-import importlib.metadata
+from pkg_resources import get_distribution
 
-# package metadata
-metadata = importlib.metadata.metadata("SMBcorr")
 # get version
-version = metadata["version"]
+version = get_distribution("SMBcorr").version
 # append "v" before the version
 full_version = "v{0}".format(version)
-# get project name
-project_name = metadata["Name"]

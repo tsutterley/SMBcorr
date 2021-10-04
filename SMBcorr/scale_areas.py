@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 u"""
-scale_factors.py
-Written by Tyler Sutterley (12/2020)
+scale_areas.py
+Written by Tyler Sutterley (10/2021)
 Calculates area scaling factors for a polar stereographic projection
+    including special case of at the exact pole
 
 Scaling factor is defined as:
     scale = 1/k^2, where:
@@ -16,6 +17,9 @@ Scaling factor is defined as:
     tref is t at the reference latitude
 
     k = (mref/m)*(t/tref)
+
+For the special case of the pole:
+    kp = 1/2*mref*sqrt((1+ecc)^(1+ecc)*(1-ecc)^(1-ecc))/tref
 
 INPUTS:
     lat: input latitude array (degrees North)
@@ -34,13 +38,16 @@ REFERENCES:
     JPL Technical Memorandum 3349-85-101
 
 UPDATE HISTORY
+    Updated 10/2021: add pole case in stereographic area scale calculation
     Updated 12/2020: added function docstrings, updated comments for release
     Updated 06/2014: updated comments
     Written 06/2013
 """
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
 
-def scale_factors(lat, flat=1.0/298.257223563, reference_latitude=70.0):
+def scale_areas(lat, flat=1.0/298.257223563, ref=70.0):
     """
     Calculates area scaling factors for a polar stereographic projection
 
@@ -59,7 +66,7 @@ def scale_factors(lat, flat=1.0/298.257223563, reference_latitude=70.0):
     """
     #-- convert latitude from degrees to positive radians
     theta = np.abs(lat)*np.pi/180.0
-    theta_ref = np.abs(reference_latitude)*np.pi/180.0
+    theta_ref = np.abs(ref)*np.pi/180.0
     #-- square of the eccentricity of the ellipsoid
     #-- ecc2 = (1-b**2/a**2) = 2.0*flat - flat^2
     ecc2 = 2.0*flat - flat**2
@@ -73,7 +80,9 @@ def scale_factors(lat, flat=1.0/298.257223563, reference_latitude=70.0):
     mref = np.cos(theta_ref)/np.sqrt(1.0 - ecc2*np.sin(theta_ref)**2)
     tref = np.tan(np.pi/4.0 - theta_ref/2.0)/((1.0 - ecc*np.sin(theta_ref)) / \
         (1.0 + ecc*np.sin(theta_ref)))**(ecc/2.0)
-    #-- area scaling
+    #-- distance scaling
     k = (mref/m)*(t/tref)
-    scale = 1.0/(k**2)
+    kp = 0.5*mref*np.sqrt(((1.0+ecc)**(1.0+ecc))*((1.0-ecc)**(1.0-ecc)))/tref
+    #-- area scaling
+    scale = np.where(np.isclose(theta,np.pi/2.0),1.0/(kp**2),1.0/(k**2))
     return scale
