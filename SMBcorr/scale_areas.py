@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 u"""
 scale_areas.py
-Written by Tyler Sutterley (12/2020)
+Written by Tyler Sutterley (10/2021)
 Calculates area scaling factors for a polar stereographic projection
+    including special case of at the exact pole
 
 Scaling factor is defined as:
     scale = 1/k^2, where:
@@ -16,6 +17,9 @@ Scaling factor is defined as:
     tref is t at the reference latitude
 
     k = (mref/m)*(t/tref)
+
+For the special case of the pole:
+    kp = 1/2*mref*sqrt((1+ecc)^(1+ecc)*(1-ecc)^(1-ecc))/tref
 
 INPUTS:
     lat: input latitude array (degrees North)
@@ -34,11 +38,14 @@ REFERENCES:
     JPL Technical Memorandum 3349-85-101
 
 UPDATE HISTORY
+    Updated 10/2021: add pole case in stereographic area scale calculation
     Updated 12/2020: added function docstrings, updated comments for release
     Updated 06/2014: updated comments
     Written 06/2013
 """
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
 
 def scale_areas(lat, flat=1.0/298.257223563, ref=70.0):
     """
@@ -73,7 +80,9 @@ def scale_areas(lat, flat=1.0/298.257223563, ref=70.0):
     mref = np.cos(theta_ref)/np.sqrt(1.0 - ecc2*np.sin(theta_ref)**2)
     tref = np.tan(np.pi/4.0 - theta_ref/2.0)/((1.0 - ecc*np.sin(theta_ref)) / \
         (1.0 + ecc*np.sin(theta_ref)))**(ecc/2.0)
-    #-- area scaling
+    #-- distance scaling
     k = (mref/m)*(t/tref)
-    scale = 1.0/(k**2)
+    kp = 0.5*mref*np.sqrt(((1.0+ecc)**(1.0+ecc))*((1.0-ecc)**(1.0-ecc)))/tref
+    #-- area scaling
+    scale = np.where(np.isclose(theta,np.pi/2.0),1.0/(kp**2),1.0/(k**2))
     return scale

@@ -90,7 +90,13 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- suffix if compressed
     suffix = '.gz' if GZIP else ''
     #-- set the input netCDF4 file for the variable of interest
-    if VARIABLE in ('FAC','cum_smb_anomaly','SMB_a','height','h_a'):
+    if VARIABLE in ('FAC') and (VERSION == 'v0'):
+        args = ('FAC',REGION.lower(),suffix)
+        hybrid_file = 'gsfc_{0}_{1}.nc{2}'.format(*args)
+    if VARIABLE in ('p_minus_e','melt') and (VERSION == 'v0'):
+        args = (VARIABLE,REGION.lower(),suffix)
+        hybrid_file = 'm2_hybrid_{0}_cumul_{1}.nc{2}'.format(*args)
+    elif VARIABLE in ('FAC','cum_smb_anomaly','SMB_a','height','h_a'):
         args = (VERSION,REGION.lower(),suffix)
         hybrid_file = 'gsfc_fdm_{0}_{1}.nc{2}'.format(*args)
     elif VARIABLE in ('smb','SMB','Me','Ra','Ru','Sn-Ev'):
@@ -99,12 +105,6 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     elif VARIABLE in ('Me_a','Ra_a','Ru_a','Sn-Ev_a'):
         args = (VERSION,REGION.lower(),suffix)
         hybrid_file = 'gsfc_fdm_smb_cumul_{0}_{1}.nc{2}'.format(*args)
-    elif VARIABLE in ('FAC') and (VERSION == 'v0'):
-        args = ('FAC',REGION.lower(),suffix)
-        hybrid_file = 'gsfc_{0}_{1}.nc{2}'.format(*args)
-    elif VARIABLE in ('p_minus_e','melt') and (VERSION == 'v0'):
-        args = (VARIABLE,REGION.lower(),suffix)
-        hybrid_file = 'm2_hybrid_{0}_cumul_{1}.nc{2}'.format(*args)
 
     #-- Open the MERRA-2 Hybrid NetCDF file for reading
     if GZIP:
