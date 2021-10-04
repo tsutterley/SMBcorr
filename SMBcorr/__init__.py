@@ -1,5 +1,6 @@
 import SMBcorr.time
 import SMBcorr.utilities
+import SMBcorr.version
 from SMBcorr.regress_model import regress_model
 from SMBcorr.scale_areas import scale_areas
 # MAR
@@ -28,3 +29,5 @@ from SMBcorr.racmo_interp_daily import interpolate_racmo_daily
 from SMBcorr.racmo_interp_downscaled import interpolate_racmo_downscaled
 from SMBcorr.racmo_interp_firn_height import interpolate_racmo_firn
 from SMBcorr.racmo_interp_mean import interpolate_racmo_mean
+# get version number
+__version__ = SMBcorr.version.version
