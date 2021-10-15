@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 u"""
-merra_smb_cumulative.py
+merra_smb_mean.py
 Written by Tyler Sutterley (10/2021)
-Reads MERRA-2 datafiles to calculate monthly cumulative anomalies
-    in derived surface mass balance products
+Reads monthly MERRA-2 datafiles to calculate multi-annual means
+    of derived surface mass balance products
 
 From tavgM_2d_int (Vertically Integrated Diagnostics) collection:
     PRECCU (convective rain)
@@ -17,7 +17,7 @@ INPUTS:
     SMB: Surface Mass Balance
     ACCUM: Snowfall accumulation
     PRECIP: Total Precipitation
-    RAINFALL: Total Rainfall
+    RAIN: Total Rainfall
     SUBLIM: Evaporation and Sublimation
     RUNOFF: Meltwater Runoff
 
@@ -105,8 +105,8 @@ def read_merra_variables(merra_flux_file, merra_ice_surface_file):
             dinput[key].mask = (dinput[key].data == dinput[key].fill_value)
     return dinput
 
-#-- PURPOSE: read monthly MERRA-2 datasets to calculate cumulative anomalies
-def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
+#-- PURPOSE: read monthly MERRA-2 datasets to calculate multi-annual means
+def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     VERBOSE=False, MODE=0o775):
 
     #-- create logger for verbosity level
@@ -116,12 +116,6 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     #-- MERRA-2 product subdirectories
     P1 = 'M2TMNXINT.5.12.4'
     P2 = 'M2TMNXGLC.5.12.4'
-    #-- MERRA-2 output cumulative subdirectory
-    cumul_sub = '{0}.5.12.4.CUMUL.{1:d}.{2:d}'.format(PRODUCT,*RANGE)
-    #-- make cumulative subdirectory
-    if not os.access(os.path.join(DIRECTORY,cumul_sub), os.F_OK):
-        os.mkdir(os.path.join(DIRECTORY,cumul_sub), MODE)
-
     #-- regular expression operator to find datafiles (and not the xml files)
     regex_pattern = 'MERRA2_(\d+).{0}.(\d{{4}})(\d{{2}}).nc4(?!.xml)'
     #-- sign for each product to calculate total SMB
@@ -150,45 +144,24 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     fill_value = -9999.0
     #-- output dimensions and extents
     nlat,nlon = (361,576)
-    extent = [-180.0,179.375,-90.0,90.0]
-    #-- grid spacing
-    dlon,dlat = (0.625,0.5)
 
-    #-- read mean data from merra_smb_mean.py
-    args=(PRODUCT, RANGE[0], RANGE[1], suffix[DATAFORM])
-    mean_file='MERRA2.tavgM_2d_{0}_mean_Nx.{1:4d}-{2:4d}.{3}'.format(*args)
-    if (DATAFORM == 'ascii'):
-        #-- ascii (.txt)
-        merra_mean = SMBcorr.spatial(spacing=[dlon,dlat],
-            nlat=nlat, nlon=nlon, extent=extent).from_ascii(
-            os.path.join(DIRECTORY,mean_file),date=False)
-    elif (DATAFORM == 'netCDF4'):
-        #-- netcdf (.nc)
-        merra_mean = SMBcorr.spatial().from_netCDF4(
-            os.path.join(DIRECTORY,mean_file),date=False,varname=PRODUCT)
-    elif (DATAFORM == 'HDF5'):
-        #-- HDF5 (.H5)
-        merra_mean = SMBcorr.spatial().from_HDF5(
-            os.path.join(DIRECTORY,mean_file),date=False,varname=PRODUCT)
-
-    #-- find years of available data
-    YEARS = sorted([d for d in os.listdir(os.path.join(DIRECTORY,P1))
-        if re.match('\d{4}',d)])
-    #-- check that are years are available
-    CHECK = [str(Y) in YEARS for Y in range(int(YEARS[0]),int(YEARS[-1])+1)]
+    #-- years of available data between RANGE
+    YEARS = sorted(map(str,range(int(RANGE[0]),int(RANGE[-1])+1)))
+    #-- check that are years for RANGE are available
+    CHECK = [Y in os.listdir(os.path.join(DIRECTORY,P1)) for Y in YEARS]
     if not np.all(CHECK):
         raise Exception('Not all years available on file system')
     #-- compile regular expression operator for flux product
     rx = re.compile(regex_pattern.format('tavgM_2d_int_Nx'), re.VERBOSE)
 
-    #-- monthly cumulative anomalies
-    #-- cumulative mass anomalies calculated by removing mean balance flux
-    cumul = SMBcorr.spatial(nlat=nlat,nlon=nlon,fill_value=fill_value)
-    cumul.lat = np.copy(merra_mean.lat)
-    cumul.lon = np.copy(merra_mean.lon)
+    #-- mean balance flux
+    merra_mean = SMBcorr.spatial(nlat=nlat,nlon=nlon,
+        fill_value=fill_value)
     #-- output data and mask
-    cumul.data = np.zeros((nlat,nlon))
-    cumul.mask = np.copy(merra_mean.mask)
+    merra_mean.data = np.zeros((nlat,nlon))
+    merra_mean.mask = np.zeros((nlat,nlon),dtype=bool)
+    merra_mean.time = 0.0
+    count = 0.0
     #-- for each input file
     for Y in YEARS:
         #-- find input files for PRODUCT
@@ -262,46 +235,58 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
                 for p in ['RUNOFF']:
                     tmp = var[p][indy,indx]*seconds
                     dinput.data[indy,indx] += tmp
-            #-- update masks
+            #-- update mask
             dinput.update_mask()
-            #-- subtract mean and add to cumulative anomalies
-            cumul.data += dinput.data - merra_mean.data
-            cumul.mask |= dinput.mask
-            cumul.time = np.copy(dinput.time)
-            cumul.update_mask()
-            #-- output MERRA-2 cumulative data file
-            args = (MOD,PRODUCT,Y1,M1,suffix[DATAFORM])
-            FILE = 'MERRA2_{0}.tavgM_2d_{1}_cumul_Nx.{2}{3}.{4}'.format(*args)
-            if (DATAFORM == 'ascii'):
-                #-- ascii (.txt)
-                cumul.to_ascii(os.path.join(DIRECTORY,cumul_sub,FILE),
-                    verbose=VERBOSE)
-            elif (DATAFORM == 'netCDF4'):
-                #-- netcdf (.nc)
-                cumul.to_netCDF4(os.path.join(DIRECTORY,cumul_sub,FILE),
-                    varname=PRODUCT, UNITS='mm w.e.',
-                    LONGNAME='Equivalent_Water_Thickness',
-                    TITLE=merra_products[PRODUCT],
-                    REFERENCE=merra_reference,
-                    verbose=VERBOSE)
-            elif (DATAFORM == 'HDF5'):
-                #-- HDF5 (.H5)
-                cumul.to_HDF5(os.path.join(DIRECTORY,cumul_sub,FILE),
-                    varname=PRODUCT, UNITS='mm w.e.',
-                    LONGNAME='Equivalent_Water_Thickness',
-                    TITLE=merra_products[PRODUCT],
-                    REFERENCE=merra_reference,
-                    verbose=VERBOSE)
-            #-- change the permissions mode
-            os.chmod(os.path.join(DIRECTORY,cumul_sub,FILE), MODE)
+            #-- add monthly fluxes to total
+            merra_mean.data += dinput.data
+            merra_mean.mask |= dinput.mask
+            merra_mean.time += dinput.time
+            merra_mean.lat = np.copy(dinput.lat)
+            merra_mean.lon = np.copy(dinput.lon)
+            #-- add to count
+            count += 1.0
 
-#-- Main program that calls merra_smb_cumulative()
+    #-- convert from totals to means
+    indy,indx = np.nonzero(np.logical_not(merra_mean.mask))
+    merra_mean.data[indy,indx] /= count
+    merra_mean.update_mask()
+    merra_mean.time /= count
+
+    #-- output MERRA-2 mean data file
+    args = (PRODUCT, RANGE[0], RANGE[1], suffix[DATAFORM])
+    FILE = 'MERRA2.tavgM_2d_{0}_mean_Nx.{1:4d}-{2:4d}.{3}'.format(*args)
+    if (DATAFORM == 'ascii'):
+        #-- ascii (.txt)
+        merra_mean.to_ascii(os.path.join(DIRECTORY,FILE),
+            verbose=VERBOSE)
+    elif (DATAFORM == 'netCDF4'):
+        #-- netcdf (.nc)
+        merra_mean.to_netCDF4(os.path.join(DIRECTORY,FILE),
+            varname=PRODUCT,
+            UNITS='mm w.e.',
+            LONGNAME='Equivalent_Water_Thickness',
+            TITLE=merra_products[PRODUCT],
+            REFERENCE=merra_reference,
+            verbose=VERBOSE)
+    elif (DATAFORM == 'HDF5'):
+        #-- HDF5 (.H5)
+        merra_mean.to_HDF5(os.path.join(DIRECTORY,FILE),
+            varname=PRODUCT,
+            UNITS='mm w.e.',
+            LONGNAME='Equivalent_Water_Thickness',
+            TITLE=merra_products[PRODUCT],
+            REFERENCE=merra_reference,
+            verbose=VERBOSE)
+    #-- change the permissions mode
+    os.chmod(os.path.join(DIRECTORY,FILE), MODE)
+
+#-- Main program that calls merra_smb_mean()
 def main():
     #-- Read the system arguments listed after the program
     parser = argparse.ArgumentParser(
-        description="""Reads MERRA-2 datafiles to calculate
-            monthly cumulative anomalies in derived surface
-            mass balance products
+        description="""Reads monthly MERRA-2 datafiles to calculate
+            calculate multi-annual means of derived surface mass
+            balance products
             """
     )
     #-- command line parameters
@@ -335,7 +320,7 @@ def main():
 
     #-- run program for each input product
     for PRODUCT in args.product:
-        merra_smb_cumulative(args.directory, PRODUCT, RANGE=args.mean,
+        merra_smb_mean(args.directory, PRODUCT, RANGE=args.mean,
             DATAFORM=args.format, VERBOSE=args.verbose, MODE=args.mode)
 
 #-- run main program

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 time.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (05/2021)
 Utilities for calculating time operations
 
 PYTHON DEPENDENCIES:
@@ -14,6 +14,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2021: define int/float precision to prevent deprecation warning
+    Updated 02/2021: added adjust_months function to fix special months cases
     Updated 01/2021: added ftp connection checks
         add date parser for cases when only a calendar date with no units
     Updated 12/2020: merged with convert_julian and convert_calendar_decimal
@@ -108,8 +110,8 @@ def calendar_days(year):
     """
     #-- days per month in a leap and a standard year
     #-- only difference is February (29 vs. 28)
-    dpm_leap = np.array([31,29,31,30,31,30,31,31,30,31,30,31],dtype=np.float)
-    dpm_stnd = np.array([31,28,31,30,31,30,31,31,30,31,30,31],dtype=np.float)
+    dpm_leap = np.array([31,29,31,30,31,30,31,31,30,31,30,31],dtype=np.float64)
+    dpm_stnd = np.array([31,28,31,30,31,30,31,31,30,31,30,31],dtype=np.float64)
     #-- Rules in the Gregorian calendar for a year to be a leap year:
     #-- divisible by 4, but not by 100 unless divisible by 400
     #-- True length of the year is about 365.2422 days
@@ -182,8 +184,8 @@ def convert_calendar_dates(year, month, day, hour=0.0, minute=0.0, second=0.0,
     epoch1 = datetime.datetime(1858,11,17,0,0,0)
     epoch2 = datetime.datetime(*epoch)
     delta_time_epochs = (epoch2 - epoch1).total_seconds()
-    #-- return the date in days since epoch
-    return scale*np.array(MJD - delta_time_epochs/86400.0,dtype=np.float)
+    #-- return the date in days since epoch (or scaled to units)
+    return scale*np.array(MJD - delta_time_epochs/86400.0,dtype=np.float64)
 
 #-- PURPOSE: Converts from calendar dates into decimal years
 def convert_calendar_decimal(year, month, day=None, hour=None, minute=None,
@@ -236,8 +238,8 @@ def convert_calendar_decimal(year, month, day=None, hour=None, minute=None,
 
     #-- days per month in a leap and a standard year
     #-- only difference is February (29 vs. 28)
-    dpm_leap=np.array([31,29,31,30,31,30,31,31,30,31,30,31], dtype=np.float)
-    dpm_stnd=np.array([31,28,31,30,31,30,31,31,30,31,30,31], dtype=np.float)
+    dpm_leap=np.array([31,29,31,30,31,30,31,31,30,31,30,31], dtype=np.float64)
+    dpm_stnd=np.array([31,28,31,30,31,30,31,31,30,31,30,31], dtype=np.float64)
 
     #-- Rules in the Gregorian calendar for a year to be a leap year:
     #-- divisible by 4, but not by 100 unless divisible by 400
@@ -263,7 +265,7 @@ def convert_calendar_decimal(year, month, day=None, hour=None, minute=None,
         #-- use calendar month and day of the month to calculate day of the year
         #-- month minus 1: January = 0, February = 1, etc (indice of month)
         #-- in decimal form: January = 0.0
-        month_m1 = np.array(cal_date['month'],dtype=np.int) - 1
+        month_m1 = np.array(cal_date['month'],dtype=np.int64) - 1
 
         #-- day of month
         if day is not None:
