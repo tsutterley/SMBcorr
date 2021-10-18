@@ -44,6 +44,7 @@ import os
 import re
 import h5py
 import pyproj
+import logging
 import argparse
 import datetime
 import numpy as np
@@ -115,8 +116,12 @@ def convert_delta_time(delta_time, gps_epoch=1198800018.0):
 def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
     GZIP=False, VERBOSE=False, MODE=0o775):
 
+    #-- create logger for verbosity level
+    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # read data from input file
-    print('{0} -->'.format(os.path.basename(FILE))) if VERBOSE else None
+    logging.info('{0} -->'.format(os.path.basename(FILE)))
     # Open the HDF5 file for reading
     fileID = h5py.File(FILE, 'r')
     # output data directory
@@ -672,7 +677,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
     args = (PRD,model_version,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
     # print file information
-    print('\t{0}'.format(file_format.format(*args))) if VERBOSE else None
+    logging.info('\t{0}'.format(file_format.format(*args)))
     HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_corr_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE), CROSSOVERS=CROSSOVERS,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,

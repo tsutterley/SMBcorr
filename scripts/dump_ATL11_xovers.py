@@ -6,29 +6,33 @@ Created on Wed May 20 16:37:19 2020
 @author: ben
 """
 
-import pointCollection as pc
 import glob
+import logging
 import numpy as np
+import pointCollection as pc
 thedir='/Volumes/ice2/ben/scf/GL_11/007'
+
+# create logger for verbosity level
+logging.basicConfig(level=logging.INFO)
 
 files=glob.glob(thedir+'/ATL11*.h5')
 D_list=[None for ii in range(3*len(files))]
 D_count=0
 for file in files:
     if np.mod(files.index(file), 100)==0:
-        print(files.index(file))
+        logging.info(files.index(file))
     for pair in [1, 2, 3]:
         try:
             D_list[D_count]=\
                           pc.ATL11.crossover_data(pair=pair).from_h5(file)
             D_count += 1
         except KeyError:
-            print(f"error reading {file},  pair {pair}")
+            logging.info(f"error reading {file},  pair {pair}")
 
 N_cols=D_list[0].shape[1]
 D=pc.data(columns=N_cols).from_list(D_list[0:D_count])
 D.get_xy(EPSG=3413)
-print("Dumping dh to file")
+logging.info("Dumping dh to file")
 D.to_h5(thedir+'/../007_crossover_data_v1.h5')
 
 

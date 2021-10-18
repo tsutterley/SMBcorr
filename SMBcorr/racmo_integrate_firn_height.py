@@ -1,17 +1,20 @@
 #!/usr/bin/env python
 u"""
 racmo_integrate_firn_height.py
-Written by Tyler Sutterley (10/2019)
+Written by Tyler Sutterley (10/2021)
 Integrate RACMO firn heights for each Promice ice class
 
 CALLING SEQUENCE:
-    python racmo_integrate_firn_height.py --directory=<path> --smb=FGRN055
+    python racmo_integrate_firn_height.py --directory <path> FGRN055
 
-COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working data directory
-    -S X, --smb=X: Firn model outputs to interpolate
+INPUTS:
+    model: Firn model outputs to interpolate
         FGRN055: 1km interpolated Greenland RACMO2.3p2
         FGRN11: 11km Greenland RACMO2.3p2
+
+COMMAND LINE OPTIONS:
+    -D X, --directory X: Working data directory
+    -O, --output: Output integrated results to file
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -26,6 +29,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 10/2021: using argparse to set command line parameters
     Written 10/2019
 """
 from __future__ import print_function
@@ -33,8 +37,8 @@ from __future__ import print_function
 import sys
 import os
 import re
-import getopt
 import netCDF4
+import argparse
 import numpy as np
 import scipy.interpolate
 from SMBcorr.regress_model import regress_model
@@ -189,37 +193,33 @@ def rotate_coordinates(lon, lat, rot_lon, rot_lat):
     #-- return the rotated coordinates
     return (Xr,Yr)
 
-#-- PURPOSE: help module to describe the optional input parameters
-def usage():
-    print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
-    print(' -D X, --directory=X\tWorking data directory')
-    print(' -S X, --smb=X\t\tSMB model to interpolate')
-    print('\tFGRN055: 1km interpolated Greenland RACMO2.3p2')
-    print('\tFGRN11: 11km Greenland RACMO2.3p2\n')
-
 #-- Main program that calls racmo_integrate_firn_height()
 def main():
     #-- Read the system arguments listed after the program
-    long_options = ['help','directory=','smb=']
-    optlist,arglist = getopt.getopt(sys.argv[1:], 'hD:S:', long_options)
-
-    #-- data directory
-    base_dir = os.getcwd()
-    #-- SMB model to interpolate (RACMO or MAR)
-    MODEL = 'FGRN055'
-    #-- extract parameters
-    for opt, arg in optlist:
-        if opt in ('-h','--help'):
-            usage()
-            sys.exit()
-        elif opt in ("-D","--directory"):
-            base_dir = os.path.expanduser(arg)
-        elif opt in ("-S","--smb"):
-            MODEL = arg
+    parser = argparse.ArgumentParser(
+        description="""Integrate RACMO firn heights for each Promice
+            ice class
+            """
+    )
+    #-- working data directory
+    parser.add_argument('model',
+        type=str, choices=('FGRN055','FGRN11'),
+        help='Firn model outputs to interpolate')
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
+    #-- output integrated results to file
+    parser.add_argument('--output','-O',
+        default=False, action='store_true',
+        help='Output integrated results to file')
+    args,_ = parser.parse_known_args()
 
     #-- read and integrate RACMO2.3 firn corrections
-    zs,tzs = racmo_integrate_firn_height(base_dir, MODEL, VARIABLE='zs')
-    air,tair = racmo_integrate_firn_height(base_dir, MODEL, VARIABLE='FirnAir')
+    zs,tzs = racmo_integrate_firn_height(args.directory,
+        args.model, VARIABLE='zs', OUTPUT=args.output)
+    air,tair = racmo_integrate_firn_height(args.directory,
+        args.model, VARIABLE='FirnAir', OUTPUT=args.output)
 
 #-- run main program
 if __name__ == '__main__':

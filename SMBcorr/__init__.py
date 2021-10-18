@@ -1,3 +1,4 @@
+import SMBcorr.spatial
 import SMBcorr.time
 import SMBcorr.utilities
 import SMBcorr.version

@@ -12,8 +12,12 @@ import ATL11
 #from PointDatabase import mapData, point_data
 import pointCollection as pc
 import numpy as np
+import logging
 import h5py
 import time
+
+# create logger for verbosity level
+logging.basicConfig(level=logging.INFO)
 
 cycles=[3, 4, 5, 6, 7]
 n_skip=4
@@ -27,7 +31,7 @@ if True:
     xydh=[None]* (3*len(files))
     for count, file in enumerate(files):
         if np.mod(count, 50)==0:
-            print(f'{count} out of {len(files)}, dt={time.time()-t0}')
+            logging.info(f'{count} out of {len(files)}, dt={time.time()-t0}')
             t0=time.time()
         for pair in [1, 2, 3]:
             filePair=(file, pair)
@@ -36,8 +40,8 @@ if True:
                 D11 = pc.ATL11.data().from_h5(file, pair=pair)
 
             except Exception as e:
-                #print(file)
-                #print(e)
+                #logging.info(file)
+                #logging.info(e)
                 continue
 
 
@@ -53,7 +57,7 @@ if True:
                 data_count += 1
 
             #except:
-            #    print("problem with "+file)
+            #    logging.info("problem with "+file)
 
     D=pc.data(columns=D11.shape[1]).from_list(xydh)
 
@@ -84,9 +88,9 @@ if False:
     fig.tight_layout()
     fig.colorbar(hl, ax=hax, location='bottom', shrink=0.25)
 if False:
-    plt.figure(1); xy0=plt.ginput()[0]; 
+    plt.figure(1); xy0=plt.ginput()[0];
     ATL11_file=files[xydh.file_ind[np.argmin(np.abs(xydh.x+1j*xydh.y - (xy0[0]+1j*xy0[1])))].astype(int)]
-    plt.figure(); 
+    plt.figure();
     #ATL11_multi_plot(ATL11_file, hemisphere=1)
-    
-    
+
+
