@@ -1,1669 +1,1268 @@
 #!/usr/bin/env python
 u"""
 spatial.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (10/2021)
 
-Utilities for reading, writing and operating on spatial data
+Data class for reading, writing and processing spatial data
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
         https://numpy.org
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
+    dateutil: powerful extensions to datetime
+        https://dateutil.readthedocs.io/en/stable/
     netCDF4: Python interface to the netCDF C library
         https://unidata.github.io/netcdf4-python/netCDF4/index.html
-    h5py: Pythonic interface to the HDF5 binary data format
+    h5py: Pythonic interface to the HDF5 binary data format.
         https://www.h5py.org/
-    gdal: Pythonic interface to the Geospatial Data Abstraction Library (GDAL)
-        https://pypi.python.org/pypi/GDAL
-    PyYAML: YAML parser and emitter for Python
-        https://github.com/yaml/pyyaml
 
 PROGRAM DEPENDENCIES:
-    constants.py: calculate reference parameters for common ellipsoids
+    time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
-    Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
-    Updated 08/2023: remove possible crs variables from output fields list
-        place PyYAML behind try/except statement to reduce build size
-    Updated 05/2023: use datetime parser within SMBcorr.time module
-    Updated 04/2023: copy inputs in cartesian to not modify original arrays
-        added iterative methods for converting from cartesian to geodetic
-        allow netCDF4 and HDF5 outputs to be appended to existing files
-        using pathlib to define and expand paths
-    Updated 03/2023: add basic variable typing to function inputs
-    Updated 02/2023: use outputs from constants class for WGS84 parameters
-        include more possible dimension names for gridded and drift outputs
-    Updated 01/2023: added default field mapping for reading from netCDF4/HDF5
-        split netCDF4 output into separate functions for grid and drift types
-    Updated 12/2022: add software information to output HDF5 and netCDF4
-    Updated 11/2022: place some imports within try/except statements
-        added encoding for writing ascii files
-        use f-strings for formatting verbose or ascii output
-    Updated 10/2022: added datetime parser for ascii time columns
-    Updated 06/2022: added field_mapping options to netCDF4 and HDF5 reads
-        added from_file wrapper function to read from particular formats
-    Updated 04/2022: add option to reduce input GDAL raster datasets
-        updated docstrings to numpy documentation format
-        use gzip virtual filesystem for reading compressed geotiffs
-        include utf-8 encoding in reads to be windows compliant
-    Updated 03/2022: add option to specify output GDAL driver
-    Updated 01/2022: use iteration breaks in convert ellipsoid function
-        remove fill_value attribute after creating netCDF4 and HDF5 variables
-    Updated 11/2021: added empty cases to netCDF4 and HDF5 output for crs
-        try to get grid mapping attributes from netCDF4 and HDF5
-    Updated 10/2021: add pole case in stereographic area scale calculation
-        using python logging for handling verbose output
-    Updated 09/2021: can calculate height differences between ellipsoids
-    Updated 07/2021: added function for determining input variable type
-    Updated 03/2021: added polar stereographic area scale calculation
-        add routines for converting to and from cartesian coordinates
-        replaced numpy bool/int to prevent deprecation warnings
-    Updated 01/2021: add streaming from bytes for ascii, netCDF4, HDF5, geotiff
-        set default time for geotiff files to 0
-    Updated 12/2020: added module for converting ellipsoids
-    Updated 11/2020: output data as masked arrays if containing fill values
-        add functions to read from and write to geotiff image formats
-    Written 09/2020
+    Written 10/2021
 """
-from __future__ import annotations
-
+import os
 import re
 import io
 import copy
 import gzip
+import h5py
+import time
 import uuid
 import logging
-import pathlib
-import datetime
+import zipfile
+import netCDF4
 import numpy as np
-import SMBcorr.time
-from SMBcorr.constants import constants
-import SMBcorr.version
-# attempt imports
-try:
-    import osgeo.gdal, osgeo.osr, osgeo.gdalconst
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("GDAL not available")
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("h5py not available")
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("netCDF4 not available")
-try:
-    import yaml
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("PyYAML not available")
 
-def case_insensitive_filename(filename: str | pathlib.Path):
+class spatial(object):
     """
-    Searches a directory for a filename without case dependence
-
-    Parameters
-    ----------
-    filename: str
-        input filename
+    Data class for reading, writing and processing spatial data
     """
-    # check if file presently exists with input case
-    filename = pathlib.Path(filename).expanduser().absolute()
-    if not filename.exists():
-        # search for filename without case dependence
-        f = [f.name for f in filename.parent.iterdir() if
-            re.match(filename.name, f.name, re.I)]
-        # raise error if no file found
-        if not f:
-            raise FileNotFoundError(str(filename))
-        filename = filename.with_name(f.pop())
-    # return the matched filename
-    return filename
+    np.seterr(invalid='ignore')
+    def __init__(self, **kwargs):
+        #-- set default keyword arguments
+        kwargs.setdefault('spacing',[None,None])
+        kwargs.setdefault('nlat',None)
+        kwargs.setdefault('nlon',None)
+        kwargs.setdefault('extent',[None]*4)
+        kwargs.setdefault('fill_value',None)
+        #-- set default class attributes
+        self.data=None
+        self.mask=None
+        self.lon=None
+        self.lat=None
+        self.time=None
+        self.fill_value=kwargs['fill_value']
+        self.attributes=dict()
+        self.extent=kwargs['extent']
+        self.spacing=kwargs['spacing']
+        self.shape=[kwargs['nlat'],kwargs['nlon'],None]
+        self.ndim=None
+        self.filename=None
 
-def data_type(x: np.ndarray, y: np.ndarray, t: np.ndarray) -> str:
+    def case_insensitive_filename(self,filename):
+        """
+        Searches a directory for a filename without case dependence
+        """
+        #-- check if filename is open file object
+        if isinstance(filename, io.IOBase):
+            self.filename = copy.copy(filename)
+        else:
+            #-- tilde-expand input filename
+            self.filename = os.path.expanduser(filename)
+            #-- check if file presently exists with input case
+            if not os.access(self.filename,os.F_OK):
+                #-- search for filename without case dependence
+                basename = os.path.basename(filename)
+                directory = os.path.dirname(os.path.expanduser(filename))
+                f = [f for f in os.listdir(directory) if re.match(basename,f,re.I)]
+                if not f:
+                    errmsg = '{0} not found in file system'.format(filename)
+                    raise FileNotFoundError(errmsg)
+                self.filename = os.path.join(directory,f.pop())
+        return self
+
+    def from_ascii(self, filename, date=True, **kwargs):
+        """
+        Read a spatial object from an ascii file
+        Inputs: full path of input ascii file
+        Options:
+            ascii file contains date information
+            keyword arguments for ascii input
+        """
+        #-- set filename
+        self.case_insensitive_filename(filename)
+        #-- set default parameters
+        kwargs.setdefault('verbose',False)
+        kwargs.setdefault('compression',None)
+        kwargs.setdefault('columns',['lon','lat','data','time'])
+        kwargs.setdefault('header',0)
+        #-- open the ascii file and extract contents
+        logging.info(self.filename)
+        if (kwargs['compression'] == 'gzip'):
+            #-- read input ascii data from gzip compressed file and split lines
+            with gzip.open(self.filename,'r') as f:
+                file_contents = f.read().decode('ISO-8859-1').splitlines()
+        elif (kwargs['compression'] == 'zip'):
+            #-- read input ascii data from zipped file and split lines
+            base,_ = os.path.splitext(self.filename)
+            with zipfile.ZipFile(self.filename) as z:
+                file_contents = z.read(base).decode('ISO-8859-1').splitlines()
+        elif (kwargs['compression'] == 'bytes'):
+            #-- read input file object and split lines
+            file_contents = self.filename.read().splitlines()
+        else:
+            #-- read input ascii file (.txt, .asc) and split lines
+            with open(self.filename,'r') as f:
+                file_contents = f.read().splitlines()
+        #-- compile regular expression operator for extracting numerical values
+        #-- from input ascii files of spatial data
+        regex_pattern = r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[EeD][+-]?\d+)?'
+        rx = re.compile(regex_pattern, re.VERBOSE)
+        #-- output spatial dimensions
+        if (None not in self.extent):
+            self.lat = np.linspace(self.extent[3],self.extent[2],self.shape[0])
+            self.lon = np.linspace(self.extent[0],self.extent[1],self.shape[1])
+        else:
+            self.lat = np.zeros((self.shape[0]))
+            self.lon = np.zeros((self.shape[1]))
+        #-- output spatial data
+        self.data = np.zeros((self.shape[0],self.shape[1]))
+        self.mask = np.zeros((self.shape[0],self.shape[1]),dtype=bool)
+        #-- remove time from list of column names if not date
+        columns = [c for c in kwargs['columns'] if (c != 'time')]
+        #-- extract spatial data array and convert to matrix
+        #-- for each line in the file
+        header = kwargs['header']
+        for line in file_contents[header:]:
+            #-- extract columns of interest and assign to dict
+            #-- convert fortran exponentials if applicable
+            d = {c:r.replace('D','E') for c,r in zip(columns,rx.findall(line))}
+            #-- convert line coordinates to integers
+            ilon = np.int64(np.float64(d['lon'])/self.spacing[0])
+            ilat = np.int64((90.0-np.float64(d['lat']))//self.spacing[1])
+            self.data[ilat,ilon] = np.float64(d['data'])
+            self.mask[ilat,ilon] = False
+            self.lon[ilon] = np.float64(d['lon'])
+            self.lat[ilat] = np.float64(d['lat'])
+            #-- if the ascii file contains date variables
+            if date:
+                self.time = np.array(d['time'],dtype='f')
+        #-- get spacing and dimensions
+        self.update_spacing()
+        self.update_extents()
+        self.update_dimensions()
+        self.update_mask()
+        return self
+
+    def from_netCDF4(self, filename, **kwargs):
+        """
+        Read a spatial object from a netCDF4 file
+        Inputs: full path of input netCDF4 file
+        Options:
+            netCDF4 file contains date information
+            keyword arguments for netCDF4 reader
+        """
+        #-- set filename
+        self.case_insensitive_filename(filename)
+        #-- set default parameters
+        kwargs.setdefault('date',True)
+        kwargs.setdefault('verbose',False)
+        kwargs.setdefault('compression',None)
+        kwargs.setdefault('varname','z')
+        kwargs.setdefault('lonname','lon')
+        kwargs.setdefault('latname','lat')
+        kwargs.setdefault('timename','time')
+        #-- read data from netCDF5 file
+        data = ncdf_read(self.filename, **kwargs)
+        #-- copy variables to spatial object
+        self.data = data['data'].copy()
+        if '_FillValue' in data['attributes']['data'].keys():
+            self.fill_value = data['attributes']['data']['_FillValue']
+        self.mask = np.zeros(self.data.shape, dtype=bool)
+        self.lon = data['lon'].copy()
+        self.lat = data['lat'].copy()
+        #-- if the netCDF4 file contains date variables
+        if kwargs['date']:
+            self.time = data['time'].copy()
+        #-- update attributes
+        self.attributes.update(data['attributes'])
+        #-- get spacing and dimensions
+        self.update_spacing()
+        self.update_extents()
+        self.update_dimensions()
+        self.update_mask()
+        return self
+
+    def from_HDF5(self, filename, **kwargs):
+        """
+        Read a spatial object from a HDF5 file
+        Inputs: full path of input HDF5 file
+        Options:
+            keyword arguments for HDF5 reader
+        """
+        #-- set filename
+        self.case_insensitive_filename(filename)
+        #-- set default parameters
+        kwargs.setdefault('date',True)
+        kwargs.setdefault('verbose',False)
+        kwargs.setdefault('compression',None)
+        kwargs.setdefault('varname','z')
+        kwargs.setdefault('lonname','lon')
+        kwargs.setdefault('latname','lat')
+        kwargs.setdefault('timename','time')
+        #-- read data from HDF5 file
+        data = hdf5_read(self.filename, **kwargs)
+        #-- copy variables to spatial object
+        self.data = data['data'].copy()
+        if '_FillValue' in data['attributes']['data'].keys():
+            self.fill_value = data['attributes']['_FillValue']
+        self.mask = np.zeros(self.data.shape, dtype=bool)
+        self.lon = data['lon'].copy()
+        self.lat = data['lat'].copy()
+        #-- if the HDF5 file contains date variables
+        if kwargs['date']:
+            self.time = data['time'].copy()
+        #-- update attributes
+        self.attributes.update(data['attributes'])
+        #-- get spacing and dimensions
+        self.update_spacing()
+        self.update_extents()
+        self.update_dimensions()
+        self.update_mask()
+        return self
+
+    def from_file(self, filename, format=None, **kwargs):
+        """
+        Read a spatial object from a specified format
+        Inputs: full path of input file
+        Options:
+        file format (ascii, netCDF4, HDF5)
+        file contains date information
+        **kwargs: keyword arguments for input readers
+        """
+        #-- set filename
+        self.case_insensitive_filename(filename)
+        #-- set default verbosity
+        kwargs.setdefault('verbose',False)
+        #-- read from file
+        if (format == 'ascii'):
+            #-- ascii (.txt)
+            return spatial().from_ascii(filename, **kwargs)
+        elif (format == 'netCDF4'):
+            #-- netcdf (.nc)
+            return spatial().from_netCDF4(filename, **kwargs)
+        elif (format == 'HDF5'):
+            #-- HDF5 (.H5)
+            return spatial().from_HDF5(filename, **kwargs)
+
+    def from_list(self, object_list, **kwargs):
+        """
+        Build a sorted spatial object from a list of other spatial objects
+        Inputs: list of spatial object to be merged
+        Options:
+            spatial objects contain date information
+            sort spatial objects by date information
+            clear the spatial list from memory
+        """
+        #-- set default keyword arguments
+        kwargs.setdefault('date',True)
+        kwargs.setdefault('sort',True)
+        kwargs.setdefault('clear',False)
+        #-- number of spatial objects in list
+        n = len(object_list)
+        #-- indices to sort data objects if spatial list contain dates
+        if kwargs['date'] and kwargs['sort']:
+            list_sort = np.argsort([d.time for d in object_list],axis=None)
+        else:
+            list_sort = np.arange(n)
+        #-- extract dimensions and grid spacing
+        self.spacing = object_list[0].spacing
+        self.extent = object_list[0].extent
+        self.shape = object_list[0].shape
+        #-- create output spatial grid and mask
+        self.data = np.zeros((self.shape[0],self.shape[1],n))
+        self.mask = np.zeros((self.shape[0],self.shape[1],n),dtype=bool)
+        self.fill_value = object_list[0].fill_value
+        self.lon = object_list[0].lon.copy()
+        self.lat = object_list[0].lat.copy()
+        #-- create list of files and attributes
+        self.filename = []
+        self.attributes = []
+        #-- output dates
+        if kwargs['date']:
+            self.time = np.zeros((n))
+        #-- for each indice
+        for t,i in enumerate(list_sort):
+            self.data[:,:,t] = object_list[i].data[:,:].copy()
+            self.mask[:,:,t] |= object_list[i].mask[:,:]
+            if kwargs['date']:
+                self.time[t] = np.atleast_1d(object_list[i].time)
+            #-- append filename to list
+            if getattr(object_list[i], 'filename'):
+                self.filename.append(object_list[i].filename)
+            #-- append attributes to list
+            if getattr(object_list[i], 'attributes'):
+                self.attributes.append(object_list[i].attributes)
+        #-- update the dimensions
+        self.update_dimensions()
+        self.update_mask()
+        #-- clear the input list to free memory
+        if kwargs['clear']:
+            object_list = None
+        #-- return the single spatial object
+        return self
+
+    def from_dict(self, d, **kwargs):
+        """
+        Convert a dict object to a spatial object
+        Inputs: dictionary object to be converted
+        """
+        #-- assign variables to self
+        for key in ['lon','lat','data','error','time']:
+            try:
+                setattr(self, key, d[key].copy())
+            except (AttributeError, KeyError):
+                pass
+        #-- create output mask for data
+        self.mask = np.zeros_like(self.data,dtype=bool)
+        #-- get spacing and dimensions
+        self.update_spacing()
+        self.update_extents()
+        self.update_dimensions()
+        self.update_mask()
+        return self
+
+    def to_ascii(self, filename, date=True, **kwargs):
+        """
+        Write a spatial object to ascii file
+        Inputs: full path of output ascii file
+        Options:
+            spatial objects contain date information
+            keyword arguments for ascii output
+        """
+        self.filename = os.path.expanduser(filename)
+        #-- set default verbosity
+        kwargs.setdefault('verbose',False)
+        logging.info(self.filename)
+        #-- open the output file
+        fid = open(self.filename, 'w')
+        if date:
+            file_format = '{0:10.4f} {1:10.4f} {2:12.4f} {3:10.4f}'
+        else:
+            file_format = '{0:10.4f} {1:10.4f} {2:12.4f}'
+        #-- write to file for each valid latitude and longitude
+        ii,jj = np.nonzero((self.data != self.fill_value) & (~self.mask))
+        for ln,lt,dt in zip(self.lon[jj],self.lat[ii],self.data[ii,jj]):
+            print(file_format.format(ln,lt,dt,self.time), file=fid)
+        #-- close the output file
+        fid.close()
+
+    def to_netCDF4(self, filename, **kwargs):
+        """
+        Write a spatial object to netCDF4 file
+        Inputs: full path of output netCDF4 file
+        Options: spatial objects contain date information
+        **kwargs: keyword arguments for netCDF4 writer
+        """
+        self.filename = os.path.expanduser(filename)
+        #-- set default verbosity and parameters
+        kwargs.setdefault('date',True)
+        kwargs.setdefault('verbose',False)
+        kwargs.setdefault('varname','z')
+        kwargs.setdefault('lonname','lon')
+        kwargs.setdefault('latname','lat')
+        kwargs.setdefault('timename','time')
+        kwargs.setdefault('time_units','years')
+        kwargs.setdefault('time_longname','Date_in_Decimal_Years')
+        #-- write to netCDF4
+        ncdf_write(self.data, self.lon, self.lat, self.time,
+            **kwargs)
+
+    def to_HDF5(self, filename, **kwargs):
+        """
+        Write a spatial object to HDF5 file
+        Inputs: full path of output HDF5 file
+        Options: spatial objects contain date information
+        **kwargs: keyword arguments for HDF5 writer
+        """
+        self.filename = os.path.expanduser(filename)
+        #-- set default verbosity and parameters
+        kwargs.setdefault('date',True)
+        kwargs.setdefault('verbose',False)
+        kwargs.setdefault('varname','z')
+        kwargs.setdefault('lonname','lon')
+        kwargs.setdefault('latname','lat')
+        kwargs.setdefault('timename','time')
+        kwargs.setdefault('time_units','years')
+        kwargs.setdefault('time_longname','Date_in_Decimal_Years')
+        #-- write to HDF5
+        hdf5_write(self.data, self.lon, self.lat, self.time,
+            **kwargs)
+
+    def to_file(self, filename, format=None, date=True, **kwargs):
+        """
+        Write a spatial object to a specified format
+        Inputs: full path of output file
+        Options:
+            file format (ascii, netCDF4 or HDF5)
+            spatial object contains date information
+            keyword arguments for output writers
+        """
+        #-- set default verbosity
+        kwargs.setdefault('verbose',False)
+        #-- write to file
+        if (format == 'ascii'):
+            #-- ascii (.txt)
+            self.to_ascii(filename, date=date, **kwargs)
+        elif (format == 'netCDF4'):
+            #-- netcdf (.nc)
+            self.to_netCDF4(filename, date=date, **kwargs)
+        elif (format == 'HDF5'):
+            #-- HDF5 (.H5)
+            self.to_HDF5(filename, date=date, **kwargs)
+
+    def to_masked_array(self):
+        """
+        Convert a spatial object to a masked numpy array
+        """
+        return np.ma.array(self.data, mask=self.mask,
+            fill_value=self.fill_value)
+
+    def update_spacing(self):
+        """
+        Calculate the step size of spatial object
+        """
+        #-- calculate degree spacing
+        dlat = np.abs(self.lat[1] - self.lat[0])
+        dlon = np.abs(self.lon[1] - self.lon[0])
+        self.spacing = (dlon,dlat)
+        return self
+
+    def update_extents(self):
+        """
+        Calculate the bounds of spatial object
+        """
+        self.extent[0] = np.min(self.lon)
+        self.extent[1] = np.max(self.lon)
+        self.extent[2] = np.min(self.lat)
+        self.extent[3] = np.max(self.lat)
+
+    def update_dimensions(self):
+        """
+        Update the dimensions of the spatial object
+        """
+        self.shape = np.shape(self.data)
+        self.ndim = np.ndim(self.data)
+        return self
+
+    def update_mask(self):
+        """
+        Update the mask of the spatial object
+        """
+        if self.fill_value is not None:
+            self.mask |= (self.data == self.fill_value)
+            self.mask |= np.isnan(self.data)
+            self.data[self.mask] = self.fill_value
+        return self
+
+    def copy(self):
+        """
+        Copy a spatial object to a new spatial object
+        """
+        temp = spatial(fill_value=self.fill_value)
+        #-- copy attributes or update attributes dictionary
+        if isinstance(self.attributes,list):
+            setattr(temp,'attributes',self.attributes)
+        elif isinstance(self.attributes,dict):
+            temp.attributes.update(self.attributes)
+        #-- assign variables to self
+        var = ['lon','lat','data','mask','error','time']
+        for key in var:
+            try:
+                val = getattr(self, key)
+                setattr(temp, key, np.copy(val))
+            except AttributeError:
+                pass
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        temp.replace_masked()
+        return temp
+
+    def zeros_like(self):
+        """
+        Create a spatial object using the dimensions of another
+        """
+        temp = spatial(fill_value=self.fill_value)
+        #-- assign variables to self
+        temp.lon = self.lon.copy()
+        temp.lat = self.lat.copy()
+        var = ['data','mask','error','time']
+        for key in var:
+            try:
+                val = getattr(self, key)
+                setattr(temp, key, np.zeros_like(val))
+            except AttributeError:
+                pass
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        temp.replace_masked()
+        return temp
+
+    def expand_dims(self):
+        """
+        Add a singleton dimension to a spatial object if non-existent
+        """
+        #-- change time dimensions to be iterable
+        self.time = np.atleast_1d(self.time)
+        #-- output spatial with a third dimension
+        if (np.ndim(self.data) == 2):
+            self.data = self.data[:,:,None]
+            self.mask = self.mask[:,:,None]
+        #-- get spacing and dimensions
+        self.update_spacing()
+        self.update_extents()
+        self.update_dimensions()
+        self.update_mask()
+        return self
+
+    def squeeze(self):
+        """
+        Remove singleton dimensions from a spatial object
+        """
+        #-- squeeze singleton dimensions
+        self.time = np.squeeze(self.time)
+        self.data = np.squeeze(self.data)
+        self.mask = np.squeeze(self.mask)
+        #-- get spacing and dimensions
+        self.update_spacing()
+        self.update_extents()
+        self.update_dimensions()
+        self.update_mask()
+        return self
+
+    def index(self, indice, date=True):
+        """
+        Subset a spatial object to specific index
+        Inputs: indice in matrix to subset
+        Options: spatial objects contain date information
+        """
+        #-- output spatial object
+        temp = spatial(fill_value=self.fill_value)
+        #-- subset output spatial field
+        temp.data = self.data[:,:,indice].copy()
+        temp.mask = self.mask[:,:,indice].copy()
+        #-- subset output spatial error
+        try:
+            temp.error = self.error[:,:,indice].copy()
+        except AttributeError:
+            pass
+        #-- copy dimensions
+        temp.lon = self.lon.copy()
+        temp.lat = self.lat.copy()
+        #-- subset output dates
+        if date:
+            temp.time = self.time[indice].copy()
+        #-- subset filenames
+        if getattr(self, 'filename'):
+            temp.filename = self.filename[indice]
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        return temp
+
+    def offset(self, var):
+        """
+        Offset a spatial object by a constant
+        Inputs: scalar value to which the spatial object will be offset
+        """
+        temp = self.copy()
+        #-- offset by a single constant or a time-variable scalar
+        if (np.ndim(var) == 0):
+            temp.data = self.data + var
+        elif (np.ndim(var) == 1) and (self.ndim == 2):
+            n = len(var)
+            temp.data = np.zeros((temp.shape[0],temp.shape[1],n))
+            temp.mask = np.zeros((temp.shape[0],temp.shape[1],n),dtype=bool)
+            for i,v in enumerate(var):
+                temp.data[:,:,i] = self.data[:,:] + v
+                temp.mask[:,:,i] = np.copy(self.mask[:,:])
+        elif (np.ndim(var) == 1) and (self.ndim == 3):
+            for i,v in enumerate(var):
+                temp.data[:,:,i] = self.data[:,:,i] + v
+        elif (np.ndim(var) == 2) and (self.ndim == 2):
+            temp.data = self.data + var
+        elif (np.ndim(var) == 2) and (self.ndim == 3):
+            for i,t in enumerate(self.time):
+                temp.data[:,:,i] = self.data[:,:,i] + var
+        elif (np.ndim(var) == 3) and (self.ndim == 3):
+            for i,t in enumerate(self.time):
+                temp.data[:,:,i] = self.data[:,:,i] + var[:,:,i]
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        #-- update mask
+        temp.update_mask()
+        return temp
+
+    def scale(self, var):
+        """
+        Multiply a spatial object by a constant
+        Inputs: scalar value to which the spatial object will be multiplied
+        """
+        temp = self.copy()
+        #-- multiply by a single constant or a time-variable scalar
+        if (np.ndim(var) == 0):
+            temp.data = var*self.data
+        elif (np.ndim(var) == 1) and (self.ndim == 2):
+            n = len(var)
+            temp.data = np.zeros((temp.shape[0],temp.shape[1],n))
+            temp.mask = np.zeros((temp.shape[0],temp.shape[1],n),dtype=bool)
+            for i,v in enumerate(var):
+                temp.data[:,:,i] = v*self.data[:,:]
+                temp.mask[:,:,i] = np.copy(self.mask[:,:])
+        elif (np.ndim(var) == 1) and (self.ndim == 3):
+            for i,v in enumerate(var):
+                temp.data[:,:,i] = v*self.data[:,:,i]
+        elif (np.ndim(var) == 2) and (self.ndim == 2):
+            temp.data = var*self.data
+        elif (np.ndim(var) == 2) and (self.ndim == 3):
+            for i,t in enumerate(self.time):
+                temp.data[:,:,i] = var*self.data[:,:,i]
+        elif (np.ndim(var) == 3) and (self.ndim == 3):
+            for i,t in enumerate(self.time):
+                temp.data[:,:,i] = var[:,:,i]*self.data[:,:,i]
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        #-- update mask
+        temp.update_mask()
+        return temp
+
+    def mean(self, apply=False, indices=Ellipsis):
+        """
+        Compute mean spatial field and remove from data if specified
+        Option:
+            apply to remove the mean field from the input data
+            indices of spatial object to compute mean
+        """
+        #-- output spatial object
+        temp = spatial(nlon=self.shape[0],nlat=self.shape[1],
+            fill_value=self.fill_value)
+        #-- copy dimensions
+        temp.lon = self.lon.copy()
+        temp.lat = self.lat.copy()
+        #-- create output mean spatial object
+        temp.data = np.mean(self.data[:,:,indices],axis=2)
+        temp.mask = np.any(self.mask[:,:,indices],axis=2)
+        #-- calculate the mean time
+        try:
+            val = getattr(self, 'time')
+            temp.time = np.mean(val[indices])
+        except (AttributeError,TypeError):
+            pass
+        #-- calculate the spatial anomalies by removing the mean field
+        if apply:
+            for i,t in enumerate(self.time):
+                self.data[:,:,i] -= temp.data[:,:]
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        #-- update mask
+        temp.update_mask()
+        return temp
+
+    def reverse(self, axis=0):
+        """
+        Reverse the order of data and dimensions along an axis
+        Option: axis to reorder
+        """
+        #-- output spatial object
+        temp = self.copy()
+        temp.expand_dims()
+        #-- copy dimensions and reverse order
+        if (axis == 0):
+            temp.lat = temp.lat[::-1].copy()
+            temp.data = temp.data[::-1,:,:].copy()
+            temp.mask = temp.mask[::-1,:,:].copy()
+        elif (axis == 1):
+            temp.lon = temp.lon[::-1].copy()
+            temp.data = temp.data[:,::-1,:].copy()
+            temp.mask = temp.mask[:,::-1,:].copy()
+        #-- squeeze output spatial object
+        #-- get spacing and dimensions
+        #-- update mask
+        temp.squeeze()
+        return temp
+
+    def transpose(self, axes=None):
+        """
+        Reverse or permute the axes of a spatial object
+        Option: order of the output axes
+        """
+        #-- output spatial object
+        temp = self.copy()
+        #-- copy dimensions and reverse order
+        temp.data = np.transpose(temp.data, axes=axes)
+        temp.mask = np.transpose(temp.mask, axes=axes)
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        #-- update mask
+        temp.update_mask()
+        return temp
+
+    def sum(self, power=1):
+        """
+        Compute summation of spatial field
+        Option: apply a power before calculating summation
+        """
+        #-- output spatial object
+        temp = spatial(nlon=self.shape[0],nlat=self.shape[1],
+            fill_value=self.fill_value)
+        #-- copy dimensions
+        temp.lon = self.lon.copy()
+        temp.lat = self.lat.copy()
+        #-- create output summation spatial object
+        temp.data = np.sum(np.power(self.data,power),axis=2)
+        temp.mask = np.any(self.mask,axis=2)
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        #-- update mask
+        temp.update_mask()
+        return temp
+
+    def power(self, power):
+        """
+        Raise a spatial object to a power
+        Inputs: power to which the spatial object will be raised
+        """
+        temp = self.copy()
+        temp.data = np.power(self.data,power)
+        #-- assign ndim and shape attributes
+        temp.update_dimensions()
+        return temp
+
+    def max(self):
+        """
+        Compute maximum value of spatial field
+        """
+        #-- output spatial object
+        temp = spatial(nlon=self.shape[0],nlat=self.shape[1],
+            fill_value=self.fill_value)
+        #-- copy dimensions
+        temp.lon = self.lon.copy()
+        temp.lat = self.lat.copy()
+        #-- create output maximum spatial object
+        temp.data = np.max(self.data,axis=2)
+        temp.mask = np.any(self.mask,axis=2)
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        #-- update mask
+        temp.update_mask()
+        return temp
+
+    def min(self):
+        """
+        Compute minimum value of spatial field
+        """
+        #-- output spatial object
+        temp = spatial(nlon=self.shape[0],nlat=self.shape[1],
+            fill_value=self.fill_value)
+        #-- copy dimensions
+        temp.lon = self.lon.copy()
+        temp.lat = self.lat.copy()
+        #-- create output minimum spatial object
+        temp.data = np.min(self.data,axis=2)
+        temp.mask = np.any(self.mask,axis=2)
+        #-- get spacing and dimensions
+        temp.update_spacing()
+        temp.update_extents()
+        temp.update_dimensions()
+        #-- update mask
+        temp.update_mask()
+        return temp
+
+    def replace_invalid(self, fill_value, mask=None):
+        """
+        Replace the masked values with a new fill_value
+        """
+        #-- validate current mask
+        self.update_mask()
+        #-- update the mask if specified
+        if mask is not None:
+            if (np.shape(mask) == self.shape):
+                self.mask |= mask
+            elif (np.ndim(mask) == 2) & (self.ndim == 3):
+                #-- broadcast mask over third dimension
+                temp = np.repeat(mask[:,:,np.newaxis],self.shape[2],axis=2)
+                self.mask |= temp
+        #-- update the fill value
+        self.fill_value = fill_value
+        #-- replace invalid values with new fill value
+        self.data[self.mask] = self.fill_value
+        return self
+
+    def replace_masked(self):
+        """
+        Replace the masked values with fill_value
+        """
+        if self.fill_value is not None:
+            self.data[self.mask] = self.fill_value
+        return self
+
+def hdf5_read(filename, **kwargs):
     """
-    Determines input data type based on variable dimensions
+    Reads spatial data from HDF5 files
 
-    Parameters
-    ----------
-    x: np.ndarray
-        x-dimension coordinates
-    y: np.ndarray
-        y-dimension coordinates
-    t: np.ndarray
-        time-dimension coordinates
+    Arguments
+    ---------
+    filename: HDF5 file to be opened and read
+
+    Keyword arguments
+    -----------------
+    date: HDF5 file has date information
+    compression: HDF5 file is compressed or streaming as bytes
+        gzip
+        zip
+        bytes
+    varname: z variable name in HDF5 file
+    lonname: longitude variable name in HDF5 file
+    latname: latitude variable name in HDF5 file
+    timename: time variable name in HDF5 file
 
     Returns
     -------
-    string denoting input data type
-
-        - ``'time series'``
-        - ``'drift'``
-        - ``'grid'``
+    data: z value of dataset
+    lon: longitudinal array
+    lat: latitudinal array
+    time: time value of dataset
+    attributes: HDF5 attributes
     """
-    xsize = np.size(x)
-    ysize = np.size(y)
-    tsize = np.size(t)
-    if (xsize == 1) and (ysize == 1) and (tsize >= 1):
-        return 'time series'
-    elif (xsize == ysize) & (xsize == tsize):
-        return 'drift'
-    elif (np.ndim(x) > 1) & (xsize == ysize):
-        return 'grid'
-    elif (xsize != ysize):
-        return 'grid'
-    else:
-        raise ValueError('Unknown data type')
+    #-- set default keyword arguments
+    kwargs.setdefault('date',False)
+    kwargs.setdefault('compression',None)
+    kwargs.setdefault('varname','z')
+    kwargs.setdefault('lonname','lon')
+    kwargs.setdefault('latname','lat')
+    kwargs.setdefault('timename','time')
 
-def from_file(filename: str, format: str, **kwargs):
-    """
-    Wrapper function for reading data from an input format
-
-    Parameters
-    ----------
-    filename: str
-        full path of input file
-    format: str
-        format of input file
-    **kwargs: dict
-        Keyword arguments for file reader
-    """
-    # read input file to extract spatial coordinates and data
-    if (format == 'ascii'):
-        dinput = from_ascii(filename, **kwargs)
-    elif (format == 'netCDF4'):
-        dinput = from_netCDF4(filename, **kwargs)
-    elif (format == 'HDF5'):
-        dinput = from_HDF5(filename, **kwargs)
-    elif format in ('GTiff','cog'):
-        dinput = from_geotiff(filename, **kwargs)
-    else:
-        raise ValueError(f'Invalid format {format}')
-    return dinput
-
-def from_ascii(filename: str, **kwargs):
-    """
-    Read data from an ascii file
-
-    Parameters
-    ----------
-    filename: str
-        full path of input ascii file
-    compression: str or NoneType, default None
-        file compression type
-    columns: list, default ['time', 'y', 'x', 'data']
-        column names of ascii file
-    delimiter: str, default ','
-        Delimiter for csv or ascii files
-    header: int, default 0
-        header lines to skip from start of file
-    parse_dates: bool, default False
-        Try parsing the time column
-    """
-    # set default keyword arguments
-    kwargs.setdefault('compression', None)
-    kwargs.setdefault('columns', ['time', 'y', 'x', 'data'])
-    kwargs.setdefault('delimiter', ',')
-    kwargs.setdefault('header', 0)
-    kwargs.setdefault('parse_dates', False)
-    # print filename
-    logging.info(str(filename))
-    # get column names
-    columns = copy.copy(kwargs['columns'])
-    # open the ascii file and extract contents
+    #-- Open the HDF5 file for reading
     if (kwargs['compression'] == 'gzip'):
-        # read input ascii data from gzip compressed file and split lines
-        filename = case_insensitive_filename(filename)
-        with gzip.open(filename, 'r') as f:
-            file_contents = f.read().decode('ISO-8859-1').splitlines()
-    elif (kwargs['compression'] == 'bytes'):
-        # read input file object and split lines
-        file_contents = filename.read().splitlines()
-    else:
-        # read input ascii file (.txt, .asc) and split lines
-        filename = case_insensitive_filename(filename)
-        with open(filename, mode='r', encoding='utf8') as f:
-            file_contents = f.read().splitlines()
-    # number of lines in the file
-    file_lines = len(file_contents)
-    # compile regular expression operator for extracting numerical values
-    # from input ascii files of spatial data
-    regex_pattern = r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[EeD][+-]?\d+)?'
-    rx = re.compile(regex_pattern, re.VERBOSE)
-    # check if header has a known format
-    if (str(kwargs['header']).upper() == 'YAML'):
-        # counts the number of lines in the header
-        YAML = False
-        count = 0
-        # Reading over header text
-        while (YAML is False) & (count < file_lines):
-            # file line at count
-            line = file_contents[count]
-            # if End of YAML Header is found: set YAML flag
-            YAML = bool(re.search(r"\# End of YAML header", line))
-            # add 1 to counter
-            count += 1
-        # parse the YAML header (specifying yaml loader)
-        YAML_HEADER = yaml.load('\n'.join(file_contents[:count]),
-           Loader=yaml.BaseLoader)
-        # output spatial data and attributes
-        dinput = {}
-        # copy global attributes
-        dinput['attributes'] = YAML_HEADER['header']['global_attributes']
-        # allocate for each variable and copy variable attributes
-        for c in columns:
-            if (c == 'time') and kwargs['parse_dates']:
-                dinput[c] = np.zeros((file_lines-count), dtype='datetime64[ms]')
-            else:
-                dinput[c] = np.zeros((file_lines-count))
-            dinput['attributes'][c] = YAML_HEADER['header']['variables'][c]
-        # update number of file lines to skip for reading data
-        header = int(count)
-    else:
-        # allocate for each variable and variable attributes
-        dinput = {}
-        header = int(kwargs['header'])
-        for c in columns:
-            if (c == 'time') and kwargs['parse_dates']:
-                dinput[c] = np.zeros((file_lines-header), dtype='datetime64[ms]')
-            else:
-                dinput[c] = np.zeros((file_lines-header))
-        dinput['attributes'] = {c:dict() for c in columns}
-    # extract spatial data array
-    # for each line in the file
-    for i, line in enumerate(file_contents[header:]):
-        # extract columns of interest and assign to dict
-        # convert fortran exponentials if applicable
-        if kwargs['delimiter']:
-            column = {c:l.replace('D', 'E') for c, l in
-                zip(columns, line.split(kwargs['delimiter']))}
-        else:
-            column = {c:r.replace('D', 'E') for c, r in
-                zip(columns, rx.findall(line))}
-        # copy variables from column dict to output dictionary
-        for c in columns:
-            if (c == 'time') and kwargs['parse_dates']:
-                dinput[c][i] = SMBcorr.time.parse(column[c])
-            else:
-                dinput[c][i] = np.float64(column[c])
-    # convert to masked array if fill values
-    if 'data' in dinput.keys() and '_FillValue' in dinput['attributes']['data'].keys():
-        dinput['data'] = np.ma.asarray(dinput['data'])
-        dinput['data'].fill_value = dinput['attributes']['data']['_FillValue']
-        dinput['data'].mask = (dinput['data'].data == dinput['data'].fill_value)
-    # return the spatial variables
-    return dinput
-
-def from_netCDF4(filename: str, **kwargs):
-    """
-    Read data from a netCDF4 file
-
-    Parameters
-    ----------
-    filename: str
-        full path of input netCDF4 file
-    compression: str or NoneType, default None
-        file compression type
-    timename: str, default 'time'
-        name for time-dimension variable
-    xname: str, default 'lon'
-        name for x-dimension variable
-    yname: str, default 'lat'
-        name for y-dimension variable
-    varname: str, default 'data'
-        name for data variable
-    field_mapping: dict, default {}
-        mapping between output variables and input netCDF4
-    """
-    # set default keyword arguments
-    kwargs.setdefault('compression', None)
-    kwargs.setdefault('timename', 'time')
-    kwargs.setdefault('xname', 'lon')
-    kwargs.setdefault('yname', 'lat')
-    kwargs.setdefault('varname', 'data')
-    kwargs.setdefault('field_mapping', {})
-    # read data from netCDF4 file
-    # Open the NetCDF4 file for reading
-    if (kwargs['compression'] == 'gzip'):
-        # read as in-memory (diskless) netCDF4 dataset
-        with gzip.open(case_insensitive_filename(filename), 'r') as f:
-            fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=f.read())
-    elif (kwargs['compression'] == 'bytes'):
-        # read as in-memory (diskless) netCDF4 dataset
-        fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=filename.read())
-    else:
-        # read netCDF4 dataset
-        fileID = netCDF4.Dataset(case_insensitive_filename(filename), 'r')
-    # Output NetCDF file information
-    logging.info(fileID.filepath())
-    logging.info(list(fileID.variables.keys()))
-    # create python dictionary for output variables and attributes
-    dinput = {}
-    dinput['attributes'] = {}
-    # get attributes for the file
-    for attr in ['title', 'description', 'projection']:
-        # try getting the attribute
-        try:
-            ncattr, = [s for s in fileID.ncattrs() if re.match(attr, s, re.I)]
-            dinput['attributes'][attr] = fileID.getncattr(ncattr)
-        except (ValueError, AttributeError):
-            pass
-    # list of attributes to attempt to retrieve from included variables
-    attributes_list = ['description', 'units', 'long_name', 'calendar',
-        'standard_name', 'grid_mapping', '_FillValue']
-    # mapping between netCDF4 variable names and output names
-    if not kwargs['field_mapping']:
-        kwargs['field_mapping']['x'] = copy.copy(kwargs['xname'])
-        kwargs['field_mapping']['y'] = copy.copy(kwargs['yname'])
-        if kwargs['varname'] is not None:
-            kwargs['field_mapping']['data'] = copy.copy(kwargs['varname'])
-        if kwargs['timename'] is not None:
-            kwargs['field_mapping']['time'] = copy.copy(kwargs['timename'])
-    # for each variable
-    for key, nc in kwargs['field_mapping'].items():
-        # Getting the data from each NetCDF variable
-        dinput[key] = fileID.variables[nc][:]
-        # get attributes for the included variables
-        dinput['attributes'][key] = {}
-        for attr in attributes_list:
-            # try getting the attribute
-            try:
-                ncattr, = [s for s in fileID.variables[nc].ncattrs()
-                    if re.match(attr, s, re.I)]
-                dinput['attributes'][key][attr] = \
-                    fileID.variables[nc].getncattr(ncattr)
-            except (ValueError, AttributeError):
-                pass
-    # get projection information if there is a grid_mapping attribute
-    if 'data' in dinput.keys() and 'grid_mapping' in dinput['attributes']['data'].keys():
-        # try getting the attribute
-        grid_mapping = dinput['attributes']['data']['grid_mapping']
-        # get coordinate reference system attributes
-        dinput['attributes']['crs'] = {}
-        for att_name in fileID[grid_mapping].ncattrs():
-            dinput['attributes']['crs'][att_name] = \
-                fileID.variables[grid_mapping].getncattr(att_name)
-        # get the spatial projection reference information from wkt
-        # and overwrite the file-level projection attribute (if existing)
-        srs = osgeo.osr.SpatialReference()
-        srs.ImportFromWkt(dinput['attributes']['crs']['crs_wkt'])
-        dinput['attributes']['projection'] = srs.ExportToProj4()
-    # convert to masked array if fill values
-    if 'data' in dinput.keys() and '_FillValue' in dinput['attributes']['data'].keys():
-        dinput['data'] = np.ma.asarray(dinput['data'])
-        dinput['data'].fill_value = dinput['attributes']['data']['_FillValue']
-        dinput['data'].mask = (dinput['data'].data == dinput['data'].fill_value)
-    # Closing the NetCDF file
-    fileID.close()
-    # return the spatial variables
-    return dinput
-
-def from_HDF5(filename: str | pathlib.Path, **kwargs):
-    """
-    Read data from a HDF5 file
-
-    Parameters
-    ----------
-    filename: str
-        full path of input HDF5 file
-    compression: str or NoneType, default None
-        file compression type
-    timename: str, default 'time'
-        name for time-dimension variable
-    xname: str, default 'lon'
-        name for x-dimension variable
-    yname: str, default 'lat'
-        name for y-dimension variable
-    varname: str, default 'data'
-        name for data variable
-    field_mapping: dict, default {}
-        mapping between output variables and input HDF5
-    """
-    # set default keyword arguments
-    kwargs.setdefault('compression', None)
-    kwargs.setdefault('timename', 'time')
-    kwargs.setdefault('xname', 'lon')
-    kwargs.setdefault('yname', 'lat')
-    kwargs.setdefault('varname', 'data')
-    kwargs.setdefault('field_mapping', {})
-    # read data from HDF5 file
-    # Open the HDF5 file for reading
-    if (kwargs['compression'] == 'gzip'):
-        # read gzip compressed file and extract into in-memory file object
-        with gzip.open(case_insensitive_filename(filename), 'r') as f:
+        #-- read gzip compressed file and extract into in-memory file object
+        with gzip.open(os.path.expanduser(filename),'r') as f:
             fid = io.BytesIO(f.read())
-        # set filename of BytesIO object
-        fid.filename = filename.name
-        # rewind to start of file
+        #-- set filename of BytesIO object
+        fid.filename = os.path.basename(filename)
+        #-- rewind to start of file
         fid.seek(0)
-        # read as in-memory (diskless) HDF5 dataset from BytesIO object
+        #-- read as in-memory (diskless) HDF5 dataset from BytesIO object
+        fileID = h5py.File(fid, 'r')
+    elif (kwargs['compression'] == 'zip'):
+        #-- read zipped file and extract file into in-memory file object
+        fileBasename,_ = os.path.splitext(os.path.basename(filename))
+        with zipfile.ZipFile(os.path.expanduser(filename)) as z:
+            #-- first try finding a HDF5 file with same base filename
+            #-- if none found simply try searching for a HDF5 file
+            try:
+                f,=[f for f in z.namelist() if re.match(fileBasename,f,re.I)]
+            except:
+                f,=[f for f in z.namelist() if re.search(r'\.H(DF)?5$',f,re.I)]
+            #-- read bytes from zipfile into in-memory BytesIO object
+            fid = io.BytesIO(z.read(f))
+        #-- set filename of BytesIO object
+        fid.filename = os.path.basename(filename)
+        #-- rewind to start of file
+        fid.seek(0)
+        #-- read as in-memory (diskless) HDF5 dataset from BytesIO object
         fileID = h5py.File(fid, 'r')
     elif (kwargs['compression'] == 'bytes'):
-        # read as in-memory (diskless) HDF5 dataset
+        #-- read as in-memory (diskless) HDF5 dataset
         fileID = h5py.File(filename, 'r')
     else:
-        # read HDF5 dataset
-        fileID = h5py.File(case_insensitive_filename(filename), 'r')
-    # Output HDF5 file information
-    logging.info(fileID.filename)
-    logging.info(list(fileID.keys()))
-    # create python dictionary for output variables and attributes
+        #-- read HDF5 dataset
+        fileID = h5py.File(os.path.expanduser(filename), 'r')
+    #-- allocate python dictionary for output variables
     dinput = {}
     dinput['attributes'] = {}
-    # get attributes for the file
-    for attr in ['title', 'description', 'projection']:
-        # try getting the attribute
-        try:
-            dinput['attributes'][attr] = fileID.attrs[attr]
-        except (KeyError, AttributeError):
-            pass
-    # list of attributes to attempt to retrieve from included variables
-    attributes_list = ['description', 'units', 'long_name', 'calendar',
-        'standard_name', 'grid_mapping', '_FillValue']
-    # mapping between HDF5 variable names and output names
-    if not kwargs['field_mapping']:
-        kwargs['field_mapping']['x'] = copy.copy(kwargs['xname'])
-        kwargs['field_mapping']['y'] = copy.copy(kwargs['yname'])
-        if kwargs['varname'] is not None:
-            kwargs['field_mapping']['data'] = copy.copy(kwargs['varname'])
-        if kwargs['timename'] is not None:
-            kwargs['field_mapping']['time'] = copy.copy(kwargs['timename'])
-    # for each variable
-    for key, h5 in kwargs['field_mapping'].items():
-        # Getting the data from each HDF5 variable
-        dinput[key] = np.copy(fileID[h5][:])
-        # get attributes for the included variables
+
+    #-- Output HDF5 file information
+    logging.info(fileID.filename)
+    logging.info(list(fileID.keys()))
+
+    #-- mapping between output keys and HDF5 variable names
+    keys = ['lon','lat','data']
+    h5keys = [kwargs['lonname'],kwargs['latname'],kwargs['varname']]
+    if kwargs['date']:
+        keys.append('time')
+        h5keys.append(kwargs['timename'])
+
+    #-- list of variable attributes
+    attributes_list = ['description','units','long_name','calendar',
+        'standard_name','_FillValue','missing_value']
+    #-- for each variable
+    for key,h5key in zip(keys,h5keys):
+        #-- Getting the data from each HDF5 variable
+        dinput[key] = fileID[h5key][:].copy()
+        #-- Getting attributes of included variables
         dinput['attributes'][key] = {}
         for attr in attributes_list:
-            # try getting the attribute
             try:
-                dinput['attributes'][key][attr] = fileID[h5].attrs[attr]
+                dinput['attributes'][key][attr] = fileID[h5key].attrs[attr]
             except (KeyError, AttributeError):
                 pass
-    # get projection information if there is a grid_mapping attribute
-    if 'data' in dinput.keys() and 'grid_mapping' in dinput['attributes']['data'].keys():
-        # try getting the attribute
-        grid_mapping = dinput['attributes']['data']['grid_mapping']
-        # get coordinate reference system attributes
-        dinput['attributes']['crs'] = {}
-        for att_name, att_val in fileID[grid_mapping].attrs.items():
-            dinput['attributes']['crs'][att_name] = att_val
-        # get the spatial projection reference information from wkt
-        # and overwrite the file-level projection attribute (if existing)
-        srs = osgeo.osr.SpatialReference()
-        srs.ImportFromWkt(dinput['attributes']['crs']['crs_wkt'])
-        dinput['attributes']['projection'] = srs.ExportToProj4()
-    # convert to masked array if fill values
-    if 'data' in dinput.keys() and '_FillValue' in dinput['attributes']['data'].keys():
-        dinput['data'] = np.ma.asarray(dinput['data'])
-        dinput['data'].fill_value = dinput['attributes']['data']['_FillValue']
-        dinput['data'].mask = (dinput['data'].data == dinput['data'].fill_value)
-    # Closing the HDF5 file
-    fileID.close()
-    # return the spatial variables
-    return dinput
 
-def from_geotiff(filename: str, **kwargs):
-    """
-    Read data from a geotiff file
+    #-- switching data array to lat/lon if lon/lat
+    sz = dinput['data'].shape
+    if (dinput['data'].ndim == 2) and (len(dinput['lon']) == sz[0]):
+        dinput['data'] = dinput['data'].T
 
-    Parameters
-    ----------
-    filename: str
-        full path of input geotiff file
-    compression: str or NoneType, default None
-        file compression type
-    bounds: list or NoneType, default bounds
-        extent of the file to read: ``[xmin, xmax, ymin, ymax]``
-    """
-    # set default keyword arguments
-    kwargs.setdefault('compression', None)
-    kwargs.setdefault('bounds', None)
-    # Open the geotiff file for reading
-    if (kwargs['compression'] == 'gzip'):
-        # read as GDAL gzip virtual geotiff dataset
-        mmap_name = f"/vsigzip/{str(case_insensitive_filename(filename))}"
-        ds = osgeo.gdal.Open(mmap_name)
-    elif (kwargs['compression'] == 'bytes'):
-        # read as GDAL memory-mapped (diskless) geotiff dataset
-        mmap_name = f"/vsimem/{uuid.uuid4().hex}"
-        osgeo.gdal.FileFromMemBuffer(mmap_name, filename.read())
-        ds = osgeo.gdal.Open(mmap_name)
-    else:
-        # read geotiff dataset
-        ds = osgeo.gdal.Open(str(case_insensitive_filename(filename)),
-            osgeo.gdalconst.GA_ReadOnly)
-    # print geotiff file if verbose
-    logging.info(str(filename))
-    # create python dictionary for output variables and attributes
-    dinput = {}
-    dinput['attributes'] = {c:dict() for c in ['x', 'y', 'data']}
-    # get the spatial projection reference information
-    srs = ds.GetSpatialRef()
-    dinput['attributes']['projection'] = srs.ExportToProj4()
-    dinput['attributes']['wkt'] = srs.ExportToWkt()
-    # get dimensions
-    xsize = ds.RasterXSize
-    ysize = ds.RasterYSize
-    bsize = ds.RasterCount
-    # get geotiff info
-    info_geotiff = ds.GetGeoTransform()
-    dinput['attributes']['spacing'] = (info_geotiff[1], info_geotiff[5])
-    # calculate image extents
-    xmin = info_geotiff[0]
-    ymax = info_geotiff[3]
-    xmax = xmin + (xsize-1)*info_geotiff[1]
-    ymin = ymax + (ysize-1)*info_geotiff[5]
-    # x and y pixel center coordinates (converted from upper left)
-    x = xmin + info_geotiff[1]/2.0 + np.arange(xsize)*info_geotiff[1]
-    y = ymax + info_geotiff[5]/2.0 + np.arange(ysize)*info_geotiff[5]
-    # if reducing to specified bounds
-    if kwargs['bounds'] is not None:
-        # reduced x and y limits
-        xlimits = (kwargs['bounds'][0], kwargs['bounds'][1])
-        ylimits = (kwargs['bounds'][2], kwargs['bounds'][3])
-        # Specify offset and rows and columns to read
-        xoffset = int((xlimits[0] - xmin)/info_geotiff[1])
-        yoffset = int((ymax - ylimits[1])/np.abs(info_geotiff[5]))
-        xcount = int((xlimits[1] - xlimits[0])/info_geotiff[1]) + 1
-        ycount = int((ylimits[1] - ylimits[0])/np.abs(info_geotiff[5])) + 1
-        # reduced x and y pixel center coordinates
-        dinput['x'] = x[slice(xoffset, xoffset + xcount, None)]
-        dinput['y'] = y[slice(yoffset, yoffset + ycount, None)]
-        # read reduced image with GDAL
-        dinput['data'] = ds.ReadAsArray(xoff=xoffset, yoff=yoffset,
-            xsize=xcount, ysize=ycount)
-        # reduced image extent (converted back to upper left)
-        xmin = np.min(dinput['x']) - info_geotiff[1]/2.0
-        xmax = np.max(dinput['x']) - info_geotiff[1]/2.0
-        ymin = np.min(dinput['y']) - info_geotiff[5]/2.0
-        ymax = np.max(dinput['y']) - info_geotiff[5]/2.0
-    else:
-        # x and y pixel center coordinates
-        dinput['x'] = np.copy(x)
-        dinput['y'] = np.copy(y)
-        # read full image with GDAL
-        dinput['data'] = ds.ReadAsArray()
-    # image extent
-    dinput['attributes']['extent'] = (xmin, xmax, ymin, ymax)
-    # set default time to zero for each band
-    dinput.setdefault('time', np.zeros((bsize)))
-    # check if image has fill values
-    dinput['data'] = np.ma.asarray(dinput['data'])
-    dinput['data'].mask = np.zeros_like(dinput['data'], dtype=bool)
-    if ds.GetRasterBand(1).GetNoDataValue():
-        # mask invalid values
-        dinput['data'].fill_value = ds.GetRasterBand(1).GetNoDataValue()
-        # create mask array for bad values
-        dinput['data'].mask[:] = (dinput['data'].data == dinput['data'].fill_value)
-        # set attribute for fill value
-        dinput['attributes']['data']['_FillValue'] = dinput['data'].fill_value
-    # close the dataset
-    ds = None
-    # return the spatial variables
-    return dinput
-
-def to_ascii(output: dict, attributes: dict, filename: str, **kwargs):
-    """
-    Write data to an ascii file
-
-    Parameters
-    ----------
-    output: dict
-        python dictionary of output data
-    attributes: dict
-        python dictionary of output attributes
-    filename: str
-        full path of output ascii file
-    delimiter: str, default ','
-        delimiter for output spatial file
-    columns: list, default ['time', 'y', 'x', 'data']
-        column names of ascii file
-    header: bool, default False
-        create a YAML header with data attributes
-    """
-    # set default keyword arguments
-    kwargs.setdefault('delimiter', ',')
-    kwargs.setdefault('columns', ['time', 'lat', 'lon', 'tide'])
-    kwargs.setdefault('header', False)
-    # get column names
-    columns = copy.copy(kwargs['columns'])
-    # output filename
-    filename = pathlib.Path(filename).expanduser().absolute()
-    logging.info(str(filename))
-    # open the output file
-    fid = filename.open(mode='w', encoding='utf8')
-    # create a column stack arranging data in column order
-    data_stack = np.c_[[output[col] for col in columns]]
-    ncol, nrow = np.shape(data_stack)
-    # print YAML header to top of file
-    if kwargs['header']:
-        fid.write('{0}:\n'.format('header'))
-        # data dimensions
-        fid.write('\n  {0}:\n'.format('dimensions'))
-        fid.write('    {0:22}: {1:d}\n'.format('time', nrow))
-        # non-standard attributes
-        fid.write('  {0}:\n'.format('non-standard_attributes'))
-        # data format
-        fid.write('    {0:22}: ({1:d}f0.8)\n'.format('formatting_string', ncol))
-        fid.write('\n')
-        # global attributes
-        fid.write('\n  {0}:\n'.format('global_attributes'))
-        today = datetime.datetime.now().isoformat()
-        fid.write('    {0:22}: {1}\n'.format('date_created', today))
-        # print variable descriptions to YAML header
-        fid.write('\n  {0}:\n'.format('variables'))
-        # print YAML header with variable attributes
-        for i, v in enumerate(columns):
-            fid.write('    {0:22}:\n'.format(v))
-            for atn, atv in attributes[v].items():
-                fid.write('      {0:20}: {1}\n'.format(atn, atv))
-            # add precision and column attributes for ascii yaml header
-            fid.write('      {0:20}: double_precision\n'.format('precision'))
-            fid.write('      {0:20}: column {1:d}\n'.format('comment', i+1))
-        # end of header
-        fid.write('\n\n# End of YAML header\n')
-    # write to file for each data point
-    for line in range(nrow):
-        line_contents = [f'{d:0.8f}' for d in data_stack[:, line]]
-        print(kwargs['delimiter'].join(line_contents), file=fid)
-    # close the output file
-    fid.close()
-
-def to_netCDF4(
-        output: dict,
-        attributes: dict,
-        filename: str | pathlib.Path,
-        **kwargs
-    ):
-    """
-    Wrapper function for writing data to a netCDF4 file
-
-    Parameters
-    ----------
-    output: dict
-        python dictionary of output data
-    attributes: dict
-        python dictionary of output attributes
-    filename: str
-        full path of output netCDF4 file
-    data_type: str, default 'drift'
-        Input data type
-
-            - ``'time series'``
-            - ``'drift'``
-            - ``'grid'``
-    """
-    # default arguments
-    kwargs.setdefault('mode', 'w')
-    kwargs.setdefault('data_type', 'drift')
-    # opening NetCDF file for writing
-    filename = pathlib.Path(filename).expanduser().absolute()
-    fileID = netCDF4.Dataset(filename, kwargs['mode'], format="NETCDF4")
-    if kwargs['data_type'] in ('drift',):
-        kwargs.pop('data_type')
-        _drift_netCDF4(fileID, output, attributes, **kwargs)
-    elif kwargs['data_type'] in ('grid',):
-        kwargs.pop('data_type')
-        _grid_netCDF4(fileID, output, attributes, **kwargs)
-    elif kwargs['data_type'] in ('time series',):
-        kwargs.pop('data_type')
-        _time_series_netCDF4(fileID, output, attributes, **kwargs)
-    # add attribute for date created
-    fileID.date_created = datetime.datetime.now().isoformat()
-    # add attributes for software information
-    fileID.software_reference = SMBcorr.version.project_name
-    fileID.software_version = SMBcorr.version.full_version
-    # add file-level attributes if applicable
-    if 'ROOT' in attributes.keys():
-        # Defining attributes for file
-        for att_name, att_val in attributes['ROOT'].items():
-            fileID.setncattr(att_name, att_val)
-    # Output NetCDF structure information
-    logging.info(str(filename))
-    logging.info(list(fileID.variables.keys()))
-    # Closing the NetCDF file
-    fileID.close()
-
-def _drift_netCDF4(fileID, output: dict, attributes: dict, **kwargs):
-    """
-    Write drift data variables to a netCDF4 file object
-
-    Parameters
-    ----------
-    fileID: obj
-        open netCDF4 file object
-    output: dict
-        python dictionary of output data
-    attributes: dict
-        python dictionary of output attributes
-    """
-
-    # Defining the NetCDF dimensions
-    fileID.createDimension('time', len(np.atleast_1d(output['time'])))
-    # defining the NetCDF variables
-    nc = {}
-    for key, val in output.items():
-        if key in fileID.variables:
-            nc[key] = fileID.variables[key]
-        elif '_FillValue' in attributes[key].keys():
-            nc[key] = fileID.createVariable(key, val.dtype, ('time',),
-                fill_value=attributes[key]['_FillValue'], zlib=True)
-            attributes[key].pop('_FillValue')
-        elif val.shape:
-            nc[key] = fileID.createVariable(key, val.dtype, ('time',))
-        else:
-            nc[key] = fileID.createVariable(key, val.dtype, ())
-        # filling NetCDF variables
-        nc[key][:] = val
-        # Defining attributes for variable
-        for att_name, att_val in attributes[key].items():
-            nc[key].setncattr(att_name, att_val)
-
-def _grid_netCDF4(fileID, output: dict, attributes: dict, **kwargs):
-    """
-    Write gridded data variables to a netCDF4 file object
-
-    Parameters
-    ----------
-    fileID: obj
-        open netCDF4 file object
-    output: dict
-        python dictionary of output data
-    attributes: dict
-        python dictionary of output attributes
-    """
-    # input data fields
-    dimensions = ['time', 'lon', 'lat', 't', 'x', 'y']
-    crs = ['crs', 'crs_wkt', 'crs_proj4', 'projection']
-    fields = sorted(set(output.keys()) - set(dimensions) - set(crs))
-    # Defining the NetCDF dimensions
-    ny, nx, nt = output[fields[0]].shape
-    fileID.createDimension('y', ny)
-    fileID.createDimension('x', nx)
-    fileID.createDimension('time', nt)
-    # defining the NetCDF variables
-    nc = {}
-    for key, val in output.items():
-        if key in fileID.variables:
-            nc[key] = fileID.variables[key]
-        elif '_FillValue' in attributes[key].keys():
-            nc[key] = fileID.createVariable(key, val.dtype, ('y', 'x', 'time'),
-                fill_value=attributes[key]['_FillValue'], zlib=True)
-            attributes[key].pop('_FillValue')
-        elif (val.ndim == 3):
-            nc[key] = fileID.createVariable(key, val.dtype, ('y', 'x', 'time'))
-        elif (val.ndim == 2):
-            nc[key] = fileID.createVariable(key, val.dtype, ('y', 'x'))
-        elif val.shape and (len(val) == ny):
-            nc[key] = fileID.createVariable(key, val.dtype, ('y',))
-        elif val.shape and (len(val) == nx):
-            nc[key] = fileID.createVariable(key, val.dtype, ('x',))
-        elif val.shape and (len(val) == nt):
-            nc[key] = fileID.createVariable(key, val.dtype, ('time',))
-        else:
-            nc[key] = fileID.createVariable(key, val.dtype, ())
-        # filling NetCDF variables
-        nc[key][:] = val
-        # Defining attributes for variable
-        for att_name, att_val in attributes[key].items():
-            nc[key].setncattr(att_name, att_val)
-
-def _time_series_netCDF4(fileID, output: dict, attributes: dict, **kwargs):
-    """
-    Write time series data variables to a netCDF4 file object
-
-    Parameters
-    ----------
-    fileID: obj
-        open netCDF4 file object
-    output: dict
-        python dictionary of output data
-    attributes: dict
-        python dictionary of output attributes
-    """
-    # input data fields
-    dimensions = ['time', 'lon', 'lat', 't', 'x', 'y']
-    crs = ['crs', 'crs_wkt', 'crs_proj4', 'projection']
-    fields = sorted(set(output.keys()) - set(dimensions) - set(crs))
-    # Defining the NetCDF dimensions
-    nstation, nt = output[fields[0]].shape
-    fileID.createDimension('station', nstation)
-    fileID.createDimension('time', nt)
-    # defining the NetCDF variables
-    nc = {}
-    for key, val in output.items():
-        if key in fileID.variables:
-            nc[key] = fileID.variables[key]
-        elif '_FillValue' in attributes[key].keys():
-            nc[key] = fileID.createVariable(key, val.dtype, ('station', 'time'),
-                fill_value=attributes[key]['_FillValue'], zlib=True)
-            attributes[key].pop('_FillValue')
-        elif (val.ndim == 2):
-            nc[key] = fileID.createVariable(key, val.dtype, ('station', 'time'))
-        elif val.shape and (len(val) == nt):
-            nc[key] = fileID.createVariable(key, val.dtype, ('time',))
-        elif val.shape and (len(val) == nstation):
-            nc[key] = fileID.createVariable(key, val.dtype, ('station',))
-        else:
-            nc[key] = fileID.createVariable(key, val.dtype, ())
-        # filling NetCDF variables
-        nc[key][:] = val
-        # Defining attributes for variable
-        for att_name, att_val in attributes[key].items():
-            nc[key].setncattr(att_name, att_val)
-
-def to_HDF5(
-        output: dict,
-        attributes: dict,
-        filename: str,
-        **kwargs
-    ):
-    """
-    Write data to a HDF5 file
-
-    Parameters
-    ----------
-    output: dict
-        python dictionary of output data
-    attributes: dict
-        python dictionary of output attributes
-    filename: str
-        full path of output HDF5 file
-    """
-    # set default keyword arguments
-    kwargs.setdefault('mode', 'w')
-    # opening HDF5 file for writing
-    filename = pathlib.Path(filename).expanduser().absolute()
-    fileID = h5py.File(filename, mode=kwargs['mode'])
-    # Defining the HDF5 dataset variables
-    h5 = {}
-    for key, val in output.items():
-        if key in fileID:
-            fileID[key][...] = val[:]
-        elif '_FillValue' in attributes[key].keys():
-            h5[key] = fileID.create_dataset(key, val.shape, data=val,
-                dtype=val.dtype, fillvalue=attributes[key]['_FillValue'],
-                compression='gzip')
-            attributes[key].pop('_FillValue')
-        elif val.shape:
-            h5[key] = fileID.create_dataset(key, val.shape, data=val,
-                dtype=val.dtype, compression='gzip')
-        else:
-            h5[key] = fileID.create_dataset(key, val.shape,
-                dtype=val.dtype)
-        # Defining attributes for variable
-        for att_name, att_val in attributes[key].items():
-            h5[key].attrs[att_name] = att_val
-    # add attribute for date created
-    fileID.attrs['date_created'] = datetime.datetime.now().isoformat()
-    # add attributes for software information
-    fileID.attrs['software_reference'] = SMBcorr.version.project_name
-    fileID.attrs['software_version'] = SMBcorr.version.full_version
-    # add file-level attributes if applicable
-    if 'ROOT' in attributes.keys():
-        # Defining attributes for file
-        for att_name, att_val in attributes['ROOT'].items():
-            fileID.attrs[att_name] = att_val
-    # Output HDF5 structure information
-    logging.info(str(filename))
-    logging.info(list(fileID.keys()))
-    # Closing the HDF5 file
-    fileID.close()
-
-def to_geotiff(
-        output: dict,
-        attributes: dict,
-        filename: str,
-        **kwargs
-    ):
-    """
-    Write data to a (cloud optimized) geotiff file
-
-    Parameters
-    ----------
-    output: dict
-        python dictionary of output data
-    attributes: dict
-        python dictionary of output attributes
-    filename: str
-        full path of output geotiff file
-    varname: str, default 'data'
-        output variable name
-    driver: str, default 'cog'
-        GDAL driver
-
-            - ``'GTiff'``: GeoTIFF
-            - ``'cog'``: Cloud Optimized GeoTIFF
-    dtype: obj, default osgeo.gdal.GDT_Float64
-        GDAL data type
-    options: list, default ['COMPRESS=LZW']
-        GDAL driver creation options
-    """
-    # set default keyword arguments
-    kwargs.setdefault('varname', 'data')
-    kwargs.setdefault('driver', 'cog')
-    kwargs.setdefault('dtype', osgeo.gdal.GDT_Float64)
-    kwargs.setdefault('options', ['COMPRESS=LZW'])
-    varname = copy.copy(kwargs['varname'])
-    # verify grid dimensions to be iterable
-    output = expand_dims(output, varname=varname)
-    # grid shape
-    ny, nx, nband = np.shape(output[varname])
-    # output as geotiff or specified driver
-    driver = osgeo.gdal.GetDriverByName(kwargs['driver'])
-    # set up the dataset with creation options
-    filename = pathlib.Path(filename).expanduser().absolute()
-    ds = driver.Create(str(filename), nx, ny, nband,
-        kwargs['dtype'], kwargs['options'])
-    # top left x, w-e pixel resolution, rotation
-    # top left y, rotation, n-s pixel resolution
-    xmin, xmax, ymin, ymax = attributes['extent']
-    dx, dy = attributes['spacing']
-    ds.SetGeoTransform([xmin, dx, 0, ymax, 0, dy])
-    # set the spatial projection reference information
-    srs = osgeo.osr.SpatialReference()
-    srs.ImportFromWkt(attributes['wkt'])
-    # export
-    ds.SetProjection( srs.ExportToWkt() )
-    # for each band
-    for band in range(nband):
-        # set fill value for band
-        if '_FillValue' in attributes[varname].keys():
-            fill_value = attributes[varname]['_FillValue']
-            ds.GetRasterBand(band+1).SetNoDataValue(fill_value)
-        # write band to geotiff array
-        ds.GetRasterBand(band+1).WriteArray(output[varname][:, :, band])
-    # print filename if verbose
-    logging.info(str(filename))
-    # close dataset
-    ds.FlushCache()
-
-def expand_dims(obj: dict, varname: str = 'data'):
-    """
-    Add a singleton dimension to a spatial dictionary if non-existent
-
-    Parameters
-    ----------
-    obj: dict
-        python dictionary of data
-    varname: str, default data
-        variable name to expand
-    """
-    # change time dimensions to be iterableinformation
+    #-- Global attribute description
     try:
-        obj['time'] = np.atleast_1d(obj['time'])
-    except:
+        dinput['attributes']['title'] = fileID.attrs['description']
+    except (KeyError, AttributeError):
         pass
-    # output spatial with a third dimension
-    if isinstance(varname, list):
-        for v in varname:
-            obj[v] = np.atleast_3d(obj[v])
-    elif isinstance(varname, str):
-        obj[varname] = np.atleast_3d(obj[varname])
-    # return reformed spatial dictionary
-    return obj
 
-def default_field_mapping(variables: list | np.ndarray):
+    #-- Closing the HDF5 file
+    fileID.close()
+    return dinput
+
+def hdf5_write(data, lon, lat, tim, **kwargs):
     """
-    Builds field mappings from a variable list
+    Writes spatial data to HDF5 files
 
+    Arguments
+    ---------
+    data: z data
+    lon: longitude array
+    lat: latitude array
+    tim: time array
 
-    Parameters
-    ----------
-    variables: list
-        Variables from argument parser
+    Keyword arguments
+    -----------------
+    filename: HDF5 filename
+    varname: z variable name in HDF5 file
+    lonname: longitude variable name in HDF5 file
+    latname: latitude variable name in HDF5 file
+    units: z variable units
+    longname: z variable description
+    fill_value: missing value for z variable
+    time_units: time variable units
+    time_longname: time variable description
+    title: description attribute of dataset
+    reference: reference attribute of dataset
+    clobber: will overwrite an existing HDF5 file
+    date: data has date information
+    """
+    kwargs.setdefault('filename',None)
+    kwargs.setdefault('date',True)
+    kwargs.setdefault('clobber',True)
+    kwargs.setdefault('varname','z')
+    kwargs.setdefault('lonname','lon')
+    kwargs.setdefault('latname','lat')
+    kwargs.setdefault('timename','time')
+    kwargs.setdefault('units',None)
+    kwargs.setdefault('longname',None)
+    kwargs.setdefault('fill_value',None)
+    kwargs.setdefault('time_units',None)
+    kwargs.setdefault('time_longname',None)
+    kwargs.setdefault('title',None)
+    kwargs.setdefault('reference',None)
 
-            - ``time``
-            - ``yname``
-            - ``xname``
-            - ``varname``
+    #-- setting HDF5 clobber attribute
+    clobber = 'w' if kwargs['clobber'] else 'w-'
+
+    #-- opening HDF5 file for writing
+    fileID = h5py.File(kwargs['filename'], clobber)
+
+    #-- Dimensions of time parameters
+    n_time = len(np.atleast_1d(tim))
+    #-- copy kwargs for variable names
+    VARNAME = copy.copy(kwargs['VARNAME'])
+    LONNAME = copy.copy(kwargs['LONNAME'])
+    LATNAME = copy.copy(kwargs['LATNAME'])
+    TIMENAME = copy.copy(kwargs['TIMENAME'])
+    #-- Defining the HDF5 dataset variables
+    h5 = {}
+    h5[LONNAME] = fileID.create_dataset(LONNAME, lon.shape, data=lon,
+        dtype=lon.dtype, compression='gzip')
+    h5[LATNAME] = fileID.create_dataset(LATNAME, lat.shape, data=lat,
+        dtype=lat.dtype, compression='gzip')
+    h5[VARNAME] = fileID.create_dataset(VARNAME, data.shape, data=data,
+        dtype=data.dtype, fillvalue=kwargs['fillvalue'], compression='gzip')
+    if kwargs['date']:
+        h5[TIMENAME] = fileID.create_dataset(TIMENAME, (n_time,), data=tim,
+            dtype=np.float64, compression='gzip')
+    #-- add dimensions
+    h5[VARNAME].dims[0].label=LATNAME
+    h5[VARNAME].dims[0].attach_scale(h5[LATNAME])
+    h5[VARNAME].dims[1].label=LONNAME
+    #-- if more than 1 date in file
+    if (n_time > 1):
+        h5[VARNAME].dims[2].label=TIMENAME
+        h5[VARNAME].dims[2].attach_scale(h5[TIMENAME])
+
+    #-- filling HDF5 dataset attributes
+    #-- Defining attributes for longitude and latitude
+    h5[LONNAME].attrs['long_name'] = 'longitude'
+    h5[LONNAME].attrs['units'] = 'degrees_east'
+    h5[LATNAME].attrs['long_name'] = 'latitude'
+    h5[LATNAME].attrs['units'] = 'degrees_north'
+    #-- Defining attributes for dataset
+    h5[VARNAME].attrs['long_name'] = kwargs['longname']
+    h5[VARNAME].attrs['units'] = kwargs['units']
+    #-- Dataset contains missing values
+    if (kwargs['fill_value'] is not None):
+        h5[VARNAME].attrs['_FillValue'] = kwargs['fill_value']
+    #-- Defining attributes for date
+    if kwargs['date']:
+        h5[TIMENAME].attrs['long_name'] = kwargs['time_longname']
+        h5[TIMENAME].attrs['units'] = kwargs['time_units']
+    #-- description of file
+    if kwargs['title']:
+        fileID.attrs['description'] = kwargs['title']
+    #-- reference of file
+    if kwargs['reference']:
+        fileID.attrs['reference'] = kwargs['reference']
+    #-- date created
+    date_created = time.strftime('%Y-%m-%d',time.localtime())
+    fileID.attrs['date_created'] = date_created
+
+    #-- Output HDF5 structure information
+    logging.info(kwargs['filename'])
+    logging.info(list(fileID.keys()))
+
+    #-- Closing the HDF5 file
+    fileID.close()
+
+def ncdf_read(filename, **kwargs):
+    """
+    Reads spatial data from COARDS-compliant netCDF4 files
+
+    Arguments
+    ---------
+    filename: netCDF4 file to be opened and read
+
+    Keyword arguments
+    -----------------
+    date: netCDF4 file has date information
+    varname: z variable name in netCDF4 file
+    lonname: longitude variable name in netCDF4 file
+    latname: latitude variable name in netCDF4 file
+    timename: time variable name in netCDF4 file
+    compression: netCDF4 file is compressed or streaming as bytes
+        gzip
+        zip
+        bytes
 
     Returns
     -------
-    field_mapping: dict
-        Field mappings for netCDF4/HDF5 read functions
+    data: z value of dataset
+    lon: longitudinal array
+    lat: latitudinal array
+    time: time value of dataset
+    attributes: netCDF4 attributes
     """
-    # get each variable name and add to field mapping dictionary
-    field_mapping = {}
-    for i, var in enumerate(['time', 'y', 'x', 'data']):
-        try:
-            field_mapping[var] = copy.copy(variables[i])
-        except IndexError as exc:
-            pass
-    # return the field mapping
-    return field_mapping
+    #-- set default keyword arguments
+    kwargs.setdefault('date',False)
+    kwargs.setdefault('compression',None)
+    kwargs.setdefault('varname','z')
+    kwargs.setdefault('lonname','lon')
+    kwargs.setdefault('latname','lat')
+    kwargs.setdefault('timename','time')
 
-def inverse_mapping(field_mapping):
-    """
-    Reverses the field mappings of a dictionary
-
-    Parameters
-    ----------
-    field_mapping: dict
-        Field mappings for netCDF4/HDF5 read functions
-    """
-    return field_mapping.__class__(map(reversed, field_mapping.items()))
-
-def convert_ellipsoid(
-        phi1: np.ndarray,
-        h1: np.ndarray,
-        a1: float,
-        f1: float,
-        a2: float,
-        f2: float,
-        eps: float = 1e-12,
-        itmax: int = 10
-    ):
-    """
-    Convert latitudes and heights to a different ellipsoid using Newton-Raphson
-
-    Parameters
-    ----------
-    phi1: np.ndarray
-        latitude of input ellipsoid in degrees
-    h1: np.ndarray
-        height above input ellipsoid in meters
-    a1: float
-        semi-major axis of input ellipsoid
-    f1: float
-        flattening of input ellipsoid
-    a2: float
-        semi-major axis of output ellipsoid
-    f2: float
-        flattening of output ellipsoid
-    eps: float, default 1e-12
-        tolerance to prevent division by small numbers and
-        to determine convergence
-    itmax: int, default 10
-        maximum number of iterations to use in Newton-Raphson
-
-    Returns
-    -------
-    phi2: np.ndarray
-        latitude of output ellipsoid in degrees
-    h2: np.ndarray
-        height above output ellipsoid in meters
-
-    References
-    ----------
-    .. [1] J. Meeus, *Astronomical Algorithms*, 2nd edition, 477 pp., (1998).
-    """
-    if (len(phi1) != len(h1)):
-        raise ValueError('phi and h have incompatible dimensions')
-    # semiminor axis of input and output ellipsoid
-    b1 = (1.0 - f1)*a1
-    b2 = (1.0 - f2)*a2
-    # initialize output arrays
-    npts = len(phi1)
-    phi2 = np.zeros((npts))
-    h2 = np.zeros((npts))
-    # for each point
-    for N in range(npts):
-        # force phi1 into range -90 <= phi1 <= 90
-        if (np.abs(phi1[N]) > 90.0):
-            phi1[N] = np.sign(phi1[N])*90.0
-        # handle special case near the equator
-        # phi2 = phi1 (latitudes congruent)
-        # h2 = h1 + a1 - a2
-        if (np.abs(phi1[N]) < eps):
-            phi2[N] = np.copy(phi1[N])
-            h2[N] = h1[N] + a1 - a2
-        # handle special case near the poles
-        # phi2 = phi1 (latitudes congruent)
-        # h2 = h1 + b1 - b2
-        elif ((90.0 - np.abs(phi1[N])) < eps):
-            phi2[N] = np.copy(phi1[N])
-            h2[N] = h1[N] + b1 - b2
-        # handle case if latitude is within 45 degrees of equator
-        elif (np.abs(phi1[N]) <= 45):
-            # convert phi1 to radians
-            phi1r = phi1[N] * np.pi/180.0
-            sinphi1 = np.sin(phi1r)
-            cosphi1 = np.cos(phi1r)
-            # prevent division by very small numbers
-            cosphi1 = np.copy(eps) if (cosphi1 < eps) else cosphi1
-            # calculate tangent
-            tanphi1 = sinphi1 / cosphi1
-            u1 = np.arctan(b1 / a1 * tanphi1)
-            hpr1sin = b1 * np.sin(u1) + h1[N] * sinphi1
-            hpr1cos = a1 * np.cos(u1) + h1[N] * cosphi1
-            # set initial value for u2
-            u2 = np.copy(u1)
-            # setup constants
-            k0 = b2 * b2 - a2 * a2
-            k1 = a2 * hpr1cos
-            k2 = b2 * hpr1sin
-            # perform newton-raphson iteration to solve for u2
-            # cos(u2) will not be close to zero since abs(phi1) <= 45
-            for i in range(0, itmax+1):
-                cosu2 = np.cos(u2)
-                fu2 = k0 * np.sin(u2) + k1 * np.tan(u2) - k2
-                fu2p = k0 * cosu2 + k1 / (cosu2 * cosu2)
-                if (np.abs(fu2p) < eps):
-                    break
-                else:
-                    delta = fu2 / fu2p
-                    u2 -= delta
-                    if (np.abs(delta) < eps):
-                        break
-            # convert latitude to degrees and verify values between +/- 90
-            phi2r = np.arctan(a2 / b2 * np.tan(u2))
-            phi2[N] = phi2r*180.0/np.pi
-            if (np.abs(phi2[N]) > 90.0):
-                phi2[N] = np.sign(phi2[N])*90.0
-            # calculate height
-            h2[N] = (hpr1cos - a2 * np.cos(u2)) / np.cos(phi2r)
-        # handle final case where latitudes are between 45 degrees and pole
-        else:
-            # convert phi1 to radians
-            phi1r = phi1[N] * np.pi/180.0
-            sinphi1 = np.sin(phi1r)
-            cosphi1 = np.cos(phi1r)
-            # prevent division by very small numbers
-            cosphi1 = np.copy(eps) if (cosphi1 < eps) else cosphi1
-            # calculate tangent
-            tanphi1 = sinphi1 / cosphi1
-            u1 = np.arctan(b1 / a1 * tanphi1)
-            hpr1sin = b1 * np.sin(u1) + h1[N] * sinphi1
-            hpr1cos = a1 * np.cos(u1) + h1[N] * cosphi1
-            # set initial value for u2
-            u2 = np.copy(u1)
-            # setup constants
-            k0 = a2 * a2 - b2 * b2
-            k1 = b2 * hpr1sin
-            k2 = a2 * hpr1cos
-            # perform newton-raphson iteration to solve for u2
-            # sin(u2) will not be close to zero since abs(phi1) > 45
-            for i in range(0, itmax+1):
-                sinu2 = np.sin(u2)
-                fu2 = k0 * np.cos(u2) + k1 / np.tan(u2) - k2
-                fu2p = -1 * (k0 * sinu2 + k1 / (sinu2 * sinu2))
-                if (np.abs(fu2p) < eps):
-                    break
-                else:
-                    delta = fu2 / fu2p
-                    u2 -= delta
-                    if (np.abs(delta) < eps):
-                        break
-            # convert latitude to degrees and verify values between +/- 90
-            phi2r = np.arctan(a2 / b2 * np.tan(u2))
-            phi2[N] = phi2r*180.0/np.pi
-            if (np.abs(phi2[N]) > 90.0):
-                phi2[N] = np.sign(phi2[N])*90.0
-            # calculate height
-            h2[N] = (hpr1sin - b2 * np.sin(u2)) / np.sin(phi2r)
-
-    # return the latitude and height
-    return (phi2, h2)
-
-def compute_delta_h(
-        a1: float,
-        f1: float,
-        a2: float,
-        f2: float,
-        lat: np.ndarray
-    ):
-    """
-    Compute difference in elevation for two ellipsoids at a given
-        latitude using a simplified empirical equation
-
-    Parameters
-    ----------
-    a1: float
-        semi-major axis of input ellipsoid
-    f1: float
-        flattening of input ellipsoid
-    a2: float
-        semi-major axis of output ellipsoid
-    f2: float
-        flattening of output ellipsoid
-    lat: np.ndarray
-        latitudes (degrees north)
-
-    Returns
-    -------
-    delta_h: np.ndarray
-        difference in elevation for two ellipsoids
-
-    References
-    ----------
-    .. [1] J Meeus, *Astronomical Algorithms*, pp. 77--82, (1991).
-    """
-    # force phi into range -90 <= phi <= 90
-    gt90, = np.nonzero((lat < -90.0) | (lat > 90.0))
-    lat[gt90] = np.sign(lat[gt90])*90.0
-    # semiminor axis of input and output ellipsoid
-    b1 = (1.0 - f1)*a1
-    b2 = (1.0 - f2)*a2
-    # compute delta_a and delta_b coefficients
-    delta_a = a2 - a1
-    delta_b = b2 - b1
-    # compute differences between ellipsoids
-    # delta_h = -(delta_a * cos(phi)^2 + delta_b * sin(phi)^2)
-    phi = lat * np.pi/180.0
-    delta_h = -(delta_a*np.cos(phi)**2 + delta_b*np.sin(phi)**2)
-    return delta_h
-
-def wrap_longitudes(lon: float | np.ndarray):
-    """
-    Wraps longitudes to range from -180 to +180
-
-    Parameters
-    ----------
-    lon: float or np.ndarray
-        longitude (degrees east)
-    """
-    phi = np.arctan2(np.sin(lon*np.pi/180.0), np.cos(lon*np.pi/180.0))
-    # convert phi from radians to degrees
-    return phi*180.0/np.pi
-
-# get WGS84 parameters
-_wgs84 = constants(ellipsoid='WGS84', units='MKS')
-
-def to_cartesian(
-        lon: np.ndarray,
-        lat: np.ndarray,
-        h: float | np.ndarray = 0.0,
-        a_axis: float = _wgs84.a_axis,
-        flat: float = _wgs84.flat
-    ):
-    """
-    Converts geodetic coordinates to Cartesian coordinates
-
-    Parameters
-    ----------
-    lon: np.ndarray
-        longitude (degrees east)
-    lat: np.ndarray
-        latitude (degrees north)
-    h: float or np.ndarray, default 0.0
-        height above ellipsoid (or sphere)
-    a_axis: float, default 6378137.0
-        semimajor axis of the ellipsoid
-
-        for spherical coordinates set to radius of the Earth
-    flat: float, default 1.0/298.257223563
-        ellipsoidal flattening
-
-        for spherical coordinates set to 0
-    """
-    # verify axes and copy to not modify inputs
-    lon = np.atleast_1d(np.copy(lon))
-    lat = np.atleast_1d(np.copy(lat))
-    # fix coordinates to be 0:360
-    lon[lon < 0] += 360.0
-    # Linear eccentricity and first numerical eccentricity
-    lin_ecc = np.sqrt((2.0*flat - flat**2)*a_axis**2)
-    ecc1 = lin_ecc/a_axis
-    # convert from geodetic latitude to geocentric latitude
-    dtr = np.pi/180.0
-    # geodetic latitude in radians
-    latitude_geodetic_rad = lat*dtr
-    # prime vertical radius of curvature
-    N = a_axis/np.sqrt(1.0 - ecc1**2.0*np.sin(latitude_geodetic_rad)**2.0)
-    # calculate X, Y and Z from geodetic latitude and longitude
-    X = (N + h) * np.cos(latitude_geodetic_rad) * np.cos(lon*dtr)
-    Y = (N + h) * np.cos(latitude_geodetic_rad) * np.sin(lon*dtr)
-    Z = (N * (1.0 - ecc1**2.0) + h) * np.sin(latitude_geodetic_rad)
-    # return the cartesian coordinates
-    return (X, Y, Z)
-
-def to_sphere(x: np.ndarray, y: np.ndarray, z: np.ndarray):
-    """
-    Convert from cartesian coordinates to spherical coordinates
-
-    Parameters
-    ----------
-    x, np.ndarray
-        cartesian x-coordinates
-    y, np.ndarray
-        cartesian y-coordinates
-    z, np.ndarray
-        cartesian z-coordinates
-    """
-    # verify axes and copy to not modify inputs
-    x = np.atleast_1d(np.copy(x))
-    y = np.atleast_1d(np.copy(y))
-    z = np.atleast_1d(np.copy(z))
-    # calculate radius
-    rad = np.sqrt(x**2.0 + y**2.0 + z**2.0)
-    # calculate angular coordinates
-    # phi: azimuthal angle
-    phi = np.arctan2(y, x)
-    # th: polar angle
-    th = np.arccos(z/rad)
-    # convert to degrees and fix to 0:360
-    lon = 180.0*phi/np.pi
-    if np.any(lon < 0):
-        lt0 = np.nonzero(lon < 0)
-        lon[lt0] += 360.0
-    # convert to degrees and fix to -90:90
-    lat = 90.0 - (180.0*th/np.pi)
-    np.clip(lat, -90, 90, out=lat)
-    # return latitude, longitude and radius
-    return (lon, lat, rad)
-
-def to_geodetic(
-        x: np.ndarray,
-        y: np.ndarray,
-        z: np.ndarray,
-        a_axis: float = _wgs84.a_axis,
-        flat: float = _wgs84.flat,
-        method: str = 'bowring',
-        eps: float = np.finfo(np.float64).eps,
-        iterations: int = 10
-    ):
-    """
-    Convert from cartesian coordinates to geodetic coordinates
-    using either iterative or closed-form methods
-
-    Parameters
-    ----------
-    x, float
-        cartesian x-coordinates
-    y, float
-        cartesian y-coordinates
-    z, float
-        cartesian z-coordinates
-    a_axis: float, default 6378137.0
-        semimajor axis of the ellipsoid
-    flat: float, default 1.0/298.257223563
-        ellipsoidal flattening
-    method: str, default 'bowring'
-        method to use for conversion
-
-            - ``'moritz'``: iterative solution
-            - ``'bowring'``: iterative solution
-            - ``'zhu'``: closed-form solution
-    eps: float, default np.finfo(np.float64).eps
-        tolerance for iterative methods
-    iterations: int, default 10
-        maximum number of iterations
-    """
-    # verify axes and copy to not modify inputs
-    x = np.atleast_1d(np.copy(x))
-    y = np.atleast_1d(np.copy(y))
-    z = np.atleast_1d(np.copy(z))
-    # calculate the geodetic coordinates using the specified method
-    if (method.lower() == 'moritz'):
-        return _moritz_iterative(x, y, z, a_axis=a_axis, flat=flat,
-            eps=eps, iterations=iterations)
-    elif (method.lower() == 'bowring'):
-        return _bowring_iterative(x, y, z, a_axis=a_axis, flat=flat,
-            eps=eps, iterations=iterations)
-    elif (method.lower() == 'zhu'):
-        return _zhu_closed_form(x, y, z, a_axis=a_axis, flat=flat)
+    #-- Open the NetCDF4 file for reading
+    if (kwargs['compression'] == 'gzip'):
+        #-- read as in-memory (diskless) netCDF4 dataset
+        with gzip.open(os.path.expanduser(filename),'r') as f:
+            fileID = netCDF4.Dataset(os.path.basename(filename),memory=f.read())
+    elif (kwargs['compression'] == 'zip'):
+        #-- read zipped file and extract file into in-memory file object
+        fileBasename,_ = os.path.splitext(os.path.basename(filename))
+        with zipfile.ZipFile(os.path.expanduser(filename)) as z:
+            #-- first try finding a netCDF4 file with same base filename
+            #-- if none found simply try searching for a netCDF4 file
+            try:
+                f,=[f for f in z.namelist() if re.match(fileBasename,f,re.I)]
+            except:
+                f,=[f for f in z.namelist() if re.search(r'\.nc(4)?$',f)]
+            #-- read bytes from zipfile as in-memory (diskless) netCDF4 dataset
+            fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=z.read(f))
+    elif (kwargs['compression'] == 'bytes'):
+        #-- read as in-memory (diskless) netCDF4 dataset
+        fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=filename.read())
     else:
-        raise ValueError(f'Unknown conversion method: {method}')
+        #-- read netCDF4 dataset
+        fileID = netCDF4.Dataset(os.path.expanduser(filename), 'r')
+    #-- create python dictionary for output variables
+    dinput = {}
+    dinput['attributes'] = {}
 
-def _moritz_iterative(
-        x: np.ndarray,
-        y: np.ndarray,
-        z: np.ndarray,
-        a_axis: float = _wgs84.a_axis,
-        flat: float = _wgs84.flat,
-        eps: float = np.finfo(np.float64).eps,
-        iterations: int = 10
-    ):
+    #-- Output NetCDF file information
+    logging.info(fileID.filepath())
+    logging.info(list(fileID.variables.keys()))
+
+    #-- mapping between output keys and netCDF4 variable names
+    keys = ['lon','lat','data']
+    nckeys = [kwargs['lonname'],kwargs['latname'],kwargs['varname']]
+    if kwargs['date']:
+        keys.append('time')
+        nckeys.append(kwargs['timename'])
+    #-- list of variable attributes
+    attributes_list = ['description','units','long_name','calendar',
+        'standard_name','_FillValue','missing_value']
+    #-- for each variable
+    for key,nckey in zip(keys,nckeys):
+        #-- Getting the data from each NetCDF variable
+        dinput[key] = fileID.variables[nckey][:].data
+        #-- Getting attributes of included variables
+        dinput['attributes'][key] = {}
+        for attr in attributes_list:
+            #-- try getting the attribute
+            try:
+                dinput['attributes'][key][attr] = \
+                    fileID.variables[nckey].getncattr(attr)
+            except (KeyError,ValueError,AttributeError):
+                pass
+
+    #-- switching data array to lat/lon if lon/lat
+    sz = dinput['data'].shape
+    if (dinput['data'].ndim == 2) and (len(dinput['lon']) == sz[0]):
+        dinput['data'] = dinput['data'].T
+
+    #-- Global attribute (title of dataset)
+    try:
+        title, = [st for st in dir(fileID) if re.match(r'TITLE',st,re.I)]
+        dinput['attributes']['title'] = fileID.getncattr(title)
+    except (ValueError, KeyError, AttributeError):
+        pass
+    #-- Closing the NetCDF file
+    fileID.close()
+    #-- return the output variable
+    return dinput
+
+def ncdf_write(data, lon, lat, tim, **kwargs):
     """
-    Convert from cartesian coordinates to geodetic coordinates
-    using the iterative solution of [1]_
+    Writes spatial data to COARDS-compliant netCDF4 files
 
-    Parameters
-    ----------
-    x, float
-        cartesian x-coordinates
-    y, float
-        cartesian y-coordinates
-    z, float
-        cartesian z-coordinates
-    a_axis: float, default 6378137.0
-        semimajor axis of the ellipsoid
-    flat: float, default 1.0/298.257223563
-        ellipsoidal flattening
-    eps: float, default np.finfo(np.float64).eps
-        tolerance for iterative method
-    iterations: int, default 10
-        maximum number of iterations
+    Arguments
+    ---------
+    data: z data
+    lon: longitude array
+    lat: latitude array
+    tim: time array
 
-    References
-    ----------
-    .. [1] B. Hofmann-Wellenhof and H. Moritz,
-        *Physical Geodesy*, 2nd Edition, 403 pp., (2006).
-        `doi: 10.1007/978-3-211-33545-1
-        <https://doi.org/10.1007/978-3-211-33545-1>`_
+    Keyword arguments
+    -----------------
+    filename: netCDF4 filename
+    varname: z variable name in netCDF4 file
+    lonname: longitude variable name in netCDF4 file
+    latname: latitude variable name in netCDF4 file
+    units: z variable units
+    longname: z variable description
+    fill_value: missing value for z variable
+    time_units: time variable units
+    time_longname: time variable description
+    title: title attribute of dataset
+    reference: reference attribute of dataset
+    clobber: will overwrite an existing netCDF4 file
+    date: data has date information
     """
-    # Linear eccentricity and first numerical eccentricity
-    lin_ecc = np.sqrt((2.0*flat - flat**2)*a_axis**2)
-    ecc1 = lin_ecc/a_axis
-    # degrees to radians
-    dtr = np.pi/180.0
-    # calculate longitude
-    lon = np.arctan2(y, x)/dtr
-    # set initial estimate of height to 0
-    h = np.zeros_like(lon)
-    h0 = np.inf*np.ones_like(lon)
-    # calculate radius of parallel
-    p = np.sqrt(x**2 + y**2)
-    # initial estimated value for phi using h=0
-    phi = np.arctan(z/(p*(1.0 - ecc1**2)))
-    # iterate to tolerance or to maximum number of iterations
-    i = 0
-    while np.any(np.abs(h - h0) > eps) and (i <= iterations):
-        # copy previous iteration of height
-        h0 = np.copy(h)
-        # calculate radius of curvature
-        N = a_axis/np.sqrt(1.0 - ecc1**2 * np.sin(phi)**2)
-        # estimate new value of height
-        h = p/np.cos(phi) - N
-        # estimate new value for latitude using heights
-        phi = np.arctan(z/(p*(1.0 - ecc1**2*N/(N + h))))
-        # add to iterator
-        i += 1
-    # return latitude, longitude and height
-    return (lon, phi/dtr, h)
+    kwargs.setdefault('filename',None)
+    kwargs.setdefault('date',True)
+    kwargs.setdefault('clobber',True)
+    kwargs.setdefault('varname','z')
+    kwargs.setdefault('lonname','lon')
+    kwargs.setdefault('latname','lat')
+    kwargs.setdefault('timename','time')
+    kwargs.setdefault('units',None)
+    kwargs.setdefault('longname',None)
+    kwargs.setdefault('fill_value',None)
+    kwargs.setdefault('time_units',None)
+    kwargs.setdefault('time_longname',None)
+    kwargs.setdefault('title',None)
+    kwargs.setdefault('reference',None)
 
-def _bowring_iterative(
-        x: np.ndarray,
-        y: np.ndarray,
-        z: np.ndarray,
-        a_axis: float = _wgs84.a_axis,
-        flat: float = _wgs84.flat,
-        eps: float = np.finfo(np.float64).eps,
-        iterations: int = 10
-    ):
-    """
-    Convert from cartesian coordinates to geodetic coordinates
-    using the iterative solution of [1]_ [2]_
+    #-- setting NetCDF clobber attribute
+    clobber = 'w' if kwargs['clobber'] else 'a'
+    #-- opening NetCDF file for writing
+    #-- Create the NetCDF file
+    fileID = netCDF4.Dataset(kwargs['filename'],
+        clobber, format="NETCDF4")
 
-    Parameters
-    ----------
-    x, float
-        cartesian x-coordinates
-    y, float
-        cartesian y-coordinates
-    z, float
-        cartesian z-coordinates
-    a_axis: float, default 6378137.0
-        semimajor axis of the ellipsoid
-    flat: float, default 1.0/298.257223563
-        ellipsoidal flattening
-    eps: float, default np.finfo(np.float64).eps
-        tolerance for iterative method
-    iterations: int, default 10
-        maximum number of iterations
+    # copy kwargs for variable names
+    VARNAME = copy.copy(kwargs['VARNAME'])
+    LONNAME = copy.copy(kwargs['LONNAME'])
+    LATNAME = copy.copy(kwargs['LATNAME'])
+    TIMENAME = copy.copy(kwargs['TIMENAME'])
+    #-- Defining the NetCDF dimensions
+    n_time = len(np.atleast_1d(tim))
+    fileID.createDimension(LONNAME, len(lon))
+    fileID.createDimension(LATNAME, len(lat))
+    fileID.createDimension(TIMENAME, n_time)
 
-    References
-    ----------
-    .. [1] B. R. Bowring, "Transformation from spatial
-        to geodetic coordinates," *Survey Review*, 23(181),
-        323--327, (1976). `doi: 10.1179/sre.1976.23.181.323
-        <https://doi.org/10.1179/sre.1976.23.181.323>`_
-    .. [2] B. R. Bowring, "The Accuracy Of Geodetic
-        Latitude and Height Equations," *Survey Review*, 28(218),
-        202--206, (1985). `doi: 10.1179/sre.1985.28.218.202
-        <https://doi.org/10.1179/sre.1985.28.218.202>`_
-    """
-    # semiminor axis of the WGS84 ellipsoid [m]
-    b_axis = (1.0 - flat)*a_axis
-    # Linear eccentricity
-    lin_ecc = np.sqrt((2.0*flat - flat**2)*a_axis**2)
-    # square of first and second numerical eccentricity
-    e12 = lin_ecc**2/a_axis**2
-    e22 = lin_ecc**2/b_axis**2
-    # degrees to radians
-    dtr = np.pi/180.0
-    # calculate longitude
-    lon = np.arctan2(y, x)/dtr
-    # calculate radius of parallel
-    p = np.sqrt(x**2 + y**2)
-    # initial estimated value for reduced parametric latitude
-    u = np.arctan(a_axis*z/(b_axis*p))
-    # initial estimated value for latitude
-    phi = np.arctan((z + e22*b_axis*np.sin(u)**3) /
-        (p - e12*a_axis*np.cos(u)**3))
-    phi0 = np.inf*np.ones_like(lon)
-    # iterate to tolerance or to maximum number of iterations
-    i = 0
-    while np.any(np.abs(phi - phi0) > eps) and (i <= iterations):
-        # copy previous iteration of phi
-        phi0 = np.copy(phi)
-        # calculate reduced parametric latitude
-        u = np.arctan(b_axis*np.tan(phi)/a_axis)
-        # estimate new value of latitude
-        phi = np.arctan((z + e22*b_axis*np.sin(u)**3) /
-            (p - e12*a_axis*np.cos(u)**3))
-        # add to iterator
-        i += 1
-    # calculate final radius of curvature
-    N = a_axis/np.sqrt(1.0 - e12 * np.sin(phi)**2)
-    # estimate final height (Bowring, 1985)
-    h = p*np.cos(phi) + z*np.sin(phi) - a_axis**2/N
-    # return latitude, longitude and height
-    return (lon, phi/dtr, h)
-
-def _zhu_closed_form(
-        x: np.ndarray,
-        y: np.ndarray,
-        z: np.ndarray,
-        a_axis: float = _wgs84.a_axis,
-        flat: float = _wgs84.flat,
-    ):
-    """
-    Convert from cartesian coordinates to geodetic coordinates
-    using the closed-form solution of [1]_
-
-    Parameters
-    ----------
-    x, float
-        cartesian x-coordinates
-    y, float
-        cartesian y-coordinates
-    z, float
-        cartesian z-coordinates
-    a_axis: float, default 6378137.0
-        semimajor axis of the ellipsoid
-    flat: float, default 1.0/298.257223563
-        ellipsoidal flattening
-
-    References
-    ----------
-    .. [1] J. Zhu, "Exact conversion of Earth-centered,
-        Earth-fixed coordinates to geodetic coordinates,"
-        *Journal of Guidance, Control, and Dynamics*,
-        16(2), 389--391, (1993). `doi: 10.2514/3.21016
-        <https://arc.aiaa.org/doi/abs/10.2514/3.21016>`_
-    """
-    # semiminor axis of the WGS84 ellipsoid [m]
-    b_axis = (1.0 - flat)*a_axis
-    # Linear eccentricity
-    lin_ecc = np.sqrt((2.0*flat - flat**2)*a_axis**2)
-    # square of first numerical eccentricity
-    e12 = lin_ecc**2/a_axis**2
-    # degrees to radians
-    dtr = np.pi/180.0
-    # calculate longitude
-    lon = np.arctan2(y, x)/dtr
-    # calculate radius of parallel
-    w = np.sqrt(x**2 + y**2)
-    # allocate for output latitude and height
-    lat = np.zeros_like(lon)
-    h = np.zeros_like(lon)
-    if np.any(w == 0):
-        # special case where w == 0 (exact polar solution)
-        ind, = np.nonzero(w == 0)
-        h[ind] = np.sign(z[ind])*z[ind] - b_axis
-        lat[ind] = 90.0*np.sign(z[ind])
+    #-- defining the NetCDF variables
+    nc = {}
+    #-- lat and lon
+    nc[LONNAME] = fileID.createVariable(LONNAME, lon.dtype, (LONNAME,))
+    nc[LATNAME] = fileID.createVariable(LATNAME, lat.dtype, (LATNAME,))
+    #-- spatial data
+    if (n_time > 1):
+        nc[VARNAME] = fileID.createVariable(VARNAME, data.dtype,
+            (LATNAME,LONNAME,TIMENAME,), fill_value=kwargs['fill_value'],
+            zlib=True)
     else:
-        # all other cases
-        ind, = np.nonzero(w != 0)
-        l = e12/2.0
-        m = (w[ind]/a_axis)**2.0
-        n = ((1.0 - e12)*z[ind]/b_axis)**2.0
-        i = -(2.0*l**2 + m + n)/2.0
-        k = (l**2.0 - m - n)*l**2.0
-        q = (1.0/216.0)*(m + n - 4.0*l**2)**3.0 + m*n*l**2.0
-        D = np.sqrt((2.0*q - m*n*l**2)*m*n*l**2)
-        B = i/3.0 - (q + D)**(1.0/3.0) - (q - D)**(1.0/3.0)
-        t = np.sqrt(np.sqrt(B**2-k) - (B + i)/2.0) - \
-            np.sign(m - n)*np.sqrt((B - i)/2.0)
-        wi = w/(t + l)
-        zi = (1.0 - e12)*z[ind]/(t - l)
-        # calculate latitude and height
-        lat[ind] = np.arctan2(zi, ((1.0 - e12)*wi))/dtr
-        h[ind] = np.sign(t-1.0+l)*np.sqrt((w-wi)**2.0 + (z[ind]-zi)**2.0)
-    # return latitude, longitude and height
-    return (lon, lat, h)
+        nc[VARNAME] = fileID.createVariable(VARNAME, data.dtype,
+            (LATNAME,LONNAME,), fill_value=kwargs['fill_value'],
+            zlib=True)
+    #-- time
+    if kwargs['date']:
+        nc[TIMENAME] = fileID.createVariable(TIMENAME, 'f8', (TIMENAME,))
 
-def scale_factors(
-        lat: np.ndarray,
-        flat: float = _wgs84.flat,
-        ref: float = 70.0
-    ):
-    """
-    Calculates area scaling factors for a polar stereographic projection
-    including special case of at the exact pole [1]_ [2]_
+    #-- filling NetCDF variables
+    nc[LONNAME][:] = lon
+    nc[LATNAME][:] = lat
+    nc[VARNAME][:,:] = data
+    if kwargs['date']:
+        nc[TIMENAME][:] = tim
 
-    Parameters
-    ----------
-    lat: np.ndarray
-        latitude (degrees north)
-    flat: float, default 1.0/298.257223563
-        ellipsoidal flattening
-    ref: float, default 70.0
-        reference latitude (true scale latitude)
+    #-- Defining attributes for longitude and latitude
+    nc[LONNAME].long_name = 'longitude'
+    nc[LONNAME].units = 'degrees_east'
+    nc[LATNAME].long_name = 'latitude'
+    nc[LATNAME].units = 'degrees_north'
+    #-- Defining attributes for dataset
+    nc[VARNAME].long_name = kwargs['longname']
+    nc[VARNAME].units = kwargs['units']
+    #-- Defining attributes for date if applicable
+    if kwargs['date']:
+        nc[TIMENAME].long_name = kwargs['time_longname']
+        nc[TIMENAME].units = kwargs['time_units']
+    #-- global variables of NetCDF file
+    if kwargs['title']:
+        fileID.title = kwargs['title']
+    if  kwargs['reference']:
+        fileID.reference = kwargs['reference']
+    #-- date created
+    fileID.date_created = time.strftime('%Y-%m-%d',time.localtime())
 
-    Returns
-    -------
-    scale: np.ndarray
-        area scaling factors at input latitudes
+    #-- Output NetCDF structure information
+    logging.info(kwargs['filename'])
+    logging.info(list(fileID.variables.keys()))
 
-    References
-    ----------
-    .. [1] J. P. Snyder, *Map Projections used by the U.S. Geological Survey*,
-        Geological Survey Bulletin 1532, U.S. Government Printing Office, (1982).
-    .. [2] JPL Technical Memorandum 3349-85-101
-    """
-    # convert latitude from degrees to positive radians
-    theta = np.abs(lat)*np.pi/180.0
-    # convert reference latitude from degrees to positive radians
-    theta_ref = np.abs(ref)*np.pi/180.0
-    # square of the eccentricity of the ellipsoid
-    # ecc2 = (1-b**2/a**2) = 2.0*flat - flat^2
-    ecc2 = 2.0*flat - flat**2
-    # eccentricity of the ellipsoid
-    ecc = np.sqrt(ecc2)
-    # calculate ratio at input latitudes
-    m = np.cos(theta)/np.sqrt(1.0 - ecc2*np.sin(theta)**2)
-    t = np.tan(np.pi/4.0 - theta/2.0)/((1.0 - ecc*np.sin(theta)) / \
-        (1.0 + ecc*np.sin(theta)))**(ecc/2.0)
-    # calculate ratio at reference latitude
-    mref = np.cos(theta_ref)/np.sqrt(1.0 - ecc2*np.sin(theta_ref)**2)
-    tref = np.tan(np.pi/4.0 - theta_ref/2.0)/((1.0 - ecc*np.sin(theta_ref)) / \
-        (1.0 + ecc*np.sin(theta_ref)))**(ecc/2.0)
-    # distance scaling
-    k = (mref/m)*(t/tref)
-    kp = 0.5*mref*np.sqrt(((1.0+ecc)**(1.0+ecc))*((1.0-ecc)**(1.0-ecc)))/tref
-    # area scaling
-    scale = np.where(np.isclose(theta, np.pi/2.0), 1.0/(kp**2), 1.0/(k**2))
-    return scale
+    #-- Closing the NetCDF file
+    fileID.close()

@@ -29,6 +29,7 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 10/2021: using python logging for handling verbose output
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
         added new MARv3.11.5 Greenland outputs
@@ -41,6 +42,7 @@ import sys
 import os
 import re
 import h5py
+import logging
 import SMBcorr
 import argparse
 import numpy as np
@@ -72,6 +74,10 @@ def set_projection(REGION):
 
 def append_SMB_mean_ATL11(input_file, base_dir, REGION, MODEL,
     RANGE=[2000,2019], VERBOSE=False):
+
+    #-- create logger for verbosity level
+    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
 
     # read input file
     field_dict = {None:('delta_time','h_corr','x','y')}
@@ -318,11 +324,11 @@ def append_SMB_mean_ATL11(input_file, base_dir, REGION, MODEL,
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')
-        print(input_file) if VERBOSE else None
+        logging.info(input_file)
         # fileID.create_group(model_version) if model_version not in fileID.keys() else None
         h5 = {}
         for key in KEYS:
-            print(f'{sys.argv[0]}: writing{key}') if VERBOSE else None
+            logging.info(f'{sys.argv[0]}: writing{key}')
             # verify mask values
             OUTPUT[key].mask |= (OUTPUT[key].data == OUTPUT[key].fill_value) | \
                     np.isnan(OUTPUT[key].data)

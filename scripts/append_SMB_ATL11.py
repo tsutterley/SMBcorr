@@ -19,7 +19,7 @@ COMMAND LINE OPTIONS:
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
         https://numpy.org
-        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
+        httpsd://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     netCDF4: Python interface to the netCDF C library
         https://unidata.github.io/netcdf4-python/netCDF4/index.html
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_averages_ATL11.py
-Written by Tyler Sutterley (04/2021)
+Written by Tyler Sutterley (10/2021)
 Interpolates seasonal averages of model firn estimates to the coordinates
     of an ATL11 file
 
@@ -41,6 +41,7 @@ import sys
 import os
 import re
 import h5py
+import logging
 import SMBcorr
 import argparse
 import numpy as np
@@ -72,6 +73,11 @@ def set_projection(REGION):
 
 def append_SMB_averages_ATL11(input_file, base_dir, REGION, MODEL,
     RANGE=[2000,2019], VERBOSE=False):
+
+    #-- create logger for verbosity level
+    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # read input file
     field_dict = {None:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
@@ -329,11 +335,11 @@ def append_SMB_averages_ATL11(input_file, base_dir, REGION, MODEL,
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')
-        print(input_file) if VERBOSE else None
+        logging.info(input_file)
         # fileID.create_group(model_version) if model_version not in fileID.keys() else None
         h5 = {}
         for key in KEYS:
-            print(f'{sys.argv[0]}: writing{key}') if VERBOSE else None
+            logging.info(f'{sys.argv[0]}: writing{key}')
             # verify mask values
             OUTPUT[key].mask |= (OUTPUT[key].data == OUTPUT[key].fill_value) | \
                     np.isnan(OUTPUT[key].data)
