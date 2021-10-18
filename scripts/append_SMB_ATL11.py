@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_ATL11.py
-Written by Tyler Sutterley (04/2021)
+Written by Tyler Sutterley (10/2021)
 Interpolates daily model firn estimates to the coordinates of an ATL11 file
 
 CALLING SEQUENCE:
@@ -28,6 +28,7 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 10/2021: using python logging for handling verbose output
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
         added new MARv3.11.5 Greenland outputs
@@ -45,6 +46,7 @@ import sys
 import os
 import re
 import h5py
+import logging
 import SMBcorr
 import argparse
 import numpy as np
@@ -75,6 +77,11 @@ def set_projection(REGION):
     return projection_flag
 
 def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
+
+    #-- create logger for verbosity level
+    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # read input file
     field_dict = {None:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
@@ -339,12 +346,12 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')
-        print(input_file) if VERBOSE else None
+        logging.info(input_file)
         if model_version not in fileID:
             fileID.create_group(model_version)
         h5 = {}
         for key in KEYS:
-            print(f'{sys.argv[0]}: writing{key}') if VERBOSE else None
+            logging.info(f'{sys.argv[0]}: writing{key}')
             # verify mask values
             OUTPUT[key].mask |= (OUTPUT[key].data == OUTPUT[key].fill_value) | \
                     np.isnan(OUTPUT[key].data)

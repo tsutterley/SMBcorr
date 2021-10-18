@@ -17,21 +17,27 @@ import os
 import re
 import io
 import ssl
+import netrc
 import ftplib
 import shutil
+import base64
 import socket
 import inspect
 import hashlib
+import logging
 import posixpath
+import lxml.etree
 import calendar,time
 if sys.version_info[0] == 2:
     from cookielib import CookieJar
     from urllib import urlencode
     import urllib2
+    import urlparse
 else:
     from http.cookiejar import CookieJar
     from urllib.parse import urlencode
     import urllib.request as urllib2
+    import urllib.parse as urlparse
 
 def get_data_path(relpath):
     """
@@ -322,6 +328,60 @@ def check_connection(HOST):
     else:
         return True
 
+#-- PURPOSE: list a directory on an Apache http Server
+def http_list(HOST,timeout=None,context=ssl.SSLContext(),
+    parser=lxml.etree.HTMLParser(),format='%Y-%m-%d %H:%M',
+    pattern='',sort=False):
+    """
+    List a directory on an Apache http Server
+
+    Arguments
+    ---------
+    HOST: remote http host path split as list
+
+    Keyword arguments
+    -----------------
+    timeout: timeout in seconds for blocking operations
+    context: SSL context for url opener object
+    parser: HTML parser for lxml
+    format: format for input time string
+    pattern: regular expression pattern for reducing list
+    sort: sort output list
+
+    Returns
+    -------
+    output: list of items in a directory
+    mtimes: list of last modification times for items in the directory
+    """
+    #-- try listing from http
+    try:
+        #-- Create and submit request.
+        request=urllib2.Request(posixpath.join(*HOST))
+        response=urllib2.urlopen(request,timeout=timeout,context=context)
+    except (urllib2.HTTPError, urllib2.URLError):
+        raise Exception('List error from {0}'.format(posixpath.join(*HOST)))
+    else:
+        #-- read and parse request for files (column names and modified times)
+        tree = lxml.etree.parse(response,parser)
+        colnames = tree.xpath('//tr/td[not(@*)]//a/@href')
+        #-- get the Unix timestamp value for a modification time
+        lastmod = [get_unix_time(i,format=format)
+            for i in tree.xpath('//tr/td[@align="right"][1]/text()')]
+        #-- reduce using regular expression pattern
+        if pattern:
+            i = [i for i,f in enumerate(colnames) if re.search(pattern,f)]
+            #-- reduce list of column names and last modified times
+            colnames = [colnames[indice] for indice in i]
+            lastmod = [lastmod[indice] for indice in i]
+        #-- sort the list
+        if sort:
+            i = [i for i,j in sorted(enumerate(colnames), key=lambda i: i[1])]
+            #-- sort list of column names and last modified times
+            colnames = [colnames[indice] for indice in i]
+            lastmod = [lastmod[indice] for indice in i]
+        #-- return the list of column names and last modified times
+        return (colnames,lastmod)
+
 #-- PURPOSE: download a file from a http host
 def from_http(HOST,timeout=None,context=ssl.SSLContext(),local=None,hash='',
     chunk=16384,verbose=False,fid=sys.stdout,mode=0o775):
@@ -347,6 +407,9 @@ def from_http(HOST,timeout=None,context=ssl.SSLContext(),local=None,hash='',
     -------
     remote_buffer: BytesIO representation of file
     """
+    #-- create logger
+    loglevel = logging.INFO if verbose else logging.CRITICAL
+    logging.basicConfig(stream=fid, level=loglevel)
     #-- try downloading from http
     try:
         #-- Create and submit request.
@@ -371,9 +434,8 @@ def from_http(HOST,timeout=None,context=ssl.SSLContext(),local=None,hash='',
             if not os.access(os.path.dirname(local), os.F_OK):
                 os.makedirs(os.path.dirname(local), mode)
             #-- print file information
-            if verbose:
-                args = (posixpath.join(*HOST),local)
-                print('{0} -->\n\t{1}'.format(*args), file=fid)
+            args = (posixpath.join(*HOST),local)
+            logging.info('{0} -->\n\t{1}'.format(*args))
             #-- store bytes to file using chunked transfer encoding
             remote_buffer.seek(0)
             with open(os.path.expanduser(local), 'wb') as f:
@@ -383,3 +445,123 @@ def from_http(HOST,timeout=None,context=ssl.SSLContext(),local=None,hash='',
         #-- return the bytesIO object
         remote_buffer.seek(0)
         return remote_buffer
+
+#-- PURPOSE: "login" to JPL PO.DAAC Drive with supplied credentials
+def build_opener(username, password, context=ssl.SSLContext(),
+    password_manager=False, get_ca_certs=False, redirect=False,
+    authorization_header=True, urs='https://urs.earthdata.nasa.gov'):
+    """
+    build urllib opener for NASA Earthdata or JPL PO.DAAC Drive with
+    supplied credentials
+
+    Arguments
+    ---------
+    username: NASA Earthdata username
+    password: NASA Earthdata or JPL PO.DAAC WebDAV password
+
+    Keyword arguments
+    -----------------
+    context: SSL context for opener object
+    password_manager: create password manager context using default realm
+    get_ca_certs: get list of loaded “certification authority” certificates
+    redirect: create redirect handler object
+    authorization_header: add base64 encoded authorization header to opener
+    urs: Earthdata login URS 3 host
+    """
+    #-- https://docs.python.org/3/howto/urllib2.html#id5
+    handler = []
+    #-- create a password manager
+    if password_manager:
+        password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
+        #-- Add the username and password for NASA Earthdata Login system
+        password_mgr.add_password(None,urs,username,password)
+        handler.append(urllib2.HTTPBasicAuthHandler(password_mgr))
+    #-- Create cookie jar for storing cookies. This is used to store and return
+    #-- the session cookie given to use by the data server (otherwise will just
+    #-- keep sending us back to Earthdata Login to authenticate).
+    cookie_jar = CookieJar()
+    handler.append(urllib2.HTTPCookieProcessor(cookie_jar))
+    #-- SSL context handler
+    if get_ca_certs:
+        context.get_ca_certs()
+    handler.append(urllib2.HTTPSHandler(context=context))
+    #-- redirect handler
+    if redirect:
+        handler.append(urllib2.HTTPRedirectHandler())
+    #-- create "opener" (OpenerDirector instance)
+    opener = urllib2.build_opener(*handler)
+    #-- Encode username/password for request authorization headers
+    #-- add Authorization header to opener
+    if authorization_header:
+        b64 = base64.b64encode('{0}:{1}'.format(username,password).encode())
+        opener.addheaders = [("Authorization","Basic {0}".format(b64.decode()))]
+    #-- Now all calls to urllib2.urlopen use our opener.
+    urllib2.install_opener(opener)
+    #-- All calls to urllib2.urlopen will now use handler
+    #-- Make sure not to include the protocol in with the URL, or
+    #-- HTTPPasswordMgrWithDefaultRealm will be confused.
+    return opener
+
+#-- PURPOSE: list a directory on NASA GES DISC https server
+def gesdisc_list(HOST,username=None,password=None,build=False,timeout=None,
+    urs='urs.earthdata.nasa.gov',parser=lxml.etree.HTMLParser(),
+    format='%Y-%m-%d %H:%M',pattern='',sort=False):
+    """
+    List a directory on NASA GES DISC servers
+
+    Arguments
+    ---------
+    HOST: remote https host path split as list
+
+    Keyword arguments
+    -----------------
+    username: NASA Earthdata username
+    password: NASA Earthdata password
+    build: Build opener with NASA Earthdata credentials
+    timeout: timeout in seconds for blocking operations
+    urs: Earthdata login URS 3 host
+    parser: HTML parser for lxml
+    format: format for input time string
+    pattern: regular expression pattern for reducing list
+    sort: sort output list
+
+    Returns
+    -------
+    colnames: list of column names in a directory
+    collastmod: list of last modification times for items in the directory
+    """
+    #-- use netrc credentials
+    if build and not (username or password):
+        username,_,password = netrc.netrc().authenticators(urs)
+    #-- build urllib2 opener with credentials
+    if build:
+        build_opener(username, password, password_manager=True,
+            authorization_header=False)
+    #-- try listing from https
+    try:
+        #-- Create and submit request.
+        request=urllib2.Request(posixpath.join(*HOST))
+        response=urllib2.urlopen(request,timeout=timeout)
+    except (urllib2.HTTPError, urllib2.URLError):
+        raise Exception('List error from {0}'.format(posixpath.join(*HOST)))
+    else:
+        #-- read and parse request for files (column names and modified times)
+        tree = lxml.etree.parse(response,parser)
+        colnames = tree.xpath('//tr/td[not(@*)]//a/@href')
+        #-- get the Unix timestamp value for a modification time
+        lastmod = [get_unix_time(i,format=format)
+            for i in tree.xpath('//tr/td[@align="right"][1]/text()')]
+        #-- reduce using regular expression pattern
+        if pattern:
+            i = [i for i,f in enumerate(colnames) if re.search(pattern,f)]
+            #-- reduce list of column names and last modified times
+            colnames = [colnames[indice] for indice in i]
+            lastmod = [lastmod[indice] for indice in i]
+        #-- sort the list
+        if sort:
+            i = [i for i,j in sorted(enumerate(colnames), key=lambda i: i[1])]
+            #-- sort list of column names and last modified times
+            colnames = [colnames[indice] for indice in i]
+            lastmod = [lastmod[indice] for indice in i]
+        #-- return the list of column names and last modified times
+        return (colnames,lastmod)
