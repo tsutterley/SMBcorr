@@ -44,6 +44,7 @@ python interp_SMB_ICESat2_ATL11.py --directory <path_to_directory> input_file
         - `'GSFC-fdm-v1'`
         - `'GSFC-fdm-v1.0'`
         - `'GSFC-fdm-v1.1'`
+        - `'GSFC-fdm-v1.2'`
     * Antarctica
         - `'GSFC-fdm-v0'`
         - `'GSFC-fdm-v1'`

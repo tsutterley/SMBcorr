@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_ATL11.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (12/2021)
 Interpolates daily model firn estimates to the coordinates of an ATL11 file
 
 CALLING SEQUENCE:
@@ -19,7 +19,7 @@ COMMAND LINE OPTIONS:
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
         https://numpy.org
-        httpsd://numpy.org/doc/stable/user/numpy-for-matlab-users.html
+        https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     netCDF4: Python interface to the netCDF C library
         https://unidata.github.io/netcdf4-python/netCDF4/index.html
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
@@ -28,7 +28,6 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
-    Updated 08/2022: use argparse descriptions within documentation
     Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
     Updated 10/2021: using python logging for handling verbose output
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
@@ -47,25 +46,12 @@ UPDATE HISTORY:
 import sys
 import os
 import re
-import sys
+import h5py
 import logging
 import SMBcorr
 import argparse
-import warnings
 import numpy as np
-# attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pointCollection as pc
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pointCollection not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+import pointCollection as pc
 
 # PURPOSE: convert time from delta seconds into Julian and year-decimal
 def convert_delta_time(delta_time, gps_epoch=1198800018.0):
@@ -91,21 +77,20 @@ def set_projection(REGION):
         projection_flag = 'EPSG:3413'
     return projection_flag
 
-def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
+def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
+
+    #-- create logger for verbosity level
+    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # read input file
-    field_dict = {group:('delta_time','h_corr','x','y')}
+    field_dict = {None:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
     # check if running crossover or along-track ATL11
     if (D11.h_corr.ndim == 3):
         nseg,ncycle,ncross = D11.shape
-    elif (D11.h_corr.ndim == 2):
+    else:
         nseg,ncycle = D11.shape
-    elif (D11.h_corr.ndim == 1):
-        for field in D11.fields:
-            setattr(D11, field, getattr(D11, field)[:, None])
-        D11.__update_size_and_shape__()
-        nseg = D11.size
-        ncycle = 1
 
     # get projection of input coordinates
     EPSG = set_projection(REGION)
@@ -141,13 +126,11 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
+    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
-    # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-    # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
+    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
 
     # for each model to append to ATL11
     for model_version in models[REGION][MODEL]:
@@ -216,7 +199,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
             LONGNAME['zsurf'] = "Snow Height Change"
         elif (MODEL == 'MERRA2-hybrid'):
             # regular expression pattern for extracting version
-            merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?(\.\d+)?)$')
+            merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
             # get MERRA-2 version and major version
             MERRA2_VERSION = merra2_regex.match(model_version).group(1)
             # MERRA-2 hybrid directory
@@ -241,15 +224,13 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
             # use compressed files
             KWARGS['GZIP'] = True
             # output variable keys
-            KEYS = ['zfirn','zsmb','zsurf','zmelt']
+            KEYS = ['zsurf','zfirn','zsmb','zmelt']
             # HDF5 longname attributes for each variable
             LONGNAME = {}
             LONGNAME['zsurf'] = "Snow Height Change"
             LONGNAME['zfirn'] = "Snow Height Change due to Compaction"
             LONGNAME['zsmb'] = "Snow Height Change due to Surface Mass Balance"
             LONGNAME['zmelt'] = "Snow Height Change due to Surface Melt"
-        else:
-            raise ValueError(f'Unknown model {MODEL}')
 
         # check if running crossover or along track
         if (D11.h_corr.ndim == 3):
@@ -317,17 +298,12 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
                 OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=bool)
                 OUTPUT[key].interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
             # check that there are valid elevations
-            #if ncycle > 1:
             cycle = [c for c in range(ncycle) if
-                         np.any(np.isfinite(D11.delta_time[:,c]))]
-            #else:
-            #    cycle = [0]
+                np.any(np.isfinite(D11.delta_time[:,c]))]
             # for each valid cycle of ICESat-2 ATL11 data
             for c in cycle:
-                #if ncycle == 1:
-                #    c = None
                 # find valid elevations
-                i = np.flatnonzero(np.isfinite(D11.delta_time[:,c]))
+                i, = np.nonzero(np.isfinite(D11.delta_time[:,c]))
                 # convert from delta time to decimal-years
                 tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
                 if (MODEL == 'MAR'):
@@ -383,7 +359,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
                     np.isnan(OUTPUT[key].data)
             OUTPUT[key].data[OUTPUT[key].mask] = OUTPUT[key].fill_value
             # output variable to HDF5
-            val = '{0}/{1}/{2}'.format(group, model_version,key)
+            val = '{0}/{1}'.format(model_version,key)
             if val not in fileID:
                 h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
                     data=OUTPUT[key], dtype=OUTPUT[key].dtype,
@@ -398,8 +374,9 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
         # close the output HDF5 file
         fileID.close()
 
-# PURPOSE: create arguments parser
-def arguments():
+# Main program that calls append_SMB_ATL11()
+def main():
+    # Read the system arguments listed after the program
     parser = argparse.ArgumentParser(
         description="""Interpolates mean estimates of model firn
             variable to the coordinates of an ATL11 file
@@ -424,36 +401,18 @@ def arguments():
         metavar='MODEL', type=str, nargs='+',
         default=['MAR'], choices=('MAR','RACMO','MERRA2-hybrid'),
         help='Regional climate model to run')
-    parser.add_argument('--group_depth','-g',
-        type=int,
-        help='loop over groups in file to sepecified depth, write output to subgroups')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
         help='Output information about each created file')
-    # return the parser
-    return parser
-
-# Main program that calls append_SMB_ATL11()
-def main():
-    # Read the system arguments listed after the program
-    parser = arguments()
     args = parser.parse_args()
-
-    # create logger for verbosity level
-    loglevel = logging.INFO if args.verbose else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
 
     # run program with parameters
     for f in args.infile:
-        if args.group_depth:
-            groups=SMBcorr.get_h5_structure(f, args.group_depth)
-        else:
-            groups=['/']
         for m in args.model:
-            for group in groups:
-                append_SMB_ATL11(f,args.directory,args.region,m, group=group)
+            append_SMB_ATL11(f, args.directory, args.region, m,
+                VERBOSE=args.verbose)
 
 # run main program
 if __name__ == '__main__':
