@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_interp_mean.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (11/2021)
 Interpolates mean MAR products to times and coordinates
 
 INPUTS:
@@ -36,6 +36,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 UPDATE HISTORY:
+    Updated 11/2021: don't attempt triangulation if large number of points
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
     Written 08/2020
@@ -58,7 +59,13 @@ import scipy.interpolate
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0):
+def find_valid_triangulation(x0,y0,max_points=1e6):
+    #-- don't attempt triangulation if there are a large number of points
+    if (len(x0) > max_points):
+        #-- if too many points: set triangle as an empty list
+        triangle = []
+        return (None,triangle)
+
     #-- Attempt 1: try with standard options Qt Qbb Qc Qz
     #-- Qt: triangulated output, all facets will be simplicial
     #-- Qbb: scale last coordinate to [0,m] for Delaunay triangulations

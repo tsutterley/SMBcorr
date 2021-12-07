@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_interp.py
-Written by Tyler Sutterley (05/2021)
+Written by Tyler Sutterley (11/2021)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
     MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 11/2021: don't attempt triangulation if large number of points
     Updated 05/2021: set bounds error to false when reducing temporal range
     Updated 04/2021: can reduce input dataset to a temporal subset
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
@@ -83,7 +84,13 @@ def set_projection(REGION):
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0):
+def find_valid_triangulation(x0,y0,max_points=1e6):
+    #-- don't attempt triangulation if there are a large number of points
+    if (len(x0) > max_points):
+        #-- if too many points: set triangle as an empty list
+        triangle = []
+        return (None,triangle)
+
     #-- Attempt 1: try with standard options Qt Qbb Qc Qz
     #-- Qt: triangulated output, all facets will be simplicial
     #-- Qbb: scale last coordinate to [0,m] for Delaunay triangulations

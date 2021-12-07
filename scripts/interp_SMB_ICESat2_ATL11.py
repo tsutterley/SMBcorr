@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_SMB_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2021)
+Written by Tyler Sutterley (12/2021)
 Interpolates daily firn model estimates to the times and locations of
     ICESat-2 ATL11 annual land ice height data
 
@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
     merra_hybrid_interp.py: interpolates GSFC MERRA-2 hybrid products
 
 UPDATE HISTORY:
+    Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
     Updated 05/2021: make GSFC MERRA-2 compression keyword an option
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Written 03/2021
@@ -80,6 +81,7 @@ models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
 models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
 models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
 models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
 models['AA']['MERRA2-hybrid'] = []
 models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
 models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
@@ -870,7 +872,7 @@ def main():
     # firn model
     choices = [v for mdl in models.values() for val in mdl.values() for v in val]
     parser.add_argument('--model','-m',
-        metavar='FIRN', type=str, default='GSFC-fdm-v1.1',
+        metavar='FIRN', type=str, default='GSFC-fdm-v1.2',
         choices=sorted(set(choices)),
         help='Regional firn model to run')
     # run with ATL11 crossovers

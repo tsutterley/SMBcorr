@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_daily.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (11/2021)
 Interpolates and extrapolates daily RACMO products to times and coordinates
 
 INPUTS:
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 11/2021: don't attempt triangulation if large number of points
     Updated 08/2020: attempt delaunay triangulation using different options
     Updated 06/2020: set all values initially to fill_value
     Updated 05/2020: Gaussian average model fields before interpolation
@@ -67,7 +68,13 @@ import SMBcorr.time
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0):
+def find_valid_triangulation(x0,y0,max_points=1e6):
+    #-- don't attempt triangulation if there are a large number of points
+    if (len(x0) > max_points):
+        #-- if too many points: set triangle as an empty list
+        triangle = []
+        return (None,triangle)
+
     #-- Attempt 1: try with standard options Qt Qbb Qc Qz
     #-- Qt: triangulated output, all facets will be simplicial
     #-- Qbb: scale last coordinate to [0,m] for Delaunay triangulations

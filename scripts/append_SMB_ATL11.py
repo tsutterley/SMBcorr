@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_ATL11.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (12/2021)
 Interpolates daily model firn estimates to the coordinates of an ATL11 file
 
 CALLING SEQUENCE:
@@ -28,6 +28,7 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
     Updated 10/2021: using python logging for handling verbose output
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
@@ -124,7 +125,8 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
