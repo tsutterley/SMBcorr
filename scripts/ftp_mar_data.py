@@ -105,12 +105,12 @@ def ftp_mar_data(parsed_ftp, DIRECTORY=None, YEARS=None, TIMEOUT=None,
 def multiprocess_sync(*args, **kwds):
     try:
         output = ftp_mirror_file(*args, **kwds)
-    except:
+    except Exception as e:
         #-- if there has been an error exception
         #-- print the type, value, and stack trace of the
         #-- current exception being handled
         logging.critical('process id {0:d} failed'.format(os.getpid()))
-        traceback.print_exc()
+        logging.error(traceback.format_exc())
     else:
         return output
 
