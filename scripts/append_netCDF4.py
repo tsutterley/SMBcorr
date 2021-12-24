@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_netCDF4.py
-Written by Tyler Sutterley (06/2020)
+Written by Tyler Sutterley (12/2021)
 Copy variables from one netCDF4 file to another existing netCDF4 file
 
 CALLING SEQUENCE:
@@ -11,7 +11,9 @@ CALLING SEQUENCE:
 PYTHON DEPENDENCIES:
     netCDF4: Python interface to the netCDF C library
         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+
 UPDATE HISTORY:
+    Updated 12/2021: copy attributes before copying data
     Written 06/2020
 """
 
@@ -34,10 +36,12 @@ def append_netCDF4():
             if name not in dst.variables.keys():
                 # copy variable from src
                 nc = dst.createVariable(name, src[name].datatype, src[name].dimensions)
-                dst[name][:] = src[name][:]
                 # copy variable attributes all at once via dictionary
                 dst[name].setncatts(src[name].__dict__)
+                # copy variable data
+                dst[name][:] = src[name][:]
             else:
+                # copy variable data
                 dst[name][:] = src[name][:]
 
 # run program
