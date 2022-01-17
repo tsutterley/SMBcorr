@@ -62,16 +62,22 @@ def set_projection(REGION):
         projection_flag = 'EPSG:3413'
     return projection_flag
 
-def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
+def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019], group=None):
 
     # read input file
-    field_dict = {None:('delta_time','h_corr','x','y')}
+    field_dict = {group:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
     # check if running crossover or along-track ATL11
     if (D11.h_corr.ndim == 3):
         nseg,ncycle,ncross = D11.shape
-    else:
+    elif (D11.h_corr.ndim == 2):
         nseg,ncycle = D11.shape
+    elif (D11.h_corr.ndim == 1):
+        for field in D11.fields:
+            setattr(D11, field, getattr(D11, field)[:, None])
+        D11.__update_size_and_shape__()
+        nseg = D11.size
+        ncycle = 1
 
     # get projection of input coordinates
     EPSG = set_projection(REGION)
@@ -84,12 +90,12 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
     # models['GL']['MAR'].append('MARv3.10-ERA')
     # models['GL']['MAR'].append('MARv3.11-NCEP')
     # models['GL']['MAR'].append('MARv3.11-ERA')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
+    #models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
     #models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-10km')
     #models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
-    models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-20km')
+    #models['GL']['MAR'].append('MARv3.11.5-NCEP-20km')
     # RACMO
     models['GL']['RACMO'] = []
     # models['GL']['RACMO'].append('RACMO2.3-XGRN11')
@@ -99,7 +105,7 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
     models['GL']['MERRA2-hybrid'] = []
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
+    #models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
     models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
@@ -116,30 +122,30 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
             MAR_REGION=dict(GL='Greenland',AA='Antarctic')[REGION]
             # model subdirectories
             SUBDIRECTORY=dict(AA={}, GL={})
-            SUBDIRECTORY['GL']['MARv3.9-ERA']=['ERA_1958-2018_10km','daily_10km']
-            SUBDIRECTORY['GL']['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
-            SUBDIRECTORY['GL']['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
-            SUBDIRECTORY['GL']['MARv3.11-ERA']=['ERA_1958-2019-15km','daily_15km']
-            SUBDIRECTORY['GL']['MARv3.11.2-ERA-6km']=['6km_ERA5']
-            SUBDIRECTORY['GL']['MARv3.11.2-ERA-7.5km']=['7.5km_ERA5']
-            SUBDIRECTORY['GL']['MARv3.11.2-ERA-10km']=['10km_ERA5']
-            SUBDIRECTORY['GL']['MARv3.11.2-ERA-15km']=['15km_ERA5']
-            SUBDIRECTORY['GL']['MARv3.11.2-ERA-20km']=['20km_ERA5']
-            SUBDIRECTORY['GL']['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
+            #SUBDIRECTORY['GL']['MARv3.9-ERA']=['ERA_1958-2018_10km','daily_10km']
+            #SUBDIRECTORY['GL']['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
+            #SUBDIRECTORY['GL']['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
+            ##SUBDIRECTORY['GL']['MARv3.11-ERA']=['ERA_1958-2019-15km','daily_15km']
+            #SUBDIRECTORY['GL']['MARv3.11.2-ERA-6km']=['6km_ERA5']
+            #SUBDIRECTORY['GL']['MARv3.11.2-ERA-7.5km']=['7.5km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-10km']=['10km_ERA5']
+            #SUBDIRECTORY['GL']['MARv3.11.2-ERA-15km']=['15km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-20km']=['20km_ERA5']
+            #SUBDIRECTORY['GL']['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
             MAR_MODEL=SUBDIRECTORY[REGION][model_version]
             DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
             # keyword arguments for variable coordinates
             MAR_KWARGS=dict(AA={}, GL={})
-            MAR_KWARGS['GL']['MARv3.9-ERA'] = dict(XNAME='X10_153',YNAME='Y21_288')
-            MAR_KWARGS['GL']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
-            MAR_KWARGS['GL']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
-            MAR_KWARGS['GL']['MARv3.11-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
-            MAR_KWARGS['GL']['MARv3.11.2-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
-            MAR_KWARGS['GL']['MARv3.11.2-ERA-7.5km'] = dict(XNAME='X12_203',YNAME='Y20_377')
-            MAR_KWARGS['GL']['MARv3.11.2-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
-            MAR_KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
-            MAR_KWARGS['GL']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
-            MAR_KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            #MAR_KWARGS['GL']['MARv3.9-ERA'] = dict(XNAME='X10_153',YNAME='Y21_288')
+            #MAR_KWARGS['GL']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            #MAR_KWARGS['GL']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            #MAR_KWARGS['GL']['MARv3.11-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            #MAR_KWARGS['GL']['MARv3.11.2-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
+            #MAR_KWARGS['GL']['MARv3.11.2-ERA-7.5km'] = dict(XNAME='X12_203',YNAME='Y20_377')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
+            #MAR_KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            #MAR_KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             KWARGS.update(MAR_KWARGS[REGION][model_version])
             # output variable keys for both direct and derived fields
             KEYS = ['smb_mean','zsurf_mean']
@@ -279,7 +285,7 @@ def append_SMB_mean_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]):
                     np.isnan(OUTPUT[key].data)
             OUTPUT[key].data[OUTPUT[key].mask] = OUTPUT[key].fill_value
             # output variable to HDF5
-            val = '{0}/{1}'.format(model_version,key)
+            val = '{0}/{1}/{2}'.format(group,model_version,key)
             if val not in fileID:
                 h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
                     data=OUTPUT[key], dtype=OUTPUT[key].dtype,
@@ -326,13 +332,22 @@ def main():
         metavar=('START','END'), type=int, nargs=2,
         default=[2000,2019],
         help='Range of years to use in climatology')
+    parser.add_argument('--group_depth','-g', 
+        type=int, 
+        help='loop over groups in file to sepecified depth, write output to subgroups')
+
     args = parser.parse_args()
 
     # run program with parameters
     for f in args.infile:
+        if args.group_depth:
+            groups=SMBcorr.get_h5_structure(f, args.group_depth)
+        else:
+            groups=['/']
         for m in args.model:
-            append_SMB_mean_ATL11(f,args.directory,
-                args.region,m,RANGE=args.year)
+            for group in groups:
+                append_SMB_mean_ATL11(f,args.directory,
+                    args.region,m,RANGE=args.year, group=group)
 
 # run main program
 if __name__ == '__main__':
