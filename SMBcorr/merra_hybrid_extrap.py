@@ -118,14 +118,19 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     fv = np.float(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(fd[VARIABLE])
+    #print(f"merra_hybrid_interp: shape is:{[nt, nx, ny]}")
+    
     #-- extract x and y coordinate arrays from grids if applicable
     if (np.ndim(fileID.variables['x'][:]) == 2):
         xg = fileID.variables['x'][:].copy()
         yg = fileID.variables['y'][:].copy()
         fd['x'],fd['y'] = (xg[:,0],yg[0,:])
     else:
-        fd['x'] = fileID.variables['x'][:].copy()
-        fd['y'] = fileID.variables['y'][:].copy()
+        #fd['x'] = fileID.variables['x'][:].copy()
+        #fd['y'] = fileID.variables['y'][:].copy()
+        #convert x and y to 2-d arrays
+        fd['y'], fd['x'] = np.meshgrid(fileID.variables['y'][:].copy(), \
+                                       fileID.variables['x'][:].copy())
     #-- close the NetCDF files
     fileID.close()
     #-- time is year decimal at time step 5 days
@@ -169,7 +174,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     direction = pyproj.enums.TransformDirection.INVERSE
     #-- convert projection from model coordinates
     xg,yg = transformer.transform(fd['x'], fd['y'], direction=direction)
-
+    print(f"merra_hybrid_interp: xg has shape:{xg.shape}")
     #-- construct search tree from original points
     #-- can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[ii,jj,None],yg[ii,jj,None]),axis=1)
