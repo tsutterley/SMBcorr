@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_downscaled_cumulative.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (08/2022)
 Calculates cumulative anomalies of RACMO surface mass balance products
 
 COMMAND LINE OPTIONS:
@@ -18,7 +18,7 @@ COMMAND LINE OPTIONS:
         SNOWMELT: Snowmelt
         REFREEZE: Melt Water Refreeze
     --mean: Start and end year of mean (separated by commas)
-    -G, --gzip: Input netCDF data files are compressed (*.gz)
+    -G, --gzip: Input netCDF data files are compressed
     -M X, --mode=X: Permission mode of directories and files created
     -V, --verbose: Verbose output of netCDF4 variables
 
@@ -26,6 +26,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 02/2021: using argparse to set parameters
     Forked 09/2019 from downscaled_cumulative_netcdf.py
     Updated 07/2019: added version 3.0 (RACMO2.3p2 for 1958-2018 from FGRN055)
@@ -63,7 +64,26 @@ input_products['SNOWMELT'] = 'snowmelt'
 input_products['REFREEZE'] = 'refreeze'
 
 #-- PURPOSE: get the dimensions for the input data matrices
-def get_dimensions(input_dir,VERSION,PRODUCT,GZIP=False):
+def get_dimensions(input_dir, VERSION, PRODUCT, GZIP=False):
+    """Get the total dimensions of the input data
+
+    Parameters
+    ----------
+    input_dir: str
+        Working data directory
+    VERSION: str
+        Downscaled RACMO Version
+    VARIABLE: str
+        RACMO product to run
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+    GZIP: bool, default False
+        netCDF data files are compressed
+    """
     #-- names within netCDF4 files
     VARIABLE = input_products[PRODUCT]
     #-- variable of interest
@@ -105,8 +125,30 @@ def get_dimensions(input_dir,VERSION,PRODUCT,GZIP=False):
     #-- return the data dimensions
     return (nt,ny,nx)
 
-#-- PURPOSE: read individual yearly netcdf files and calculate mean over period
+#-- PURPOSE: read individual yearly netcdf files and calculate anomalies
 def yearly_file_cumulative(input_dir, VERSION, PRODUCT, MEAN, GZIP=False):
+    """Read individual yearly netcdf files and calculate
+    cumulative anomalies
+
+    Parameters
+    ----------
+    input_dir: str
+        Working data directory
+    VERSION: str
+        Downscaled RACMO Version
+    PRODUCT: str
+        RACMO product to run
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+    MEAN: list
+        Start and end year for mean
+    GZIP: bool, default False
+        netCDF data files are compressed
+    """
     #-- names within netCDF4 files
     VARIABLE = input_products[PRODUCT]
     #-- find input files for years of interest
@@ -165,8 +207,29 @@ def yearly_file_cumulative(input_dir, VERSION, PRODUCT, MEAN, GZIP=False):
     #-- return the cumulative anomalies
     return dinput
 
-#-- PURPOSE: read compressed netCDF4 files and calculate mean over period
+#-- PURPOSE: read compressed netCDF4 files and calculate cumulative anomalies
 def compressed_file_cumulative(input_dir, VERSION, PRODUCT, MEAN, GZIP=False):
+    """Read compressed netCDF4 files and calculate cumulative anomalies
+
+    Parameters
+    ----------
+    input_dir: str
+        Working data directory
+    VERSION: str
+        Downscaled RACMO Version
+    PRODUCT: str
+        RACMO product to run
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+    MEAN: list
+        Start and end year for mean
+    GZIP: bool, default False
+        netCDF data files are compressed
+    """
     #-- names within netCDF4 files
     VARIABLE = input_products[PRODUCT]
     #-- variable of interest
@@ -328,9 +391,39 @@ def ncdf_racmo(dinput, FILENAME=None, UNITS=None, LONGNAME=None, VARNAME=None,
     #-- Closing the NetCDF file
     fileID.close()
 
-#-- PURPOSE: calculate RACMO cumulative data over a polar stereographic grid
-def racmo_downscaled_cumulative(base_dir, VERSION, PRODUCT, RANGE=[1961,1990],
-    GZIP=False, VERBOSE=False, MODE=0o775):
+#-- PURPOSE: calculate RACMO cumulative anomalies with respect to a mean field
+def racmo_downscaled_cumulative(base_dir, VERSION, PRODUCT,
+    RANGE=[1961,1990], GZIP=False, VERBOSE=False, MODE=0o775):
+    """
+    Calculate RACMO cumulative anomalies with respect to a mean field
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    VERSION: str
+        Downscaled RACMO Version
+
+            - ``1.0``: RACMO2.3/XGRN11
+            - ``2.0``: RACMO2.3p2/XGRN11
+            - ``3.0``: RACMO2.3p2/FGRN055
+    PRODUCT: str
+        RACMO product to calculate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+    RANGE: list, default [1961,1990]
+        Start and end year of mean
+    GZIP: bool, default False
+        netCDF data files are compressed
+    VERBOSE: bool, default False
+        Verbose output of netCDF4 variables
+    MODE: oct, default 0o775
+        Permission mode of directories and files created
+    """
 
     #-- Full Directory Setup
     DIRECTORY = 'SMB1km_v{0}'.format(VERSION)
@@ -377,12 +470,12 @@ def racmo_downscaled_cumulative(base_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     #-- change the permissions mode
     os.chmod(os.path.join(input_dir,output_file),MODE)
 
-#-- Main program that calls racmo_downscaled_cumulative()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates cumulative anomalies of
             RACMO downscaled surface mass balance products
+            with respect to a mean field
             """
     )
     #-- command line parameters
@@ -421,6 +514,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- Main program that calls racmo_downscaled_cumulative()
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args = parser.parse_args()
 
     #-- run program for each input product

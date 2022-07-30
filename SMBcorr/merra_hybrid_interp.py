@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_interp.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
-    MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
+
+MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:
     interp_data = interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
@@ -43,6 +44,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 05/2021: set bounds error to false when reducing temporal range
     Updated 04/2021: can reduce input dataset to a temporal subset
@@ -71,10 +73,22 @@ import scipy.interpolate
 from SMBcorr.regress_model import regress_model
 
 #-- PURPOSE: set the projection parameters based on the region name
-def set_projection(REGION):
-    if (REGION == 'ais'):
+def set_projection(region):
+    """
+    Set the coordinate reference system string based on the
+    MERRA-2 Hybrid region name
+
+    Parameters
+    ----------
+    region: str
+        Region string
+
+            - ``ais``: Antarctica
+            - ``gris``: Greenland
+    """
+    if (region == 'ais'):
         projection_flag = 'EPSG:3031'
-    elif (REGION == 'gris'):
+    elif (region == 'gris'):
         projection_flag = 'EPSG:3413'
     return projection_flag
 
@@ -84,7 +98,23 @@ def set_projection(REGION):
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0,max_points=1e6):
+def find_valid_triangulation(x0, y0, max_points=1e6):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    max_points: int or float, default 1e6
+        Maximum number of coordinates to attempt to triangulate
+    """
     #-- don't attempt triangulation if there are a large number of points
     if (len(x0) > max_points):
         #-- if too many points: set triangle as an empty list
@@ -124,6 +154,45 @@ def find_valid_triangulation(x0,y0,max_points=1e6):
 def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     VERSION='v1', VARIABLE='FAC', SIGMA=1.5, FILL_VALUE=None,
     EXTRAPOLATE=False, GZIP=False):
+    """
+    Reads and interpolates MERRA-2 hybrid variables
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    REGION: str
+        MERRA-2 region to interpolate
+
+            - ``ais``: Antarctica
+            - ``gris``: Greenland
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VERSION: str, default 'v1'
+        MERRA-2 hybrid model version
+    VARIABLE: str, default 'FAC'
+        MERRA-2 hybrid product to interpolate
+
+        - ``FAC``: firn air content
+        - ``p_minus_e``: precipitation minus evaporation
+        - ``melt``: snowmelt
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    EXTRAPOLATE: bool, default False
+        Create a regression model to extrapolate in time
+    GZIP: bool, default False
+        netCDF4 file is gzip compressed
+    """
 
     #-- suffix if compressed
     suffix = '.gz' if GZIP else ''
@@ -173,13 +242,13 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         f = scipy.interpolate.interp1d(fileID.variables['time'][:],
             np.arange(nt), kind='nearest', bounds_error=False,
             fill_value=(0,nt))
-        imin,imax = f((tmin,tmax)).astype(np.int)
+        imin,imax = f((tmin,tmax)).astype(np.int64)
         #-- read reduced time variables
         fd['time'] = fileID.variables['time'][imin:imax+1].copy()
         #-- read reduced dataset and remove singleton dimensions
         fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][imin:imax+1,:,:])
     #-- invalid data value
-    fv = np.float(fileID.variables[VARIABLE]._FillValue)
+    fv = np.float64(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(fd[VARIABLE])
     #-- extract x and y coordinate arrays from grids if applicable
@@ -277,7 +346,7 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         ind, = np.nonzero((tdec < fd['time'].min()) & valid)
         #-- calculate a regression model for calculating values
         #-- read first 10 years of data to create regression model
-        N = np.int(10.0/time_step)
+        N = np.int64(10.0/time_step)
         #-- spatially interpolate variable to coordinates
         T = np.zeros((N))
         DATA = np.zeros((count,N))
@@ -310,7 +379,7 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         ind, = np.nonzero((tdec > fd['time'].max()) & valid)
         #-- calculate a regression model for calculating values
         #-- read last 10 years of data to create regression model
-        N = np.int(10.0/time_step)
+        N = np.int64(10.0/time_step)
         #-- spatially interpolate variable to coordinates
         T = np.zeros((N))
         DATA = np.zeros((count,N))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 scale_areas.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (07/2022)
 Calculates area scaling factors for a polar stereographic projection
     including special case of at the exact pole
 
@@ -38,6 +38,7 @@ REFERENCES:
     JPL Technical Memorandum 3349-85-101
 
 UPDATE HISTORY
+    Updated 07/2022: updated docstrings to numpy documentation format
     Updated 10/2021: add pole case in stereographic area scale calculation
     Updated 12/2020: added function docstrings, updated comments for release
     Updated 06/2014: updated comments
@@ -50,22 +51,32 @@ warnings.filterwarnings("ignore")
 def scale_areas(lat, flat=1.0/298.257223563, ref=70.0):
     """
     Calculates area scaling factors for a polar stereographic projection
+    including special case of at the exact pole
 
-    Arguments
-    ---------
-    lat: latitude
-
-    Keyword arguments
-    -----------------
-    flat: ellipsoidal flattening
-    ref: reference latitude
+    Parameters
+    ----------
+    lat: float,
+        latitude (degrees north)
+    flat: float, default 1.0/298.257223563
+        ellipsoidal flattening
+    ref: float, default 70.0
+        reference latitude (true scale latitude)
 
     Returns
     -------
-    scale: area scaling factors at input latitudes
+    scale: float
+        area scaling factors at input latitudes
+
+    References
+    ----------
+    .. [1] Snyder, J P (1982) Map Projections used by the U.S. Geological Survey
+        Forward formulas for the ellipsoid.  Geological Survey Bulletin
+        1532, U.S. Government Printing Office.
+    .. [2] JPL Technical Memorandum 3349-85-101
     """
     #-- convert latitude from degrees to positive radians
     theta = np.abs(lat)*np.pi/180.0
+    #-- convert reference latitude from degrees to positive radians
     theta_ref = np.abs(ref)*np.pi/180.0
     #-- square of the eccentricity of the ellipsoid
     #-- ecc2 = (1-b**2/a**2) = 2.0*flat - flat^2

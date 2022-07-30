@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_seasonal.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates seasonal MAR products to times and coordinates
 Seasonal files are climatology files for each day of the year
 
@@ -48,6 +48,7 @@ PYTHON DEPENDENCIES:
         https://github.com/scikit-learn/scikit-learn
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
     Written 06/2020
@@ -68,8 +69,63 @@ from sklearn.neighbors import KDTree, BallTree
 #-- PURPOSE: read and interpolate a seasonal field of MAR outputs
 def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
-    RANGE=[2000,2019], SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0,
-    FILL_VALUE=None):
+    RANGE=[2000,2019], SEARCH='BallTree', NN=10, POWER=2.0,
+    SIGMA=1.5, FILL_VALUE=None):
+    """
+    Spatially extrapolate daily climatologies of MAR products
+
+    Parameters
+    ----------
+    DIRECTORY: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        MAR Version
+
+            - ``v3.5.2``
+            - ``v3.9``
+            - ``v3.10``
+            - ``v3.11``
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        MAR product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``SNOWFALL``: Snowfall
+            - ``RAINFALL``: Rainfall
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+            - ``SUBLIM``: Sublimation
+
+    XNAME: str or NoneType, default None
+        Name of the x-coordinate variable
+    YNAME: str or NoneType, default None
+        Name of the y-coordinate variable
+    TIMENAME: str or NoneType, default 'TIME'
+        Name of the time variable
+    RANGE: list
+        Start and end year of seasonal
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    """
 
     #-- regular expression pattern for MAR dataset
     rx = re.compile('MARseasonal(.*?){0}-{1}.nc$'.format(*RANGE))
@@ -124,7 +180,7 @@ def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         surf_mask = np.broadcast_to(SRF, (nt,ny,nx))
         fd[VARIABLE].mask[:,:,:] |= (surf_mask != 4)
         #-- combine mask object through time to create a single mask
-        fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
+        fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float64)
         #-- MAR coordinates
         fd['LON']=fileID.variables['LON'][:,:].copy()
         fd['LAT']=fileID.variables['LAT'][:,:].copy()
@@ -174,13 +230,13 @@ def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- number of output data points
     npts = len(tdec)
     #-- output interpolated arrays of output variable
-    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
+    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float64)
     extrap.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     extrap.data[:] = extrap.fill_value
     #-- find indices for linearly interpolating in time
     f = scipy.interpolate.interp1d(fd['TIME'], np.arange(nt), kind='linear')
-    date_indice = f(tmod).astype(np.int)
+    date_indice = f(tmod).astype(np.int64)
     #-- for each unique model date
     #-- linearly interpolate in time between two model maps
     #-- then then inverse distance weighting to extrapolate in space

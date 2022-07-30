@@ -12,16 +12,16 @@ SMBcorr
    :target: https://www.python.org/
 
 .. |License| image:: https://img.shields.io/github/license/tsutterley/smbcorr
-   :target: https://github.com/tsutterley/SMBcorr/blob/master/LICENSE
+   :target: https://github.com/tsutterley/SMBcorr/blob/main/LICENSE
 
 .. |Documentation Status| image:: https://readthedocs.org/projects/smbcorr/badge/?version=latest
    :target: https://smbcorr.readthedocs.io/en/latest/?badge=latest
 
 .. |Binder| image:: https://mybinder.org/badge_logo.svg
-   :target: https://mybinder.org/v2/gh/tsutterley/SMBcorr/master
+   :target: https://mybinder.org/v2/gh/tsutterley/SMBcorr/main
 
-.. |Pangeo| image:: https://binder.pangeo.io/badge.svg
-   :target: https://binder.pangeo.io/v2/gh/tsutterley/SMBcorr/master
+.. |Pangeo| image:: https://img.shields.io/static/v1.svg?logo=Jupyter&label=PangeoBinderAWS&message=us-west-2&color=orange
+   :target: https://aws-uswest2-binder.pangeo.io/v2/gh/tsutterley/SMBcorr/main?urlpath=lab
 
 
 Python-based tools for correcting altimetry data for surface mass balance and firn processes
@@ -50,7 +50,7 @@ Download
 | The program homepage is:
 | https://github.com/tsutterley/SMBcorr
 | A zip archive of the latest version is available directly at:
-| https://github.com/tsutterley/SMBcorr/archive/master.zip
+| https://github.com/tsutterley/SMBcorr/archive/main.zip
 
 Disclaimer
 ##########

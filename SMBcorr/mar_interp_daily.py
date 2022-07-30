@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_interp_daily.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 INPUTS:
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
@@ -70,7 +71,23 @@ import SMBcorr.time
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0,max_points=1e6):
+def find_valid_triangulation(x0, y0, max_points=1e6):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    max_points: int or float, default 1e6
+        Maximum number of coordinates to attempt to triangulate
+    """
     #-- don't attempt triangulation if there are a large number of points
     if (len(x0) > max_points):
         #-- if too many points: set triangle as an empty list
@@ -110,10 +127,59 @@ def find_valid_triangulation(x0,y0,max_points=1e6):
 def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
     SIGMA=1.5, FILL_VALUE=None, EXTRAPOLATE=False):
+    """
+    Reads and interpolates daily MAR surface mass balance products
+
+    Parameters
+    ----------
+    DIRECTORY: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        MAR Version
+
+            - ``v3.5.2``
+            - ``v3.9``
+            - ``v3.10``
+            - ``v3.11``
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        MAR product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``SNOWFALL``: Snowfall
+            - ``RAINFALL``: Rainfall
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+            - ``SUBLIM``: Sublimation
+
+    XNAME: str or NoneType, default None
+        Name of the x-coordinate variable
+    YNAME: str or NoneType, default None
+        Name of the y-coordinate variable
+    TIMENAME: str or NoneType, default 'TIME'
+        Name of the time variable
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    EXTRAPOLATE: bool, default False
+        Create a regression model to extrapolate in time
+    """
 
     #-- start and end years to read
-    SY = np.nanmin(np.floor(tdec)).astype(np.int)
-    EY = np.nanmax(np.floor(tdec)).astype(np.int)
+    SY = np.nanmin(np.floor(tdec)).astype(np.int64)
+    EY = np.nanmax(np.floor(tdec)).astype(np.int64)
     YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- regular expression pattern for MAR dataset
     rx = re.compile(r'{0}-(.*?)-(\d+)(_subset)?.nc$'.format(VERSION,YRS))
@@ -193,7 +259,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             fd[VARIABLE].mask = fd[VARIABLE].data == fd[VARIABLE].fill_value
             fd[VARIABLE].mask[:,:,:] |= (surf_mask != 4)
             #-- combine mask object through time to create a single mask
-            fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
+            fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float64)
             #-- MAR coordinates
             fd['LON']=fileID.variables['LON'][:,:].copy()
             fd['LAT']=fileID.variables['LAT'][:,:].copy()
@@ -201,7 +267,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             fd['x']=1000.0*fileID.variables[XNAME][:].copy()
             fd['y']=1000.0*fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables[TIMENAME][:t].astype(np.float)
+            delta_time=fileID.variables[TIMENAME][:t].astype(np.float64)
             date_string=fileID.variables[TIMENAME].units
         #-- extract epoch and units
         epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
@@ -265,7 +331,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
 
     #-- output interpolated arrays of model variable
     npts = len(tdec)
-    interp = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
+    interp = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float64)
     interp.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     interp.data[:] = interp.fill_value

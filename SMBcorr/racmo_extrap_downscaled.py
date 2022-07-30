@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_downscaled.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates downscaled RACMO products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 04/2020: reduced to interpolation function.  output masked array
@@ -71,6 +72,46 @@ from SMBcorr.regress_model import regress_model
 #-- PURPOSE: read and interpolate downscaled RACMO products
 def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     VARIABLE='SMB', SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
+    """
+    Spatially extrapolates downscaled RACMO products
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        Downscaled RACMO Version
+
+            - ``1.0``: RACMO2.3/XGRN11
+            - ``2.0``: RACMO2.3p2/XGRN11
+            - ``3.0``: RACMO2.3p2/FGRN055
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        RACMO product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    """
 
     #-- Full Directory Setup
     DIRECTORY = 'SMB1km_v{0}'.format(VERSION)
@@ -135,7 +176,7 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
 
     #-- output extrapolated arrays of variable
     npts = len(tdec)
-    extrap_data = np.ma.zeros((npts),dtype=np.float)
+    extrap_data = np.ma.zeros((npts),dtype=np.float64)
     extrap_data.data[:] = extrap_data.fill_value
     extrap_data.mask = np.zeros((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
@@ -150,7 +191,7 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
         #-- determine which subset of time to read from the netCDF4 file
         f = scipy.interpolate.interp1d(d['TIME'], np.arange(nt), kind='linear',
             fill_value=(0,nt-1), bounds_error=False)
-        date_indice = f(tind).astype(np.int)
+        date_indice = f(tind).astype(np.int64)
         #-- for each unique RACMO date
         #-- linearly interpolate in time between two RACMO maps
         #-- then then inverse distance weighting to extrapolate in space

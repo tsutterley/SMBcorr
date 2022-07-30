@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_daily.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates daily RACMO products to times and coordinates
 
 INPUTS:
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 08/2020: attempt delaunay triangulation using different options
     Updated 06/2020: set all values initially to fill_value
@@ -68,7 +69,23 @@ import SMBcorr.time
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0,max_points=1e6):
+def find_valid_triangulation(x0, y0, max_points=1e6):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    max_points: int or float, default 1e6
+        Maximum number of coordinates to attempt to triangulate
+    """
     #-- don't attempt triangulation if there are a large number of points
     if (len(x0) > max_points):
         #-- if too many points: set triangle as an empty list
@@ -107,10 +124,43 @@ def find_valid_triangulation(x0,y0,max_points=1e6):
 #-- PURPOSE: read and interpolate daily RACMO2.3 outputs
 def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
     SIGMA=1.5, FILL_VALUE=None, EXTRAPOLATE=False):
+    """
+    Reads and interpolates daily RACMO surface mass balance products
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    MODEL: str
+        Daily model outputs to interpolate
+
+            - ``FGRN055``: 5.5km Greenland RACMO2.3p2
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'smb'
+        RACMO product to interpolate
+
+            - ``smb``: Surface Mass Balance
+            - ``hgtsrf``: Change of Surface Height
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    EXTRAPOLATE: bool, default False
+        Create a regression model to extrapolate in time
+    """
 
     #-- start and end years to read
-    SY = np.nanmin(np.floor(tdec)).astype(np.int)
-    EY = np.nanmax(np.floor(tdec)).astype(np.int)
+    SY = np.nanmin(np.floor(tdec)).astype(np.int64)
+    EY = np.nanmax(np.floor(tdec)).astype(np.int64)
     YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- input list of files
     if (MODEL == 'FGRN055'):
@@ -131,7 +181,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             ny = len(fileID.variables['rlat'][:])
             nt += len(fileID.variables['time'][:])
             #-- invalid data value
-            fv = np.float(fileID.variables[VARIABLE]._FillValue)
+            fv = np.float64(fileID.variables[VARIABLE]._FillValue)
 
     #-- scaling factor for converting units
     if (VARIABLE == 'hgtsrf'):
@@ -165,7 +215,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             i,j = np.nonzero(tmp[0,:,:] != fv)
             fd[VARIABLE].mask[:,i,j] = False
             #-- combine mask object through time to create a single mask
-            fd['mask']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
+            fd['mask']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float64)
             #-- racmo coordinates
             fd['lon']=fileID.variables['lon'][:,:].copy()
             fd['lat']=fileID.variables['lat'][:,:].copy()
@@ -174,7 +224,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             #-- rotated pole parameters
             proj4_params=fileID.variables['rotated_pole'].proj4_params
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables['time'][:].astype(np.float)
+            delta_time=fileID.variables['time'][:].astype(np.float64)
             date_string=fileID.variables['time'].units
         #-- extract epoch and units
         epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
@@ -218,7 +268,13 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- pyproj transformer for converting from input coordinates (EPSG)
     #-- RACMO models are rotated pole latitude and longitude
-    crs1 = pyproj.CRS.from_string(EPSG)
+    try:
+        # EPSG projection code string or int
+        crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(int(EPSG)))
+    except (ValueError,pyproj.exceptions.CRSError):
+        # Projection SRS string
+        crs1 = pyproj.CRS.from_string(EPSG)
+    # coordinate reference system for RACMO model
     crs2 = pyproj.CRS.from_string(proj4_params)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates
@@ -238,7 +294,7 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- output interpolated arrays of model variable
     npts = len(tdec)
-    interp = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    interp = np.ma.zeros((npts),fill_value=fv,dtype=np.float64)
     interp.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     interp.data[:] = interp.fill_value
@@ -341,11 +397,3 @@ def interpolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- return the interpolated values
     return interp
-
-#-- PURPOSE: calculate the Julian day from the calendar date
-def calc_julian_day(YEAR, MONTH, DAY, HOUR=0, MINUTE=0, SECOND=0):
-    JD = 367.*YEAR - np.floor(7.*(YEAR + np.floor((MONTH+9.)/12.))/4.) - \
-        np.floor(3.*(np.floor((YEAR + (MONTH - 9.)/7.)/100.) + 1.)/4.) + \
-        np.floor(275.*MONTH/9.) + DAY + 1721028.5 + HOUR/24. + MINUTE/1440. + \
-        SECOND/86400.
-    return JD

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_daily.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
         using utilities from time module for conversions
@@ -76,13 +77,68 @@ import SMBcorr.time
 
 #-- PURPOSE: read and interpolate daily MAR outputs
 def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
-    XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
-    SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None,
-    EXTRAPOLATE=False):
+    VARIABLE='SMB', XNAME=None, YNAME=None, TIMENAME='TIME',
+    SEARCH='BallTree', NN=10, POWER=2.0, SIGMA=1.5,
+    FILL_VALUE=None, EXTRAPOLATE=False):
+    """
+    Spatially extrapolates daily MAR surface mass balance products
+
+    Parameters
+    ----------
+    DIRECTORY: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        MAR Version
+
+            - ``v3.5.2``
+            - ``v3.9``
+            - ``v3.10``
+            - ``v3.11``
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        MAR product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``SNOWFALL``: Snowfall
+            - ``RAINFALL``: Rainfall
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+            - ``SUBLIM``: Sublimation
+
+    XNAME: str or NoneType, default None
+        Name of the x-coordinate variable
+    YNAME: str or NoneType, default None
+        Name of the y-coordinate variable
+    TIMENAME: str or NoneType, default 'TIME'
+        Name of the time variable
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    EXTRAPOLATE: bool, default False
+        Create a regression model to extrapolate in time
+    """
 
     #-- start and end years to read
-    SY = np.nanmin(np.floor(tdec)).astype(np.int)
-    EY = np.nanmax(np.floor(tdec)).astype(np.int)
+    SY = np.nanmin(np.floor(tdec)).astype(np.int64)
+    EY = np.nanmax(np.floor(tdec)).astype(np.int64)
     YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- regular expression pattern for MAR dataset
     rx = re.compile(r'{0}-(.*?)-(\d+)(_subset)?.nc$'.format(VERSION,YRS))
@@ -150,7 +206,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             fd[VARIABLE].mask[:,:,:] |= (surf_mask != 4)
             #-- combine mask object through time to create a single mask
             fd[VARIABLE].mask = fd[VARIABLE].data == fd[VARIABLE].fill_value
-            fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
+            fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float64)
             #-- MAR coordinates
             fd['LON']=fileID.variables['LON'][:,:].copy()
             fd['LAT']=fileID.variables['LAT'][:,:].copy()
@@ -158,7 +214,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             fd['x']=1000.0*fileID.variables[XNAME][:].copy()
             fd['y']=1000.0*fileID.variables[YNAME][:].copy()
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables[TIMENAME][:t].astype(np.float)
+            delta_time=fileID.variables[TIMENAME][:t].astype(np.float64)
             date_string=fileID.variables[TIMENAME].units
         #-- extract epoch and units
         epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
@@ -215,7 +271,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
 
     #-- output interpolated arrays of output variable
     npts = len(tdec)
-    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
+    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float64)
     extrap.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     extrap.data[:] = extrap.fill_value
@@ -230,7 +286,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         xind,yind,tind = (X[ind],Y[ind],tdec[ind])
         #-- find indices for linearly interpolating in time
         f = scipy.interpolate.interp1d(fd['TIME'], np.arange(nt), kind='linear')
-        date_indice = f(tind).astype(np.int)
+        date_indice = f(tind).astype(np.int64)
         #-- for each unique model date
         #-- linearly interpolate in time between two model maps
         #-- then then inverse distance weighting to extrapolate in space
