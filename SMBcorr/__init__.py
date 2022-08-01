@@ -1,9 +1,9 @@
-import SMBcorr.spatial
 import SMBcorr.time
 import SMBcorr.utilities
 import SMBcorr.version
 from SMBcorr.regress_model import regress_model
 from SMBcorr.scale_areas import scale_areas
+from SMBcorr.spatial import spatial
 # MAR
 from SMBcorr.mar_smb_cumulative import mar_smb_cumulative
 from SMBcorr.mar_smb_mean import mar_smb_mean
@@ -14,6 +14,7 @@ from SMBcorr.mar_interp_daily import interpolate_mar_daily
 from SMBcorr.mar_interp_seasonal import interpolate_mar_seasonal
 from SMBcorr.mar_interp_mean import interpolate_mar_mean
 # MERRA2 and MERRA2-hybrid
+from SMBcorr.merra_smb_mean import merra_smb_mean
 from SMBcorr.merra_smb_cumulative import merra_smb_cumulative
 from SMBcorr.merra_hybrid_cumulative import merra_hybrid_cumulative
 from SMBcorr.merra_hybrid_extrap import extrapolate_merra_hybrid

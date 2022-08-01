@@ -21,7 +21,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: mar_smb_mean.py
+    :filename: ../../SMBcorr/mar_smb_mean.py
     :func: arguments
     :prog: mar_smb_mean.py
     :nodescription:

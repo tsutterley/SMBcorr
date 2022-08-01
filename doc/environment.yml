@@ -2,24 +2,34 @@ name: smbcorr-docs
 channels:
   - conda-forge
 dependencies:
-  - docutils
+  - docutils<0.18
   - fontconfig
   - freetype
   - future
   - graphviz
+  - h5py
+  - ipywidgets>=7.6,<8.0
+  - ipympl
+  - jupyterlab=3
+  - jupyterlab_widgets
   - lxml
   - markupsafe==2.0.1
   - matplotlib
+  - netCDF4
+  - notebook
   - numpy
   - numpydoc
   - pip
+  - proj>=8.0
   - pyproj
   - python>=3.6
   - python-dateutil
   - scikit-learn
   - scipy
   - sphinx
+  - sphinx-argparse
   - sphinx_rtd_theme
+  - texlive-core
+  - tk
   - pip:
-     - sphinx-argparse>=0.4
      - ..

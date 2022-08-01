@@ -17,7 +17,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: merra_hybrid_cumulative.py
+    :filename: ../../SMBcorr/merra_hybrid_cumulative.py
     :func: arguments
     :prog: merra_hybrid_cumulative.py
     :nodescription:

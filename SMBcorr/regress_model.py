@@ -62,37 +62,37 @@ def regress_model(t_in, d_in, t_out,
         reconstructed time series
     """
 
-    # remove singleton dimensions
+    #-- remove singleton dimensions
     t_in = np.squeeze(t_in)
     d_in = np.squeeze(d_in)
     t_out = np.squeeze(t_out)
-    # check dimensions of output
+    #-- check dimensions of output
     t_out = np.atleast_1d(t_out)
-    # calculate epoch for calculating relative times
+    #-- calculate epoch for calculating relative times
     if isinstance(RELATIVE, (list, np.ndarray)):
         t_rel = t_in[RELATIVE].mean()
-    elif isinstance(RELATIVE, (float, int, np.float64, np.int_)):
+    elif isinstance(RELATIVE, (float, int, np.float_, np.int_)):
         t_rel = np.copy(RELATIVE)
     elif (RELATIVE == Ellipsis):
         t_rel = t_in[RELATIVE].mean()
 
-    # create design matrix based on polynomial order and harmonics
+    #-- create design matrix based on polynomial order and harmonics
     DMAT = []
     MMAT = []
-    # add polynomial orders (0=constant, 1=linear, 2=quadratic)
+    #-- add polynomial orders (0=constant, 1=linear, 2=quadratic)
     for o in range(ORDER+1):
         DMAT.append((t_in-t_rel)**o)
         MMAT.append((t_out-t_rel)**o)
-    # add cyclical terms (0.5=semi-annual, 1=annual)
+    #-- add cyclical terms (0.5=semi-annual, 1=annual)
     for c in CYCLES:
         DMAT.append(np.sin(2.0*np.pi*t_in/np.float64(c)))
         DMAT.append(np.cos(2.0*np.pi*t_in/np.float64(c)))
         MMAT.append(np.sin(2.0*np.pi*t_out/np.float64(c)))
         MMAT.append(np.cos(2.0*np.pi*t_out/np.float64(c)))
 
-    # Calculating Least-Squares Coefficients
-    # Standard Least-Squares fitting (the [0] denotes coefficients output)
+    #-- Calculating Least-Squares Coefficients
+    #-- Standard Least-Squares fitting (the [0] denotes coefficients output)
     beta_mat = np.linalg.lstsq(np.transpose(DMAT), d_in, rcond=-1)[0]
 
-    # return modeled time-series
+    #-- return modeled time-series
     return np.dot(np.transpose(MMAT), beta_mat)

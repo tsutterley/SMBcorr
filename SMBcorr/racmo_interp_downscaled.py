@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_downscaled.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates downscaled RACMO products to times and coordinates
 
 INPUTS:
@@ -39,6 +39,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
@@ -65,7 +66,23 @@ from SMBcorr.regress_model import regress_model
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0,max_points=1e6):
+def find_valid_triangulation(x0, y0, max_points=1e6):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    max_points: int or float, default 1e6
+        Maximum number of coordinates to attempt to triangulate
+    """
     #-- don't attempt triangulation if there are a large number of points
     if (len(x0) > max_points):
         #-- if too many points: set triangle as an empty list
@@ -104,6 +121,41 @@ def find_valid_triangulation(x0,y0,max_points=1e6):
 #-- PURPOSE: read and interpolate downscaled RACMO products
 def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     VARIABLE='SMB', FILL_VALUE=None):
+    """
+    Reads and interpolates downscaled RACMO surface mass balance
+    products
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        Downscaled RACMO Version
+
+            - ``1.0``: RACMO2.3/XGRN11
+            - ``2.0``: RACMO2.3p2/XGRN11
+            - ``3.0``: RACMO2.3p2/FGRN055
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        RACMO product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    """
 
     #-- Full Directory Setup
     DIRECTORY = 'SMB1km_v{0}'.format(VERSION)
@@ -137,7 +189,13 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
 
     #-- pyproj transformer for converting from input coordinates (EPSG)
     #-- into model coordinates
-    crs1 = pyproj.CRS.from_string(EPSG)
+    try:
+        # EPSG projection code string or int
+        crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(int(EPSG)))
+    except (ValueError,pyproj.exceptions.CRSError):
+        # Projection SRS string
+        crs1 = pyproj.CRS.from_string(EPSG)
+    # coordinate reference system for RACMO model
     crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(3413))
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- calculate projected coordinates of input coordinates
@@ -190,7 +248,7 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
 
     #-- output interpolated arrays of variable
     npts = len(tdec)
-    interp_data = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
+    interp_data = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float64)
     #-- interpolation mask of invalid values
     interp_data.mask = np.ones((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
@@ -204,7 +262,7 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
         #-- determine which subset of time to read from the netCDF4 file
         f = scipy.interpolate.interp1d(d['TIME'], np.arange(nt), kind='linear',
             fill_value=(0,nt-1), bounds_error=False)
-        date_indice = f(tdec[ind]).astype(np.int)
+        date_indice = f(tdec[ind]).astype(np.int64)
         #-- months to read
         months = np.arange(date_indice.min(),np.minimum(date_indice.max()+2, d['TIME'].size))
         nm = len(months)

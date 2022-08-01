@@ -21,7 +21,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: gesdisc_merra_sync.py
+    :filename: ../../scripts/gesdisc_merra_sync.py
     :func: arguments
     :prog: gesdisc_merra_sync.py
     :nodescription:

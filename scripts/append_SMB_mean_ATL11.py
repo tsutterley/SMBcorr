@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 append_SMB_mean_ATL11.py
-Written by Tyler Sutterley (12/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates mean estimates of model firn variable to the coordinates
     of an ATL11 file
 
@@ -29,6 +29,7 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
+    Updated 08/2022: use argparse descriptions within documentation
     Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
     Updated 10/2021: using python logging for handling verbose output
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
@@ -46,8 +47,17 @@ import h5py
 import logging
 import SMBcorr
 import argparse
+import warnings
 import numpy as np
-import pointCollection as pc
+# attempt imports
+try:
+    import pointCollection as pc
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pointCollection not available")
+    warnings.warn("Some functions will throw an exception if called")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: convert time from delta seconds into Julian and year-decimal
 def convert_delta_time(delta_time, gps_epoch=1198800018.0):
@@ -211,6 +221,8 @@ def append_SMB_mean_ATL11(input_file, base_dir, REGION, MODEL,
             # HDF5 longname attributes for each variable
             LONGNAME = {}
             LONGNAME['smb_mean'] = "Ice Sheet Surface Mass Balance"
+        else:
+            raise ValueError(f'Unknown model {MODEL}')
 
         # check if running crossover or along track
         if (D11.h_corr.ndim == 3):
@@ -351,9 +363,8 @@ def append_SMB_mean_ATL11(input_file, base_dir, REGION, MODEL,
         # close the output HDF5 file
         fileID.close()
 
-# Main program that calls append_SMB_mean_ATL11()
-def main():
-    # Read the system arguments listed after the program
+# PURPOSE: create arguments parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Interpolates mean estimates of model firn
             variable to the coordinates of an ATL11 file
@@ -388,6 +399,13 @@ def main():
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
         help='Output information about each created file')
+    # return the parser
+    return parser
+
+# Main program that calls append_SMB_mean_ATL11()
+def main():
+    # Read the system arguments listed after the program
+    parser = arguments()
     args = parser.parse_args()
 
     # run program with parameters

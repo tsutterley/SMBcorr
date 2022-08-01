@@ -21,7 +21,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: mar_smb_cumulative.py
+    :filename: ../../SMBcorr/mar_smb_cumulative.py
     :func: arguments
     :prog: mar_smb_cumulative.py
     :nodescription:

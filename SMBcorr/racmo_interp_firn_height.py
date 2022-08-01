@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_firn_height.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates firn heights to times and coordinates
 
 INPUTS:
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
@@ -71,7 +72,23 @@ from SMBcorr.regress_model import regress_model
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0,max_points=1e6):
+def find_valid_triangulation(x0, y0, max_points=1e6):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    max_points: int or float, default 1e6
+        Maximum number of coordinates to attempt to triangulate
+    """
     #-- don't attempt triangulation if there are a large number of points
     if (len(x0) > max_points):
         #-- if too many points: set triangle as an empty list
@@ -110,6 +127,43 @@ def find_valid_triangulation(x0,y0,max_points=1e6):
 #-- PURPOSE: read and interpolate RACMO2.3 firn corrections
 def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
     SIGMA=1.5, FILL_VALUE=None, REFERENCE=False):
+    """
+    Reads and interpolates downscaled RACMO firn height products
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    MODEL: str
+        RACMO firn model
+
+            - ``FGRN055``: 5.5km Greenland RACMO2.3p2
+            - ``FGRN11``: 11km Greenland RACMO2.3p2
+            - ``XANT27``: 27km Antarctic RACMO2.3p2
+            - ``ASE055``: 5.5km Amundsen Sea Embayment RACMO2.3p2
+            - ``XPEN055``: 5.5km Antarctic Peninsula RACMO2.3p2
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'zs'
+        RACMO product to interpolate
+
+            - ``zs``: Firn height
+            - ``FirnAir``: Firn air content
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    REFERENCE: bool, default False
+        Calculate firn variables in reference to first field
+    """
 
     #-- set parameters based on input model
     FIRN_FILE = {}
@@ -169,7 +223,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
     fileID = netCDF4.Dataset(os.path.join(ddir,FIRN_FILE[VARIABLE]), 'r')
     fd = {}
     #-- invalid data value
-    fv = np.float(fileID.variables[VARIABLE]._FillValue)
+    fv = np.float64(fileID.variables[VARIABLE]._FillValue)
     #-- Get data from each netCDF variable and remove singleton dimensions
     fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
     #-- verify mask object for interpolating data
@@ -224,7 +278,13 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
 
     #-- convert projection from input coordinates (EPSG) to model coordinates
     #-- RACMO models are rotated pole latitude and longitude
-    crs1 = pyproj.CRS.from_string(EPSG)
+    try:
+        # EPSG projection code string or int
+        crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(int(EPSG)))
+    except (ValueError,pyproj.exceptions.CRSError):
+        # Projection SRS string
+        crs1 = pyproj.CRS.from_string(EPSG)
+    # coordinate reference system for RACMO model
     crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- convert projection from input coordinates to projected
@@ -245,7 +305,7 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
 
     #-- output interpolated arrays of firn variable (height or firn air content)
     npts = len(tdec)
-    interp_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    interp_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float64)
     interp_data.mask = np.ones((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp_data.interpolation = np.zeros((npts),dtype=np.uint8)

@@ -14,7 +14,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: append_SMB_averages_ATL11.py
+    :filename: ../../scripts/append_SMB_averages_ATL11.py
     :func: arguments
     :prog: append_SMB_averages_ATL11.py
     :nodescription:

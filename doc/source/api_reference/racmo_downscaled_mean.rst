@@ -23,7 +23,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: racmo_downscaled_mean.py
+    :filename: ../../SMBcorr/racmo_downscaled_mean.py
     :func: arguments
     :prog: racmo_downscaled_mean.py
     :nodescription:

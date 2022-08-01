@@ -8,7 +8,6 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     :caption: Getting Started
 
     getting_started/Install.rst
-    getting_started/Examples.rst
     getting_started/Contributing.rst
     getting_started/Citations.rst
 
@@ -17,54 +16,70 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     :hidden:
     :caption: User Guide
 
-    user_guide/regress_model.md
-    user_guide/scale_areas.md
-    user_guide/time.rst
-    user_guide/utilities.rst
+    user_guide/Examples.rst
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+    :caption: API Reference
+
+    api_reference/regress_model.rst
+    api_reference/scale_areas.rst
+    api_reference/spatial.rst
+    api_reference/time.rst
+    api_reference/utilities.rst
 
 .. toctree::
     :maxdepth: 1
     :hidden:
     :caption: Use Cases
 
-    user_guide/interp_SMB_ICESat2_ATL11.md
-
+    api_reference/append_SMB_ATL11.rst
+    api_reference/append_SMB_averages_ATL11.rst
+    api_reference/append_SMB_mean_ATL11.rst
+    api_reference/interp_SMB_ICESat2_ATL11.rst
 
 .. toctree::
     :maxdepth: 1
     :hidden:
     :caption: MAR
 
-    user_guide/mar_extrap_daily.md
-    user_guide/mar_extrap_seasonal.md
-    user_guide/mar_interp_daily.md
-    user_guide/mar_interp_seasonal.md
-    user_guide/mar_smb_cumulative.md
-    user_guide/mar_smb_mean.md
+    api_reference/ftp_mar_data.rst
+    api_reference/mar_extrap_daily.rst
+    api_reference/mar_extrap_mean.rst
+    api_reference/mar_extrap_seasonal.rst
+    api_reference/mar_interp_daily.rst
+    api_reference/mar_interp_mean.rst
+    api_reference/mar_interp_seasonal.rst
+    api_reference/mar_smb_cumulative.rst
+    api_reference/mar_smb_mean.rst
 
 .. toctree::
     :maxdepth: 1
     :hidden:
     :caption: MERRA-2
 
-    user_guide/merra_hybrid_cumulative.md
-    user_guide/merra_hybrid_extrap.md
-    user_guide/merra_hybrid_interp.md
-    user_guide/merra_smb_cumulative.md
+    api_reference/gesdisc_merra_download.rst
+    api_reference/gesdisc_merra_sync.rst
+    api_reference/merra_hybrid_cumulative.rst
+    api_reference/merra_hybrid_extrap.rst
+    api_reference/merra_hybrid_interp.rst
+    api_reference/merra_smb_cumulative.rst
+    api_reference/merra_smb_mean.rst
 
 .. toctree::
     :maxdepth: 1
     :hidden:
     :caption: RACMO
 
-    user_guide/racmo_downscaled_cumulative.md
-    user_guide/racmo_downscaled_mean.md
-    user_guide/racmo_extrap_daily.md
-    user_guide/racmo_extrap_downscaled.md
-    user_guide/racmo_extrap_firn_height.md
-    user_guide/racmo_extrap_mean.md
-    user_guide/racmo_integrate_firn_height.md
-    user_guide/racmo_interp_daily.md
-    user_guide/racmo_interp_downscaled.md
-    user_guide/racmo_interp_firn_height.md
-    user_guide/racmo_interp_mean.md
+    api_reference/racmo_downscaled_cumulative.rst
+    api_reference/racmo_downscaled_mean.rst
+    api_reference/racmo_extrap_daily.rst
+    api_reference/racmo_extrap_downscaled.rst
+    api_reference/racmo_extrap_firn_height.rst
+    api_reference/racmo_extrap_mean.rst
+    api_reference/racmo_integrate_firn_height.rst
+    api_reference/racmo_interp_daily.rst
+    api_reference/racmo_interp_downscaled.rst
+    api_reference/racmo_interp_firn_height.rst
+    api_reference/racmo_interp_mean.rst

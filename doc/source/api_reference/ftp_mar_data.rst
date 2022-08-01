@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ftp_mar_data.py
+    :filename: ../../scripts/ftp_mar_data.py
     :func: arguments
     :prog: ftp_mar_data.py
     :nodescription:

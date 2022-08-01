@@ -21,7 +21,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: interp_SMB_ICESat2_ATL11.py
+    :filename: ../../scripts/interp_SMB_ICESat2_ATL11.py
     :func: arguments
     :prog: interp_SMB_ICESat2_ATL11.py
     :nodescription:
@@ -57,10 +57,8 @@ Models
     - ``GSFC-fdm-v1.0``
     - ``GSFC-fdm-v1.1``
     - ``GSFC-fdm-v1.2``
-    - ``GSFC-fdm-v1.2.1``
 * Antarctica
 
     - ``GSFC-fdm-v0``
     - ``GSFC-fdm-v1``
     - ``GSFC-fdm-v1.1``
-    - ``GSFC-fdm-v1.2.1``
