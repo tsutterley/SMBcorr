@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_interp_seasonal.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates seasonal MAR products to times and coordinates
 Seasonal files are climatology files for each day of the year
 
@@ -37,6 +37,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
@@ -61,7 +62,23 @@ import scipy.interpolate
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0,max_points=1e6):
+def find_valid_triangulation(x0, y0, max_points=1e6):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    max_points: int or float, default 1e6
+        Maximum number of coordinates to attempt to triangulate
+    """
     #-- don't attempt triangulation if there are a large number of points
     if (len(x0) > max_points):
         #-- if too many points: set triangle as an empty list
@@ -99,8 +116,57 @@ def find_valid_triangulation(x0,y0,max_points=1e6):
 
 #-- PURPOSE: read and interpolate a seasonal field of MAR outputs
 def interpolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
-    XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
+    VARIABLE='SMB', XNAME=None, YNAME=None, TIMENAME='TIME',
     RANGE=[2000,2019], SIGMA=1.5, FILL_VALUE=None):
+    """
+    Reads and interpolates daily climatologies of MAR products
+
+    Parameters
+    ----------
+    DIRECTORY: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        MAR Version
+
+            - ``v3.5.2``
+            - ``v3.9``
+            - ``v3.10``
+            - ``v3.11``
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        MAR product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``SNOWFALL``: Snowfall
+            - ``RAINFALL``: Rainfall
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+            - ``SUBLIM``: Sublimation
+
+    XNAME: str or NoneType, default None
+        Name of the x-coordinate variable
+    YNAME: str or NoneType, default None
+        Name of the y-coordinate variable
+    TIMENAME: str or NoneType, default 'TIME'
+        Name of the time variable
+    RANGE: list, default [2000,2019]
+        Start and end year of seasonal
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    """
 
     #-- MAR model projection: Polar Stereographic (Oblique)
     #-- Earth Radius: 6371229 m
@@ -164,7 +230,7 @@ def interpolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         surf_mask = np.broadcast_to(SRF, (nt,ny,nx))
         fd[VARIABLE].mask[:,:,:] |= (surf_mask != 4)
         #-- combine mask object through time to create a single mask
-        fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
+        fd['MASK']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float64)
         #-- MAR coordinates
         fd['LON']=fileID.variables['LON'][:,:].copy()
         fd['LAT']=fileID.variables['LAT'][:,:].copy()
@@ -222,7 +288,7 @@ def interpolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- number of output data points
     npts = len(tdec)
     #-- output interpolated arrays of model variable
-    interp = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
+    interp = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float64)
     interp.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     interp.data[:] = interp.fill_value

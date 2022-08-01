@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_cumulative.py
-Written by Tyler Sutterley (08/2021)
+Written by Tyler Sutterley (08/2022)
 Calculates cumulative anomalies of MERRA-2 hybrid surface mass balance products
-    MERRA-2 Hybrid model outputs provided by Brooke Medley at GSFC
+
+MERRA-2 Hybrid model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:
     python merra_hybrid_cumulative.py --directory <path> --region gris \
@@ -30,6 +31,7 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 08/2021: output areas to file if applicable
         add verbose option to print input and output file information
         additionally output surface mass balance anomalies
@@ -49,9 +51,34 @@ import netCDF4
 import argparse
 import numpy as np
 
-#-- PURPOSE: read and interpolate MERRA-2 hybrid surface mass balance variables
-def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
-    VERBOSE=False, MODE=0o775):
+#-- PURPOSE: calculate cumulative anomalies in MERRA-2 hybrid
+#-- surface mass balance variables
+def merra_hybrid_cumulative(base_dir, REGION, VERSION,
+    RANGE=None, GZIP=False, VERBOSE=False, MODE=0o775):
+    """
+    Calculates cumulative anomalies of MERRA-2 hybrid
+    surface mass balance products
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    REGION: str
+        MERRA-2 region to interpolate
+
+            - ``ais``: Antarctica
+            - ``gris``: Greenland
+    VERSION: str
+        MERRA-2 hybrid model version
+    RANGE: list
+        Start and end year for mean
+    GZIP: bool, default False
+        netCDF4 file is gzip compressed
+    VERBOSE: bool, default False
+        Verbose output of netCDF4 variables
+    MODE: oct, default 0o775
+        Permission mode of directories and files created
+    """
 
     #-- MERRA-2 hybrid directory
     DIRECTORY = os.path.join(base_dir,VERSION)
@@ -287,9 +314,8 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, RANGE=None, GZIP=False,
     #-- change the permissions mode
     os.chmod(os.path.join(DIRECTORY,output_file), MODE)
 
-#-- Main program that calls merra_hybrid_cumulative()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Reads MERRA-2 Hybrid datafiles to
             calculate monthly cumulative anomalies in surface
@@ -327,6 +353,12 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- Main program that calls merra_hybrid_cumulative()
+def main():
+    parser = arguments()
     args = parser.parse_args()
 
     #-- run program

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_mean.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates mean MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -47,6 +47,7 @@ PYTHON DEPENDENCIES:
         https://github.com/scikit-learn/scikit-learn
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
     Written 08/2020
@@ -67,8 +68,63 @@ from sklearn.neighbors import KDTree, BallTree
 #-- PURPOSE: read and interpolate a mean field of MAR outputs
 def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
-    RANGE=[2000,2019], SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0,
-    FILL_VALUE=None):
+    RANGE=[2000,2019], SEARCH='BallTree', NN=10, POWER=2.0,
+    SIGMA=1.5, FILL_VALUE=None):
+    """
+    Spatially extrapolates the temporal mean of MAR products
+
+    Parameters
+    ----------
+    DIRECTORY: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        MAR Version
+
+            - ``v3.5.2``
+            - ``v3.9``
+            - ``v3.10``
+            - ``v3.11``
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        MAR product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``SNOWFALL``: Snowfall
+            - ``RAINFALL``: Rainfall
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+            - ``SUBLIM``: Sublimation
+
+    XNAME: str or NoneType, default None
+        Name of the x-coordinate variable
+    YNAME: str or NoneType, default None
+        Name of the y-coordinate variable
+    TIMENAME: str or NoneType, default 'TIME'
+        Name of the time variable
+    RANGE: list, default [2000,2019]
+        Start and end year of mean
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    """
 
     #-- regular expression pattern for MAR dataset
     rx = re.compile('MAR_SMBavg(.*?){0}-{1}.nc$'.format(*RANGE))
@@ -113,7 +169,7 @@ def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         #-- verify mask object for interpolating data
         fd[VARIABLE].mask[:,:] |= (SRF != 4)
         #-- combine mask object through time to create a single mask
-        fd['MASK']=1.0 - np.array(fd[VARIABLE].mask,dtype=np.float)
+        fd['MASK']=1.0 - np.array(fd[VARIABLE].mask,dtype=np.float64)
         #-- MAR coordinates
         fd['LON']=fileID.variables['LON'][:,:].copy()
         fd['LAT']=fileID.variables['LAT'][:,:].copy()
@@ -155,7 +211,7 @@ def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- number of output data points
     npts = len(tdec)
     #-- output interpolated arrays of output variable
-    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
+    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float64)
     extrap.mask = np.ones((npts),dtype=bool)
 
     #-- query the search tree to find the NN closest points

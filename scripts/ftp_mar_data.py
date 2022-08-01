@@ -143,9 +143,8 @@ def ftp_mirror_file(remote_path, remote_mtime, local_file, **kwargs):
         #-- return the output string
         return output
 
-#-- This is the main part of the program that calls the individual modules
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create arguments parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Syncs MAR regional climate outputs for a given ftp url
             """
@@ -182,6 +181,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output files')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual modules
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- check internet connection

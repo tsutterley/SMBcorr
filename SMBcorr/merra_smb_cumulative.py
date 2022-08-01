@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_smb_cumulative.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (08/2022)
 Reads MERRA-2 datafiles to calculate monthly cumulative anomalies
     in derived surface mass balance products
 
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 10/2021: using python logging for handling verbose output
         add more derived products and include sublimation and condensation
     Updated 02/2021: replaced numpy bool to prevent deprecation warning
@@ -77,6 +78,28 @@ import SMBcorr.spatial
 
 #-- PURPOSE: read variables from MERRA-2 tavgM_2d_int and tavgM_2d_glc files
 def read_merra_variables(merra_flux_file, merra_ice_surface_file):
+    """
+    Read a subset of MERRA-2 variables for deriving
+    surface mass balance products
+
+    From ``tavgM_2d_int`` (Vertically Integrated Diagnostics) collection:
+
+        - ``PRECCU``: convective rain
+        - ``PRECLS``: large-scale rain
+        - ``PRECSN``: snow
+        - ``EVAP``: evaporation
+
+    From ``tavgM_2d_glc`` (Land Ice Surface Diagnostics) collection:
+
+        - ``RUNOFF``: runoff over glaciated land
+
+    Parameters
+    ----------
+    merra_flux_file: str
+        Path to ``tavgM_2d_int`` file
+    merra_ice_surface_file: str
+        Path to ``tavgM_2d_glc`` file
+    """
     #-- python dictionary of output variables
     dinput = {}
     #-- read each variable of interest in MERRA-2 flux file
@@ -108,6 +131,36 @@ def read_merra_variables(merra_flux_file, merra_ice_surface_file):
 #-- PURPOSE: read monthly MERRA-2 datasets to calculate cumulative anomalies
 def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     VERBOSE=False, MODE=0o775):
+    """
+    Reads MERRA-2 datafiles to calculate monthly cumulative anomalies
+    in derived surface mass balance products
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    PRODUCT: str
+        MERRA-2 product to calculate
+
+            - ``SMB``: Surface Mass Balance
+            - ``ACCUM``: Snowfall accumulation
+            - ``PRECIP``: Precipitation
+            - ``RAIN``: Total Rainfall
+            - ``SUBLIM``: Evaporation and Sublimation
+            - ``REFREEZE``: Melt Water Refreeze
+    RANGE: list, default [1961,1990]
+        Start and end year of mean
+    DATAFORM: str or NoneType, default None
+        Data output format
+
+            - ``ascii``
+            - ``netCDF4``
+            - ``HDF5``
+    VERBOSE: bool, default False
+        Verbose output of netCDF4 variables
+    MODE: oct, default 0o775
+        Permission mode of directories and files created
+    """
 
     #-- create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
@@ -295,9 +348,8 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
             #-- change the permissions mode
             os.chmod(os.path.join(DIRECTORY,cumul_sub,FILE), MODE)
 
-#-- Main program that calls merra_smb_cumulative()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Reads MERRA-2 datafiles to calculate
             monthly cumulative anomalies in derived surface
@@ -331,6 +383,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- Main program that calls merra_smb_cumulative()
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run program for each input product

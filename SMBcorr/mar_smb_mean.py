@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_smb_mean.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (08/2022)
 Calculates the temporal mean of MAR surface mass balance products
 
 COMMAND LINE OPTIONS:
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 02/2021: using argparse to set parameters
         using utilities from time module for conversions
     Written 11/2019
@@ -57,11 +58,35 @@ longname['SUBLIM'] = 'Sublimation'
 
 #-- PURPOSE: sort input files by year
 def sort_files(regex, input_files):
+    """
+    Sort the list of input files by date
+
+    Parameters
+    ----------
+    regex: obj
+        Regular expression object for matching files
+    input_files: list
+        Input MAR surface mass balance files
+    """
     sort_indices = np.argsort([regex.match(f).group(2) for f in input_files])
     return np.array(input_files)[sort_indices]
 
 #-- PURPOSE: get the dimensions for the input data matrices
-def get_dimensions(directory,input_files,XNAME,YNAME):
+def get_dimensions(directory, input_files, XNAME=None, YNAME=None):
+    """
+    Get the total dimensions of the input data
+
+    Parameters
+    ----------
+    directory: str
+        Working data directory
+    input_files: list
+        Input MAR surface mass balance files
+    XNAME: str or NoneType, default None
+        Name of the x-coordinate variable
+    YNAME: str or NoneType, default None
+        Name of the y-coordinate variable
+    """
     #-- get grid dimensions from first file and 12*number of files
     #-- Open the NetCDF file for reading
     fileID = netCDF4.Dataset(os.path.join(directory,input_files[0]), 'r')
@@ -117,6 +142,40 @@ def create_netCDF4(OUTPUT, FILENAME=None, UNITS=None, LONGNAME=None,
 #-- PURPOSE: calculates mean of MAR products
 def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     DOWNSCALED=False, VERBOSE=False, MODE=0o775):
+    """
+    Calculates the temporal mean of MAR surface mass balance products
+
+    Parameters
+    ----------
+    input_dir: str
+        Working data directory
+    VERSION: str
+        MAR Version
+
+            - ``v3.5.2``
+            - ``v3.9``
+            - ``v3.10``
+            - ``v3.11``
+    PRODUCT: str
+        MAR product to calculate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``SNOWFALL``: Snowfall
+            - ``RAINFALL``: Rainfall
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+            - ``SUBLIM``: Sublimation
+    RANGE: list, default [1961,1990]
+        Start and end year of mean
+    DOWNSCALED: bool, default False
+        Run downscaled MAR products
+    VERBOSE: bool, default False
+        Verbose output of netCDF4 variables
+    MODE: oct, default 0o775
+        Permission mode of directories and files created
+    """
 
     #-- regular expression pattern for MAR dataset
     regex_year = '|'.join([str(yr) for yr in range(RANGE[0],RANGE[1]+1)])
@@ -221,7 +280,7 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         MEAN['x'][:] = fileID.variables[XNAME][:].copy()
         MEAN['y'][:] = fileID.variables[YNAME][:].copy()
         #-- extract delta time and epoch of time
-        delta_time = fileID.variables[TIMENAME][:].astype(np.float)
+        delta_time = fileID.variables[TIMENAME][:].astype(np.float64)
         date_string = fileID.variables[TIMENAME].units
         #-- extract epoch and units
         epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
@@ -295,7 +354,7 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         fileID.close()
 
     #-- convert from total to mean
-    MEAN[PRODUCT].data[iy,ix] /= np.float(c)
+    MEAN[PRODUCT].data[iy,ix] /= np.float64(c)
     #-- replace masked values with fill value
     MEAN[PRODUCT].data[MEAN[PRODUCT].mask] = MEAN[PRODUCT].fill_value
     #-- calculate mean time over period
@@ -312,9 +371,8 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
     #-- change the permissions mode
     os.chmod(os.path.join(input_dir,mean_file),MODE)
 
-#-- This is the main part of the program that calls the individual modules
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates the temporal mean of MAR
             surface mass balance products
@@ -353,6 +411,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual modules
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args = parser.parse_args()
 
     #-- run program for each input product

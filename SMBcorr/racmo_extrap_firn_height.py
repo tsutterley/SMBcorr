@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_firn_height.py
-Written by Tyler Sutterley (01/2021)
-Interpolates and extrapolates firn heights to times and coordinates
+Written by Tyler Sutterley (08/2022)
+Spatially extrapolates RACMO firn heights
 
 Uses fast nearest-neighbor search algorithms
 https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.BallTree.html
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
     Updated 04/2020: reduced to interpolation function.  output masked array
@@ -77,8 +78,52 @@ from sklearn.neighbors import KDTree, BallTree
 from SMBcorr.regress_model import regress_model
 
 #-- PURPOSE: read and interpolate RACMO2.3 firn corrections
-def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
-    NN=10, POWER=2.0, SIGMA=1.5, VARIABLE='zs', FILL_VALUE=None, REFERENCE=False):
+def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y,
+    VARIABLE='zs', SEARCH='BallTree', NN=10, POWER=2.0, SIGMA=1.5,
+    FILL_VALUE=None, REFERENCE=False):
+    """
+    Spatially extrapolates RACMO firn heights
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    MODEL: str
+        RACMO firn model
+
+            - ``FGRN055``: 5.5km Greenland RACMO2.3p2
+            - ``FGRN11``: 11km Greenland RACMO2.3p2
+            - ``XANT27``: 27km Antarctic RACMO2.3p2
+            - ``ASE055``: 5.5km Amundsen Sea Embayment RACMO2.3p2
+            - ``XPEN055``: 5.5km Antarctic Peninsula RACMO2.3p2
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'zs'
+        RACMO product to interpolate
+
+            - ``zs``: Firn height
+            - ``FirnAir``: Firn air content
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    REFERENCE: bool, default False
+        Calculate firn variables in reference to first field
+    """
 
     #-- set parameters based on input model
     FIRN_FILE = {}
@@ -118,7 +163,7 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
     fd['lat'] = fileID.variables['lat'][:,:].copy()
     fd['time'] = fileID.variables['time'][:].copy()
     #-- invalid data value
-    fv = np.float(fileID.variables[VARIABLE]._FillValue)
+    fv = np.float64(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of RACMO firn data
     nt,ny,nx = np.shape(fd[VARIABLE])
     #-- close the NetCDF files
@@ -169,7 +214,7 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
 
     #-- output interpolated arrays of firn variable (height or firn air content)
     npts = len(tdec)
-    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float64)
     extrap_data.data[:] = extrap_data.fill_value
     extrap_data.mask = np.zeros((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
@@ -183,7 +228,7 @@ def extrapolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, SEARCH='BallTree',
         xind,yind,tind = (X[ind],Y[ind],tdec[ind])
         #-- find indices for linearly interpolating in time
         f = scipy.interpolate.interp1d(fd['time'], np.arange(nt), kind='linear')
-        date_indice = f(tind).astype(np.int)
+        date_indice = f(tind).astype(np.int64)
         #-- for each unique firn date
         #-- linearly interpolate in time between two firn maps
         #-- then then inverse distance weighting to extrapolate in space

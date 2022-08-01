@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_integrate_firn_height.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (08/2022)
 Integrate RACMO firn heights for each Promice ice class
 
 CALLING SEQUENCE:
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 10/2021: using argparse to set command line parameters
     Written 10/2019
 """
@@ -45,6 +46,26 @@ from SMBcorr.regress_model import regress_model
 
 #-- PURPOSE: read and integrate RACMO2.3 firn corrections
 def racmo_integrate_firn_height(base_dir, MODEL, VARIABLE='zs', OUTPUT=True):
+    """
+    Integrate RACMO firn heights for each Promice ice class
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    MODEL: str
+        RACMO firn model
+
+            - ``FGRN055``: 5.5km Greenland RACMO2.3p2
+            - ``FGRN11``: 11km Greenland RACMO2.3p2
+    VARIABLE: str, default 'zs'
+        RACMO product to integrate
+
+            - ``zs``: Firn height
+            - ``FirnAir``: Firn air content
+    OUTPUT: bool, default True
+        Output integrated results to file
+    """
 
     #-- set parameters based on input model
     FIRN_FILE = {}
@@ -82,7 +103,7 @@ def racmo_integrate_firn_height(base_dir, MODEL, VARIABLE='zs', OUTPUT=True):
     fd['lat'] = fileID.variables['lat'][:,:].copy()
     fd['time'] = fileID.variables['time'][:].copy()
     #-- invalid data value
-    fv = np.float(fileID.variables[VARIABLE]._FillValue)
+    fv = np.float64(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of RACMO firn data
     nt,ny,nx = np.shape(fd[VARIABLE])
     #-- close the NetCDF files
@@ -128,11 +149,11 @@ def racmo_integrate_firn_height(base_dir, MODEL, VARIABLE='zs', OUTPUT=True):
 
     #-- output integrated arrays of firn variable (height or firn air content)
     #-- for each land classification mask in km^3
-    firn_volume = np.full((nt,3),fv,dtype=np.float)
+    firn_volume = np.full((nt,3),fv,dtype=np.float64)
     #-- extrapolate out in time two years
     tdec = np.arange(fd['time'][-1]+time_step,fd['time'][-1]+2,time_step)
     ntx = len(tdec)
-    firn_extrap = np.full((ntx,3),fv,dtype=np.float)
+    firn_extrap = np.full((ntx,3),fv,dtype=np.float64)
     for m in range(3):
         #-- indices of specified mask (0==ocean, 1==ice caps outside Greenland)
         #-- masks of interest: Greenland ice sheet and peripheral glaciers (2-4)

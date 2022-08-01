@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_extrap.py
-Written by Tyler Sutterley (05/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
-    MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
+
+MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
 
 CALLING SEQUENCE:
     interp_data = extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
@@ -49,6 +50,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 05/2021: set bounds error to false when reducing temporal range
     Updated 04/2021: can reduce input dataset to a temporal subset
     Updated 02/2021: added new MERRA2-hybrid v1.1 variables
@@ -75,10 +77,22 @@ from sklearn.neighbors import KDTree, BallTree
 from SMBcorr.regress_model import regress_model
 
 #-- PURPOSE: set the projection parameters based on the region name
-def set_projection(REGION):
-    if (REGION == 'ais'):
+def set_projection(region):
+    """
+    Set the coordinate reference system string based on the
+    MERRA-2 Hybrid region name
+
+    Parameters
+    ----------
+    region: str
+        Region string
+
+            - ``ais``: Antarctica
+            - ``gris``: Greenland
+    """
+    if (region == 'ais'):
         projection_flag = 'EPSG:3031'
-    elif (REGION == 'gris'):
+    elif (region == 'gris'):
         projection_flag = 'EPSG:3413'
     return projection_flag
 
@@ -86,6 +100,51 @@ def set_projection(REGION):
 def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     VERSION='v1', VARIABLE='FAC', SEARCH='BallTree', N=10, POWER=2.0,
     SIGMA=1.5, FILL_VALUE=None, EXTRAPOLATE=False, GZIP=False):
+    """
+    Spatially extrapolates MERRA-2 hybrid variables
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    REGION: str
+        MERRA-2 region to interpolate
+
+            - ``ais``: Antarctica
+            - ``gris``: Greenland
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VERSION: str, default 'v1'
+        MERRA-2 hybrid model version
+    VARIABLE: str, default 'FAC'
+        MERRA-2 hybrid product to interpolate
+
+        - ``FAC``: firn air content
+        - ``p_minus_e``: precipitation minus evaporation
+        - ``melt``: snowmelt
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    EXTRAPOLATE: bool, default False
+        Create a regression model to extrapolate in time
+    GZIP: bool, default False
+        netCDF4 file is gzip compressed
+    """
 
     #-- suffix if compressed
     suffix = '.gz' if GZIP else ''
@@ -135,13 +194,13 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         f = scipy.interpolate.interp1d(fileID.variables['time'][:],
             np.arange(nt), kind='nearest', bounds_error=False,
             fill_value=(0,nt))
-        imin,imax = f((tmin,tmax)).astype(np.int)
+        imin,imax = f((tmin,tmax)).astype(np.int64)
         #-- read reduced time variables
         fd['time'] = fileID.variables['time'][imin:imax+1].copy()
         #-- read reduced dataset and remove singleton dimensions
         fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][imin:imax+1,:,:])
     #-- invalid data value
-    fv = np.float(fileID.variables[VARIABLE]._FillValue)
+    fv = np.float64(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(fd[VARIABLE])
     #-- extract x and y coordinate arrays from grids if applicable
@@ -203,7 +262,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
 
     #-- output interpolated arrays of variable
     npts = len(tdec)
-    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float64)
     extrap_data.mask = np.ones((npts),dtype=bool)
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
@@ -216,7 +275,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         xind,yind,tind = (X[ind],Y[ind],tdec[ind])
         #-- find indices for linearly interpolating in time
         f = scipy.interpolate.interp1d(fd['time'], np.arange(nt), kind='linear')
-        date_indice = f(tind).astype(np.int)
+        date_indice = f(tind).astype(np.int64)
         #-- for each unique firn date
         #-- linearly interpolate in time between two firn maps
         #-- then then inverse distance weighting to extrapolate in space
@@ -257,7 +316,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         w = power_inverse_distance/np.broadcast_to(s[:,None],(count,N))
         #-- calculate a regression model for calculating values
         #-- read first 10 years of data to create regression model
-        N = np.int(10.0/time_step)
+        N = np.int64(10.0/time_step)
         #-- spatially interpolate firn elevation or air content to coordinates
         FIRN = np.zeros((count,N))
         T = np.zeros((N))
@@ -290,7 +349,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         w = power_inverse_distance/np.broadcast_to(s[:,None],(count,N))
         #-- calculate a regression model for calculating values
         #-- read last 10 years of data to create regression model
-        N = np.int(10.0/time_step)
+        N = np.int64(10.0/time_step)
         #-- spatially interpolate firn elevation or air content to coordinates
         FIRN = np.zeros((count,N))
         T = np.zeros((N))

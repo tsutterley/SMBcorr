@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_SMB_ICESat2_ATL11.py
-Written by Tyler Sutterley (12/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates daily firn model estimates to the times and locations of
     ICESat-2 ATL11 annual land ice height data
 
@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
     merra_hybrid_interp.py: interpolates GSFC MERRA-2 hybrid products
 
 UPDATE HISTORY:
+    Updated 08/2022: use argparse descriptions within documentation
     Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
     Updated 05/2021: make GSFC MERRA-2 compression keyword an option
     Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
@@ -852,9 +853,8 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     # Closing the HDF5 file
     fileID.close()
 
-# Main program that calls interp_SMB_ICESat2()
-def main():
-    # Read the system arguments listed after the program
+# PURPOSE: create arguments parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Interpolates daily firn model estimates to times
             and locations of ICESat-2 ATL11 annual land ice height data
@@ -892,6 +892,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    # return the parser
+    return parser
+
+# Main program that calls interp_SMB_ICESat2()
+def main():
+    # Read the system arguments listed after the program
+    parser = arguments()
     args = parser.parse_args()
 
     # run for each input ATL11 file

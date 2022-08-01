@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_daily.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates and extrapolates daily RACMO products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -26,10 +26,10 @@ OPTIONS:
     VARIABLE: RACMO product to interpolate
         smb: Surface Mass Balance
         hgtsrf: Change of Surface Height
-    SIGMA: Standard deviation for Gaussian kernel
     SEARCH: nearest-neighbor search algorithm (BallTree or KDTree)
     NN: number of nearest-neighbor points to use
     POWER: inverse distance weighting power
+    SIGMA: Standard deviation for Gaussian kernel
     FILL_VALUE: output fill_value for invalid points
     EXTRAPOLATE: create a regression model to extrapolate out in time
 
@@ -49,6 +49,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
         using utilities from time module for conversions
@@ -73,13 +74,52 @@ from SMBcorr.regress_model import regress_model
 import SMBcorr.time
 
 #-- PURPOSE: read and interpolate daily RACMO2.3 outputs
-def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
-    SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None,
-    EXTRAPOLATE=False):
+def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y,
+    VARIABLE='smb', SEARCH='BallTree', NN=10, POWER=2.0,
+    SIGMA=1.5, FILL_VALUE=None, EXTRAPOLATE=False):
+    """
+    Spatially extrapolates daily RACMO products
+
+    Parameters
+    ----------
+    base_dir: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    MODEL: str
+        Daily model outputs to interpolate
+
+            - ``FGRN055``: 5.5km Greenland RACMO2.3p2
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'smb'
+        RACMO product to interpolate
+
+            - ``smb``: Surface Mass Balance
+            - ``hgtsrf``: Change of Surface Height
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    EXTRAPOLATE: bool, default False
+        Create a regression model to extrapolate in time
+    """
 
     #-- start and end years to read
-    SY = np.nanmin(np.floor(tdec)).astype(np.int)
-    EY = np.nanmax(np.floor(tdec)).astype(np.int)
+    SY = np.nanmin(np.floor(tdec)).astype(np.int64)
+    EY = np.nanmax(np.floor(tdec)).astype(np.int64)
     YRS = '|'.join(['{0:4d}'.format(Y) for Y in range(SY,EY+1)])
     #-- input list of files
     if (MODEL == 'FGRN055'):
@@ -100,7 +140,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             ny = len(fileID.variables['rlat'][:])
             nt += len(fileID.variables['time'][:])
             #-- invalid data value
-            fv = np.float(fileID.variables[VARIABLE]._FillValue)
+            fv = np.float64(fileID.variables[VARIABLE]._FillValue)
 
     #-- scaling factor for converting units
     if (VARIABLE == 'hgtsrf'):
@@ -134,7 +174,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             i,j = np.nonzero(tmp[0,:,:] != fv)
             fd[VARIABLE].mask[:,i,j] = False
             #-- combine mask object through time to create a single mask
-            fd['mask']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float)
+            fd['mask']=1.0-np.any(fd[VARIABLE].mask,axis=0).astype(np.float64)
             #-- racmo coordinates
             fd['lon']=fileID.variables['lon'][:,:].copy()
             fd['lat']=fileID.variables['lat'][:,:].copy()
@@ -143,7 +183,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
             #-- rotated pole parameters
             proj4_params=fileID.variables['rotated_pole'].proj4_params
             #-- extract delta time and epoch of time
-            delta_time=fileID.variables['time'][:].astype(np.float)
+            delta_time=fileID.variables['time'][:].astype(np.float64)
             date_string=fileID.variables['time'].units
         #-- extract epoch and units
         epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
@@ -200,7 +240,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
 
     #-- output interpolated arrays of variable
     npts = len(tdec)
-    extrap = np.ma.zeros((npts),fill_value=fv,dtype=np.float)
+    extrap = np.ma.zeros((npts),fill_value=fv,dtype=np.float64)
     extrap.mask = np.ones((npts),dtype=bool)
     #-- initially set all values to fill value
     extrap.data[:] = extrap.fill_value
@@ -215,7 +255,7 @@ def extrapolate_racmo_daily(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='smb',
         xind,yind,tind = (X[ind],Y[ind],tdec[ind])
         #-- find indices for linearly interpolating in time
         f = scipy.interpolate.interp1d(fd['time'], np.arange(nt), kind='linear')
-        date_indice = f(tind).astype(np.int)
+        date_indice = f(tind).astype(np.int64)
         #-- for each unique racmo date
         #-- linearly interpolate in time between two racmo maps
         #-- then then inverse distance weighting to extrapolate in space
