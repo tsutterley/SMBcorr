@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_downscaled_mean.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (10/2022)
 Calculates the temporal mean of downscaled RACMO
 surface mass balance products
 
@@ -12,6 +12,7 @@ COMMAND LINE OPTIONS:
         1.0: RACMO2.3/XGRN11
         2.0: RACMO2.3p2/XGRN11
         3.0: RACMO2.3p2/FGRN055
+        4.0: RACMO2.3p2/FGRN055
     --product: RACMO product to calculate
         SMB: Surface Mass Balance
         PRECIP: Precipitation
@@ -27,6 +28,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 10/2022: added version 4.0 (RACMO2.3p2 for 1958-2022 from FGRN055)
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 02/2021: using argparse to set parameters
     Forked 09/2019 from downscaled_mean_netcdf.py
@@ -93,14 +95,20 @@ def get_dimensions(input_dir, VERSION, PRODUCT, GZIP=False):
     else:
         VARNAME = '{0}corr'.format(VARIABLE)
     #-- if reading yearly files or compressed files
-    if (VERSION == '1.0'):
+    if VERSION in ('1.0','4.0'):
         #-- find input files
-        pattern = '{0}.(\d+).BN_\d+_\d+_1km.MM.nc'.format(VARIABLE)
+        pattern = r'{0}.(\d+).BN_(.*?).MM.nc(\.gz)?'.format(VARIABLE)
         rx = re.compile(pattern, re.VERBOSE)
         infiles = sorted([f for f in os.listdir(input_dir) if rx.match(f)])
         nt = 12*len(infiles)
         #-- read netCDF file for dataset (could also set memory=None)
-        fileID = netCDF4.Dataset(os.path.join(input_dir,infiles[0]), mode='r')
+        if GZIP:
+            #-- read bytes from compressed file
+            fd = gzip.open(os.path.join(input_dir,infiles[0]),'rb')
+            #-- read netCDF file for dataset from bytes
+            fileID = netCDF4.Dataset(uuid.uuid4().hex,mode='r',memory=fd.read())
+        else:
+            fileID = netCDF4.Dataset(os.path.join(input_dir,infiles[0]), mode='r')
         #-- shape of the input data matrix
         nm,ny,nx = fileID.variables[VARIABLE].shape
         fileID.close()
@@ -127,7 +135,7 @@ def get_dimensions(input_dir, VERSION, PRODUCT, GZIP=False):
     return (nt,ny,nx)
 
 #-- PURPOSE: read individual yearly netcdf files and calculate mean over period
-def yearly_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP):
+def yearly_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP=False):
     """Read individual yearly netcdf files and calculate mean
 
     Parameters
@@ -153,10 +161,12 @@ def yearly_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP):
     """
     #-- names within netCDF4 files
     VARIABLE = input_products[PRODUCT]
+    #-- regular expression operator for finding variables
+    regex = re.compile(VARIABLE, re.VERBOSE | re.IGNORECASE)
     #-- find input files for years of interest
     regex_years = '|'.join('{0:4d}'.format(Y) for Y in range(START,END+1))
-    pattern = '{0}.({1}).BN_\d+_\d+_1km.MM.nc'.format(VARIABLE,regex_years)
-    rx = re.compile(pattern, re.VERBOSE)
+    pattern = r'{0}.({1}).BN_(.*?).MM.nc(\.gz)?'.format(VARIABLE,regex_years)
+    rx = re.compile(pattern, re.VERBOSE | re.IGNORECASE)
     input_files = sorted([fi for fi in os.listdir(input_dir) if rx.match(fi)])
     #-- number of input files
     n_files = len(input_files)
@@ -177,16 +187,44 @@ def yearly_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP):
     #-- date in year-decimal form
     tdec = np.zeros((nt))
 
+    #-- if reading bytes from compressed file or netcdf file directly
+    gz = '.gz' if GZIP else ''
+    #-- input area file with ice mask and model topography
+    if (VERSION == '4.0'):
+        f1 = 'Icemask_Topo_Iceclasses_lon_lat_average_1km_GrIS.nc{0}'.format(gz)
+        if GZIP:
+            #-- read bytes from compressed file
+            fd = gzip.open(os.path.join(input_dir,f1),'rb')
+            #-- read netCDF file for topography and ice classes from bytes
+            fileID = netCDF4.Dataset(uuid.uuid4().hex, mode='r', memory=fd.read())
+        else:
+            #-- read netCDF file for topography and ice classes
+            fileID = netCDF4.Dataset(os.path.join(input_dir,f1), mode='r')
+        #-- Getting the data from each netCDF variable
+        dinput['LON'] = np.array(fileID.variables['LON'][:,:])
+        dinput['LAT'] = np.array(fileID.variables['LAT'][:,:])
+        dinput['x'] = np.array(fileID.variables['x'][:])
+        dinput['y'] = np.array(fileID.variables['y'][:])
+        promicemask = np.array(fileID.variables['Promicemask'][:,:])
+        topography = np.array(fileID.variables['Topography'][:,:])
+        #-- close the compressed file objects
+        fd.close() if GZIP else fileID.close()
+        #-- find ice sheet points from promicemask that valid
+        ii,jj = np.nonzero((promicemask >= 1) & (promicemask <= 3))
+        dinput['MASK'] = np.zeros((ny,nx),dtype=np.int8)
+        dinput['MASK'][ii,jj] = 1
+
     #-- for each file of interest
     for t in range(n_files):
         #-- Open the NetCDF file for reading
         fileID = netCDF4.Dataset(os.path.join(input_dir,input_files[t]), 'r')
         #-- Getting the data from each netCDF variable
-        dinput['LON'][:,:] = fileID.variables['LON'][:,:].copy()
-        dinput['LAT'][:,:] = fileID.variables['LAT'][:,:].copy()
-        dinput['x'][:] = fileID.variables['x'][:].copy()
-        dinput['y'][:] = fileID.variables['y'][:].copy()
-        dinput['MASK'][:,:] = fileID.variables['icemask'][:,:].astype(np.int8)
+        if (VERSION == '1.0'):
+            dinput['LON'][:,:] = fileID.variables['LON'][:,:].copy()
+            dinput['LAT'][:,:] = fileID.variables['LAT'][:,:].copy()
+            dinput['x'][:] = fileID.variables['x'][:].copy()
+            dinput['y'][:] = fileID.variables['y'][:].copy()
+            dinput['MASK'][:,:] = fileID.variables['icemask'][:,:].astype(np.int8)
         #-- calculate dates from delta times
         delta_time = fileID.variables['time'][:].copy()
         date_string = fileID.variables['time'].units
@@ -197,12 +235,15 @@ def yearly_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP):
         #-- for each month
         for m in range(12):
             #-- convert from Julian days to calendar dates
-            YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD[c])
+            YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD[m],
+                format='tuple')
             #-- calculate time in year-decimal
             tdec[c] = SMBcorr.time.convert_calendar_decimal(YY,MM,
                 day=DD,hour=hh,minute=mm,second=ss)
+            #-- find variable of interest
+            ncvar, = [v for v in fileID.variables.keys() if regex.match(v)]
             #-- read product of interest and add to total
-            dinput[VARIABLE] += fileID.variables[VARIABLE][m,:,:].copy()
+            dinput[VARIABLE] += fileID.variables[ncvar][m,:,:].copy()
             #-- add to counter
             c += 1
         #-- close the NetCDF file
@@ -217,7 +258,7 @@ def yearly_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP):
     return dinput
 
 #-- PURPOSE: read compressed netCDF4 files and calculate mean over period
-def compressed_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP):
+def compressed_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP=False):
     """Read compressed netCDF4 files and calculate mean
 
     Parameters
@@ -306,7 +347,7 @@ def compressed_file_mean(input_dir, VERSION, PRODUCT, START, END, GZIP):
     JD = SMBcorr.time.convert_delta_time(delta_time*to_secs, epoch1=epoch,
         epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0) + 2400000.5
     #-- convert from Julian days to calendar dates
-    YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD)
+    YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD, format='tuple')
     #-- calculate time in year-decimal
     tdec = SMBcorr.time.convert_calendar_decimal(YY,MM,
         day=DD,hour=hh,minute=mm,second=ss)
@@ -444,28 +485,35 @@ def racmo_downscaled_mean(base_dir, VERSION, PRODUCT,
     #-- Full Directory Setup
     DIRECTORY = 'SMB1km_v{0}'.format(VERSION)
 
-    #-- version 1 was in separate files for each year
+    #-- versions 1 and 4 are in separate files for each year
     if (VERSION == '1.0'):
         RACMO_MODEL = ['XGRN11','2.3']
         VARNAME = input_products[PRODUCT]
         SUBDIRECTORY = '{0}_v{1}'.format(VARNAME,VERSION)
-        input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY, SUBDIRECTORY)
+        input_dir = os.path.join(base_dir, DIRECTORY, SUBDIRECTORY)
         dinput = yearly_file_mean(input_dir, VERSION, PRODUCT,
-            RANGE[0], RANGE[1], GZIP)
+            RANGE[0], RANGE[1], GZIP=GZIP)
     elif (VERSION == '2.0'):
         RACMO_MODEL = ['XGRN11','2.3p2']
         var = input_products[PRODUCT]
         VARNAME = var if PRODUCT in ('SMB','PRECIP') else '{0}corr'.format(var)
-        input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY)
+        input_dir = os.path.join(base_dir, DIRECTORY)
         dinput = compressed_file_mean(input_dir, VERSION, PRODUCT,
-            RANGE[0], RANGE[1], GZIP)
+            RANGE[0], RANGE[1], GZIP=GZIP)
     elif (VERSION == '3.0'):
         RACMO_MODEL = ['FGRN055','2.3p2']
         var = input_products[PRODUCT]
         VARNAME = var if (PRODUCT == 'SMB') else '{0}corr'.format(var)
-        input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY)
+        input_dir = os.path.join(base_dir, DIRECTORY)
         dinput = compressed_file_mean(input_dir, VERSION, PRODUCT,
-            RANGE[0], RANGE[1], GZIP)
+            RANGE[0], RANGE[1], GZIP=GZIP)
+    elif (VERSION == '4.0'):
+        RACMO_MODEL = ['FGRN055','2.3p2']
+        var = input_products[PRODUCT]
+        VARNAME = var if (PRODUCT == 'SMB') else '{0}corr'.format(var)
+        input_dir = os.path.join(base_dir, DIRECTORY)
+        dinput = yearly_file_mean(input_dir, VERSION, PRODUCT,
+            RANGE[0], RANGE[1], GZIP=GZIP)
 
     #-- output mean as netCDF4 file
     arg = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,PRODUCT,RANGE[0],RANGE[1])
@@ -494,13 +542,14 @@ def arguments():
     #-- 1.0: RACMO2.3/XGRN11
     #-- 2.0: RACMO2.3p2/XGRN11
     #-- 3.0: RACMO2.3p2/FGRN055
+    #-- 4.0: RACMO2.3p2/FGRN055
     parser.add_argument('--version','-v',
-        type=str, default='3.0', choices=['1.0','2.0','3.0'],
+        type=str, default='4.0', choices=['1.0','2.0','3.0','4.0'],
         help='Downscaled RACMO Version')
     #-- Products to calculate cumulative
     parser.add_argument('--product','-p',
-        type=str, nargs='+', default=['SMB'],
-        choices=input_products.keys(),
+        metavar='PRODUCT', type=str, nargs='+',
+        default=['SMB'], choices=input_products.keys(),
         help='RACMO product to calculate')
     #-- start and end years to run for mean
     parser.add_argument('--mean','-m',
