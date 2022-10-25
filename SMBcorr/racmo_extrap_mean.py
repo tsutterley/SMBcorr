@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_extrap_mean.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (10/2022)
 Spatially extrapolates the mean of downscaled RACMO products
 
 Uses fast nearest-neighbor search algorithms
@@ -16,6 +16,7 @@ INPUTS:
         1.0: RACMO2.3/XGRN11
         2.0: RACMO2.3p2/XGRN11
         3.0: RACMO2.3p2/FGRN055
+        4.0: RACMO2.3p2/FGRN055
     tdec: time coordinates in year-decimal
     X: x-coordinates
     Y: y-coordinates
@@ -49,6 +50,7 @@ PYTHON DEPENDENCIES:
         https://github.com/scikit-learn/scikit-learn
 
 UPDATE HISTORY:
+    Updated 10/2022: added version 4.0 (RACMO2.3p2 for 1958-2022 from FGRN055)
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
@@ -124,7 +126,7 @@ def extrapolate_racmo_mean(base_dir, EPSG, VERSION, tdec, X, Y,
     input_products['RUNOFF'] = 'runoff'
     input_products['SNOWMELT'] = 'snowmelt'
     input_products['REFREEZE'] = 'refreeze'
-    #-- version 1 was in separate files for each year
+    #-- versions 1 and 4 are in separate files for each year
     if (VERSION == '1.0'):
         RACMO_MODEL = ['XGRN11','2.3']
         VARNAME = input_products[VARIABLE]
@@ -136,6 +138,11 @@ def extrapolate_racmo_mean(base_dir, EPSG, VERSION, tdec, X, Y,
         VARNAME = var if VARIABLE in ('SMB','PRECIP') else '{0}corr'.format(var)
         input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY)
     elif (VERSION == '3.0'):
+        RACMO_MODEL = ['FGRN055','2.3p2']
+        var = input_products[VARIABLE]
+        VARNAME = var if (VARIABLE == 'SMB') else '{0}corr'.format(var)
+        input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY)
+    elif (VERSION == '4.0'):
         RACMO_MODEL = ['FGRN055','2.3p2']
         var = input_products[VARIABLE]
         VARNAME = var if (VARIABLE == 'SMB') else '{0}corr'.format(var)
