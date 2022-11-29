@@ -89,7 +89,7 @@ def set_projection(REGION):
 
 def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
 
-    #-- create logger for verbosity level
+    # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 

@@ -23,7 +23,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../SMBcorr/racmo_downscaled_cumulative.py
+    :filename: racmo_downscaled_cumulative.py
     :func: arguments
     :prog: racmo_downscaled_cumulative.py
     :nodescription:
