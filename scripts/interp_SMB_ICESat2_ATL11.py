@@ -124,7 +124,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
     logging.basicConfig(level=loglevel)
 
     # read data from input file
-    logging.info('{0} -->'.format(os.path.basename(FILE)))
+    logging.info(f'{os.path.basename(FILE)} -->')
     # Open the HDF5 file for reading
     fileID = h5py.File(FILE, 'r')
     # output data directory

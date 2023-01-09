@@ -59,7 +59,7 @@ def ftp_mar_data(parsed_ftp, DIRECTORY=None, YEARS=None, TIMEOUT=None,
         LOGFILE = 'MAR_sync_{0}.log'.format(today)
         logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
             level=logging.INFO)
-        logging.info('ICESat-2 Data Sync Log ({0})'.format(today))
+        logging.info(f'MAR Data Sync Log ({today})')
 
     else:
         # standard output (terminal output)
@@ -109,7 +109,7 @@ def multiprocess_sync(*args, **kwds):
         # if there has been an error exception
         # print the type, value, and stack trace of the
         # current exception being handled
-        logging.critical('process id {0:d} failed'.format(os.getpid()))
+        logging.critical(f'process id {os.getpid():d} failed')
         logging.error(traceback.format_exc())
     else:
         return output

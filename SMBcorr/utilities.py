@@ -78,7 +78,7 @@ def get_data_path(relpath):
 # PURPOSE: get the hash value of a file
 def get_hash(local, algorithm='MD5'):
     """
-    Get the hash value from a local file or BytesIO object
+    Get the hash value from a local file or ``BytesIO`` object
 
     Parameters
     ----------
@@ -452,9 +452,9 @@ def http_list(HOST, timeout=None, context=ssl.SSLContext(),
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
     context: obj, default ssl.SSLContext()
-        SSL context for url opener object
+        SSL context for ``urllib`` opener object
     parser: obj, default lxml.etree.HTMLParser()
-        HTML parser for lxml
+        HTML parser for ``lxml``
     format: str, default '%Y-%m-%d %H:%M'
         format for input time string
     pattern: str, default ''
@@ -515,7 +515,7 @@ def from_http(HOST, timeout=None, context=ssl.SSLContext(),
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
     context: obj, default ssl.SSLContext()
-        SSL context for url opener object
+        SSL context for ``urllib`` opener object
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
     local: str or NoneType, default None
@@ -583,7 +583,7 @@ def build_opener(username, password, context=ssl.SSLContext(),
     password_manager=False, get_ca_certs=False, redirect=False,
     authorization_header=True, urs='https://urs.earthdata.nasa.gov'):
     """
-    build urllib opener for NASA Earthdata with supplied credentials
+    Build ``urllib`` opener for NASA Earthdata with supplied credentials
 
     Parameters
     ----------
@@ -592,7 +592,7 @@ def build_opener(username, password, context=ssl.SSLContext(),
     password: str or NoneType, default None
         NASA Earthdata password
     context: obj, default ssl.SSLContext()
-        SSL context for url opener object
+        SSL context for ``urllib`` opener object
     password_manager: bool, default False
         Create password manager context using default realm
     get_ca_certs: bool, default False
@@ -661,7 +661,7 @@ def gesdisc_list(HOST, username=None, password=None, build=False,
     urs: str, default 'urs.earthdata.nasa.gov'
         Earthdata login URS 3 host
     parser: obj, default lxml.etree.HTMLParser()
-        HTML parser for lxml
+        HTML parser for ``lxml``
     format: str, default '%Y-%m-%d %H:%M'
         format for input time string
     pattern: str, default ''
