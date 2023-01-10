@@ -17,17 +17,17 @@ import time
 # attempt imports
 try:
     import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import ATL11
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("module")
     warnings.warn("ATL11 not available", ImportWarning)
 try:
     import pointCollection as pc
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("module")
     warnings.warn("pointCollection not available", ImportWarning)
 # ignore warnings
@@ -56,7 +56,7 @@ if True:
 
                 D11 = pc.ATL11.data().from_h5(file, pair=pair)
 
-            except Exception as exc:
+            except Exception as e:
                 #logging.info(file)
                 #logging.info(e)
                 continue

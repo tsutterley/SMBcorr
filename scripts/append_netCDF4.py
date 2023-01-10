@@ -22,7 +22,7 @@ import os
 import warnings
 try:
     import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 # ignore warnings

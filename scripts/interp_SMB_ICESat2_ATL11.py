@@ -44,14 +44,27 @@ from __future__ import print_function
 
 import os
 import re
-import h5py
-import pyproj
 import logging
 import argparse
 import datetime
+import warnings
 import numpy as np
 import collections
 import SMBcorr
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # available models
 models = dict(AA={}, GL={})
@@ -119,12 +132,12 @@ def convert_delta_time(delta_time, gps_epoch=1198800018.0):
 def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
     GZIP=False, VERBOSE=False, MODE=0o775):
 
-    #-- create logger for verbosity level
+    # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
     # read data from input file
-    logging.info('{0} -->'.format(os.path.basename(FILE)))
+    logging.info(f'{os.path.basename(FILE)} -->')
     # Open the HDF5 file for reading
     fileID = h5py.File(FILE, 'r')
     # output data directory
@@ -252,7 +265,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
 
     # pyproj transformer for converting from latitude/longitude
     # into polar stereographic coordinates
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_string(proj4_params)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
@@ -397,7 +410,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
                     OUTPUT['AT'][key].mask[i,c] = np.copy(OUT.mask)
                     OUTPUT['AT'][key].interpolation[i,c] = np.copy(OUT.interpolation)
 
-        #-- if interpolating to ATL11 crossover locations
+        # if interpolating to ATL11 crossover locations
         if CROSSOVERS:
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(longitude['XT'],longitude['XT'])
@@ -849,7 +862,7 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # Closing the HDF5 file
     fileID.close()
 

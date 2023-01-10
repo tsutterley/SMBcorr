@@ -13,7 +13,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../scripts/append_SMB_mean_ATL11.py
+    :filename: append_SMB_mean_ATL11.py
     :func: arguments
     :prog: append_SMB_mean_ATL11.py
     :nodescription:

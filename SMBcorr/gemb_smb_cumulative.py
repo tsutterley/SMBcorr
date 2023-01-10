@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 gemb_smb_cumulative.py
-Written by Tyler Sutterley (03/2023)
+Written by Tyler Sutterley (10/2022)
 Calculates cumulative anomalies of GEMB surface mass balance products
 
 CALLING SEQUENCE:
@@ -9,7 +9,7 @@ CALLING SEQUENCE:
 
 COMMAND LINE OPTIONS:
     --mean: Start and end year of mean
-    -f X, --fill-value X: set invalid value for spatial fields
+    -f X, --fill-value X: set fill_value for input spatial fields
     -V, --verbose: Output information for each output file
     -M X, --mode X: Local permissions mode of the directories and files
 
@@ -18,11 +18,9 @@ PYTHON DEPENDENCIES:
         https://numpy.org
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     netCDF4: Python interface to the netCDF C library
-        https://unidata.github.io/netcdf4-python/netCDF4/index.html
+         https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
-    Updated 03/2023: regular expression pattern can find if periphery
-    Updated 11/2022: use f-strings for formatting verbose or ascii output
     Written 10/2022
 """
 from __future__ import print_function
@@ -34,12 +32,11 @@ import logging
 import argparse
 import warnings
 import numpy as np
-import SMBcorr.version
 
 # attempt imports
 try:
     import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 # ignore warnings
@@ -70,10 +67,9 @@ def gemb_smb_cumulative(model_file,
     # GEMB directory
     DIRECTORY = os.path.dirname(model_file)
     # regular expression pattern for extracting parameters
-    pattern = (r'GEMB_(Greenland|Antarctica)(_and_Periphery)?_'
-        r'SMB_\d{4}_\d{4}_mesh_\d+km_(v.*?).nc$')
-    region, periphery, version = re.findall(pattern, model_file).pop()
-    output_file = f'GEMB_{region}{periphery}_SMB_cumul_{version}.nc'
+    pattern = r'GEMB_(Greenland|Antarctica)_SMB_\d{4}_\d{4}_mesh_\d+km_(v.*?).nc$'
+    region, version = re.findall(pattern, model_file).pop()
+    output_file = f'GEMB_{region}_SMB_cumul_{version}.nc'
 
     # Open the GEMB NetCDF file for reading
     fileID = netCDF4.Dataset(os.path.expanduser(model_file), 'r')
@@ -225,9 +221,6 @@ def gemb_smb_cumulative(model_file,
     fileID.reference = "https://doi.org/10.5281/zenodo.7199528"
     fileID.institution = institution
     fileID.revision = revision
-    # add software information
-    fileID.software_reference = SMBcorr.version.project_name
-    fileID.software_version = SMBcorr.version.full_version
     # Output NetCDF file information
     logging.info(list(fileID.variables.keys()))
     # Closing the NetCDF file and getting the buffer object
@@ -252,14 +245,14 @@ def arguments():
         metavar=('START','END'), type=int, nargs=2,
         default=[1980,1995],
         help='Start and end year range for mean')
-    # fill value for output spatial fields
+    # fill value for ascii
     parser.add_argument('--fill-value','-f',
         type=float, default=np.nan,
-        help='Invalid value for spatial fields')
+        help='Output invalid value')
     # print information about each input and output file
     parser.add_argument('--verbose','-V',
-        default=False, action='store_true',
-        help='Verbose output of run')
+        action='count', default=0,
+        help='Verbose output of processing run')
     # permissions mode of the local directories and files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
@@ -273,7 +266,7 @@ def main():
     args = parser.parse_args()
 
     # create logger
-    loglevels = [logging.CRITICAL, logging.INFO, logging.DEBUG]
+    loglevels = [logging.CRITICAL,logging.INFO,logging.DEBUG]
     logging.basicConfig(level=loglevels[args.verbose])
 
     # run program

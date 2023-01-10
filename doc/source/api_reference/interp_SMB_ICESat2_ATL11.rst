@@ -21,7 +21,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../scripts/interp_SMB_ICESat2_ATL11.py
+    :filename: interp_SMB_ICESat2_ATL11.py
     :func: arguments
     :prog: interp_SMB_ICESat2_ATL11.py
     :nodescription:
