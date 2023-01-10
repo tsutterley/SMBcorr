@@ -11,6 +11,6 @@ dependencies:
   - python>=3.6
   - python-dateutil
   - scikit-learn
-  - scipy
+  - scipy<=1.9.3
   - pip:
      - git+https://github.com/SmithB/pointCollection.git

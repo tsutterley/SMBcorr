@@ -64,14 +64,31 @@ from __future__ import print_function
 import sys
 import os
 import re
-import pyproj
-import netCDF4
+import warnings
 import numpy as np
 import scipy.interpolate
-from sklearn.neighbors import KDTree, BallTree
 from SMBcorr.regress_model import regress_model
 
-#-- PURPOSE: read and interpolate downscaled RACMO products
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
+try:
+    from sklearn.neighbors import KDTree, BallTree
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("scikit-learn not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
+
+# PURPOSE: read and interpolate downscaled RACMO products
 def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     VARIABLE='SMB', SEARCH='BallTree', NN=10, POWER=2.0, FILL_VALUE=None):
     """
@@ -115,17 +132,17 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
         Default will use fill values from data file
     """
 
-    #-- Full Directory Setup
+    # Full Directory Setup
     DIRECTORY = 'SMB1km_v{0}'.format(VERSION)
 
-    #-- netcdf variable names
+    # netcdf variable names
     input_products = {}
     input_products['SMB'] = 'SMB_rec'
     input_products['PRECIP'] = 'precip'
     input_products['RUNOFF'] = 'runoff'
     input_products['SNOWMELT'] = 'snowmelt'
     input_products['REFREEZE'] = 'refreeze'
-    #-- versions 1 and 4 are in separate files for each year
+    # versions 1 and 4 are in separate files for each year
     if (VERSION == '1.0'):
         RACMO_MODEL = ['XGRN11','2.3']
         VARNAME = input_products[VARIABLE]
@@ -146,162 +163,162 @@ def extrapolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
         var = input_products[VARIABLE]
         VARNAME = var if (VARIABLE == 'SMB') else '{0}corr'.format(var)
         input_dir = os.path.join(base_dir, 'RACMO', DIRECTORY)
-    #-- input cumulative netCDF4 file
+    # input cumulative netCDF4 file
     args = (RACMO_MODEL[0],RACMO_MODEL[1],VERSION,VARIABLE)
     input_file = '{0}_RACMO{1}_DS1km_v{2}_{3}_cumul.nc'.format(*args)
 
-    #-- Open the RACMO NetCDF file for reading
+    # Open the RACMO NetCDF file for reading
     fileID = netCDF4.Dataset(os.path.join(input_dir,input_file), 'r')
-    #-- input shape of RACMO data
+    # input shape of RACMO data
     nt,ny,nx = fileID[VARNAME].shape
-    #-- Get data from each netCDF variable
+    # Get data from each netCDF variable
     d = {}
-    #-- cell origins on the bottom right
+    # cell origins on the bottom right
     dx = np.abs(fileID.variables['x'][1]-fileID.variables['x'][0])
     dy = np.abs(fileID.variables['y'][1]-fileID.variables['y'][0])
-    #-- latitude and longitude arrays at center of each cell
+    # latitude and longitude arrays at center of each cell
     d['LON'] = fileID.variables['LON'][:,:].copy()
     d['LAT'] = fileID.variables['LAT'][:,:].copy()
-    #-- extract time (decimal years)
+    # extract time (decimal years)
     d['TIME'] = fileID.variables['TIME'][:].copy()
-    #-- mask object for interpolating data
+    # mask object for interpolating data
     d['MASK'] = np.array(fileID.variables['MASK'][:],dtype=bool)
     i,j = np.nonzero(d['MASK'])
 
-    #-- convert RACMO latitude and longitude to input coordinates (EPSG)
+    # convert RACMO latitude and longitude to input coordinates (EPSG)
     crs1 = pyproj.CRS.from_string(EPSG)
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    crs2 = pyproj.CRS.from_epsg(4326)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     direction = pyproj.enums.TransformDirection.INVERSE
-    #-- convert projection from model coordinates
+    # convert projection from model coordinates
     xg,yg = transformer.transform(d['LON'], d['LAT'], direction=direction)
 
-    #-- construct search tree from original points
-    #-- can use either BallTree or KDTree algorithms
+    # construct search tree from original points
+    # can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[i,j,None],yg[i,j,None]),axis=1)
     tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
 
-    #-- output extrapolated arrays of variable
+    # output extrapolated arrays of variable
     npts = len(tdec)
     extrap_data = np.ma.zeros((npts),dtype=np.float64)
     extrap_data.data[:] = extrap_data.fill_value
     extrap_data.mask = np.zeros((npts),dtype=bool)
-    #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
+    # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
-    #-- find days that can be extrapolated
+    # find days that can be extrapolated
     if np.any((tdec >= d['TIME'].min()) & (tdec <= d['TIME'].max())):
-        #-- indices of dates for interpolated days
+        # indices of dates for interpolated days
         ind,=np.nonzero((tdec >= d['TIME'].min()) & (tdec < d['TIME'].max()))
-        #-- reduce x, y and t coordinates
+        # reduce x, y and t coordinates
         xind,yind,tind = (X[ind],Y[ind],tdec[ind])
-        #-- determine which subset of time to read from the netCDF4 file
+        # determine which subset of time to read from the netCDF4 file
         f = scipy.interpolate.interp1d(d['TIME'], np.arange(nt), kind='linear',
             fill_value=(0,nt-1), bounds_error=False)
         date_indice = f(tind).astype(np.int64)
-        #-- for each unique RACMO date
-        #-- linearly interpolate in time between two RACMO maps
-        #-- then then inverse distance weighting to extrapolate in space
+        # for each unique RACMO date
+        # linearly interpolate in time between two RACMO maps
+        # then then inverse distance weighting to extrapolate in space
         for k in np.unique(date_indice):
             kk, = np.nonzero(date_indice==k)
             count = np.count_nonzero(date_indice==k)
-            #-- query the search tree to find the NN closest points
+            # query the search tree to find the NN closest points
             xy2 = np.concatenate((xind[kk,None],yind[kk,None]),axis=1)
             dist,indices = tree.query(xy2, k=NN, return_distance=True)
-            #-- normalized weights if POWER > 0 (typically between 1 and 3)
-            #-- in the inverse distance weighting
+            # normalized weights if POWER > 0 (typically between 1 and 3)
+            # in the inverse distance weighting
             power_inverse_distance = dist**(-POWER)
             s = np.sum(power_inverse_distance, axis=1)
             w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
-            #-- RACMO variables for times before and after tdec
+            # RACMO variables for times before and after tdec
             var1 = fileID.variables[VARNAME][k,i,j].copy()
             var2 = fileID.variables[VARNAME][k+1,i,j].copy()
-            #-- linearly interpolate to date
+            # linearly interpolate to date
             dt = (tind[kk] - d['TIME'][k])/(d['TIME'][k+1] - d['TIME'][k])
-            #-- spatially extrapolate using inverse distance weighting
+            # spatially extrapolate using inverse distance weighting
             extrap_data[kk] = (1.0-dt)*np.sum(w*var1[indices],axis=1) + \
                 dt*np.sum(w*var2[indices], axis=1)
             extrap_data
-        #-- set interpolation type (1: interpolated in time)
+        # set interpolation type (1: interpolated in time)
         extrap_data.interpolation[ind] = 1
 
-    #-- check if needing to extrapolate backwards in time
+    # check if needing to extrapolate backwards in time
     count = np.count_nonzero((tdec < d['TIME'].min()))
     if (count > 0):
-        #-- indices of dates before RACMO
+        # indices of dates before RACMO
         ind, = np.nonzero(tdec < d['TIME'].min())
-        #-- query the search tree to find the NN closest points
+        # query the search tree to find the NN closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=NN, return_distance=True)
-        #-- normalized weights if POWER > 0 (typically between 1 and 3)
-        #-- in the inverse distance weighting
+        # normalized weights if POWER > 0 (typically between 1 and 3)
+        # in the inverse distance weighting
         power_inverse_distance = dist**(-POWER)
         s = np.sum(power_inverse_distance, axis=1)
         w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
-        #-- calculate a regression model for calculating values
-        #-- read first 10 years of data to create regression model
+        # calculate a regression model for calculating values
+        # read first 10 years of data to create regression model
         N = 120
-        #-- spatially interpolate variables to coordinates
+        # spatially interpolate variables to coordinates
         VAR = np.zeros((count,N))
         T = np.zeros((N))
-        #-- create interpolated time series for calculating regression model
+        # create interpolated time series for calculating regression model
         for k in range(N):
-            #-- time at k
+            # time at k
             T[k] = d['TIME'][k]
-            #-- spatially extrapolate variables
+            # spatially extrapolate variables
             var1 = fileID.variables[VARNAME][k,i,j].copy()
             VAR[:,k] = np.sum(w*var1[indices],axis=1)
-        #-- calculate regression model
+        # calculate regression model
         for n,v in enumerate(ind):
             extrap_data[v] = regress_model(T, VAR[n,:], tdec[v], ORDER=2,
                 CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[0])
-        #-- set interpolation type (2: extrapolated backwards in time)
+        # set interpolation type (2: extrapolated backwards in time)
         extrap_data.interpolation[ind] = 2
 
-    #-- check if needing to extrapolate forward in time
+    # check if needing to extrapolate forward in time
     count = np.count_nonzero((tdec > d['TIME'].max()))
     if (count > 0):
-        #-- indices of dates after RACMO
+        # indices of dates after RACMO
         ind, = np.nonzero(tdec >= d['TIME'].max())
-        #-- query the search tree to find the NN closest points
+        # query the search tree to find the NN closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=NN, return_distance=True)
-        #-- normalized weights if POWER > 0 (typically between 1 and 3)
-        #-- in the inverse distance weighting
+        # normalized weights if POWER > 0 (typically between 1 and 3)
+        # in the inverse distance weighting
         power_inverse_distance = dist**(-POWER)
         s = np.sum(power_inverse_distance, axis=1)
         w = power_inverse_distance/np.broadcast_to(s[:,None],(count,NN))
-        #-- calculate a regression model for calculating values
-        #-- read last 10 years of data to create regression model
+        # calculate a regression model for calculating values
+        # read last 10 years of data to create regression model
         N = 120
-        #-- spatially interpolate variables to coordinates
+        # spatially interpolate variables to coordinates
         FIRN = np.zeros((count,N))
         T = np.zeros((N))
-        #-- create interpolated time series for calculating regression model
+        # create interpolated time series for calculating regression model
         for k in range(N):
             kk = nt - N + k
-            #-- time at k
+            # time at k
             T[k] = d['TIME'][kk]
-            #-- spatially extrapolate variables
+            # spatially extrapolate variables
             var1 = fileID.variables[VARNAME][kk,i,j].copy()
             VAR[:,k] = np.sum(w*var1[indices],axis=1)
-        #-- calculate regression model
+        # calculate regression model
         for n,v in enumerate(ind):
             extrap_data[v] = regress_model(T, VAR[n,:], tdec[v], ORDER=2,
                 CYCLES=[0.25,0.5,1.0,2.0,4.0,5.0], RELATIVE=T[-1])
-        #-- set interpolation type (3: extrapolated forward in time)
+        # set interpolation type (3: extrapolated forward in time)
         extrap_data.interpolation[ind] = 3
 
-    #-- complete mask if any invalid in data
+    # complete mask if any invalid in data
     invalid, = np.nonzero(extrap_data.data == extrap_data.fill_value)
     extrap_data.mask[invalid] = True
-    #-- replace fill value if specified
+    # replace fill value if specified
     if FILL_VALUE:
         extrap_data.data[extrap_data.mask] = FILL_VALUE
         extrap_data.fill_value = FILL_VALUE
 
-    #-- close the NetCDF files
+    # close the NetCDF files
     fileID.close()
 
-    #-- return the extrapolated values
+    # return the extrapolated values
     return extrap_data

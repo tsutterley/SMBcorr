@@ -76,36 +76,36 @@ import argparse
 import builtins
 import SMBcorr.utilities
 
-#-- PURPOSE: download MERRA-2 files from GESDISC using a links list file
+# PURPOSE: download MERRA-2 files from GESDISC using a links list file
 def gesdisc_merra_download(base_dir, links_list_file, TIMEOUT=None,
     LOG=False, VERBOSE=False, MODE=None):
-    #-- full path to MERRA-2 directory
+    # full path to MERRA-2 directory
     DIRECTORY = os.path.join(base_dir,'MERRA-2')
-    #-- check if DIRECTORY exists and recursively create if not
+    # check if DIRECTORY exists and recursively create if not
     if not os.access(os.path.join(DIRECTORY), os.F_OK):
         os.makedirs(os.path.join(DIRECTORY), mode=MODE, exist_ok=True)
 
-    #-- create log file with list of synchronized files (or print to terminal)
+    # create log file with list of synchronized files (or print to terminal)
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     if LOG:
-        #-- format: NASA_GESDISC_MERRA2_download_2002-04-01.log
+        # format: NASA_GESDISC_MERRA2_download_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
         LOGFILE = 'NASA_GESDISC_MERRA2_download_{0}.log'.format(today)
         fid = open(os.path.join(DIRECTORY,LOGFILE),'w')
         logging.basicConfig(stream=fid, level=loglevel)
         logging.info('NASA MERRA-2 Sync Log ({0})'.format(today))
     else:
-        #-- standard output (terminal output)
+        # standard output (terminal output)
         fid = sys.stdout
         logging.basicConfig(stream=fid, level=loglevel)
 
-    #-- read the links list file
+    # read the links list file
     with open(links_list_file,'rb') as fileID:
         lines = fileID.read().decode("utf-8-sig").encode("utf-8").splitlines()
 
-    #-- for each line in the links_list_file
+    # for each line in the links_list_file
     for f in lines:
-        #-- extract filename from url
+        # extract filename from url
         HOST = SMBcorr.utilities.url_split(f.decode('utf-8'))
         if re.search(rb'LABEL\=(.*?)\&SHORTNAME',f):
             FILE, = re.findall(r'LABEL\=(.*?)\&SHORTNAME', f.decode('utf-8'))
@@ -114,14 +114,14 @@ def gesdisc_merra_download(base_dir, links_list_file, TIMEOUT=None,
             MOD,DSET,YMD,AUX = rx.findall(f.decode('utf-8')).pop()
             FILE = 'MERRA2_{0}.{1}.{2}.SUB.nc'.format(MOD,DSET,YMD)
         elif re.search(rb'FAQ',f,re.IGNORECASE):
-            #-- skip frequently asked questions hyperlinks
+            # skip frequently asked questions hyperlinks
             continue
         else:
             FILE = HOST[-1]
-        #-- Create and submit request. There are a wide range of exceptions
-        #-- that can be thrown here, including HTTPError and URLError.
+        # Create and submit request. There are a wide range of exceptions
+        # that can be thrown here, including HTTPError and URLError.
         try:
-            #-- output local file
+            # output local file
             local_file = os.path.join(DIRECTORY,FILE)
             MD5 = SMBcorr.utilities.get_hash(local_file)
             SMBcorr.utilities.from_http(HOST, timeout=TIMEOUT,
@@ -132,12 +132,12 @@ def gesdisc_merra_download(base_dir, links_list_file, TIMEOUT=None,
             logging.critical('Link not downloaded: {0}'.format(remote_file))
             continue
 
-    #-- close log file and set permissions level to MODE
+    # close log file and set permissions level to MODE
     if LOG:
         fid.close()
         os.chmod(os.path.join(DIRECTORY,LOGFILE), MODE)
 
-#-- PURPOSE: create argument parser
+# PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
         description="""Downloads MERRA-2 products using a links list
@@ -145,11 +145,11 @@ def arguments():
             Server Center (GES DISC)
             """
     )
-    #-- command line parameters
+    # command line parameters
     parser.add_argument('file',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='GESDISC links list file')
-    #-- NASA Earthdata credentials
+    # NASA Earthdata credentials
     parser.add_argument('--user','-U',
         type=str, default=os.environ.get('EARTHDATA_USERNAME'),
         help='Username for NASA Earthdata Login')
@@ -160,65 +160,65 @@ def arguments():
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=os.path.join(os.path.expanduser('~'),'.netrc'),
         help='Path to .netrc file for authentication')
-    #-- working data directory
+    # working data directory
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=os.getcwd(),
         help='Working data directory')
-    #-- connection timeout
+    # connection timeout
     parser.add_argument('--timeout','-t',
         type=int, default=360,
         help='Timeout in seconds for blocking operations')
-    #-- Output log file in form
-    #-- NASA_GESDISC_MERRA2_download_2002-04-01.log
+    # Output log file in form
+    # NASA_GESDISC_MERRA2_download_2002-04-01.log
     parser.add_argument('--log','-l',
         default=False, action='store_true',
         help='Output log file')
-    #-- print information about each output file
+    # print information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
         help='Verbose output of run')
-    #-- permissions mode of the directories and files synced (number in octal)
+    # permissions mode of the directories and files synced (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files synced')
-    #-- return the parser
+    # return the parser
     return parser
 
-#-- This is the main part of the program that calls the individual functions
+# This is the main part of the program that calls the individual functions
 def main():
-    #-- Read the system arguments listed after the program
+    # Read the system arguments listed after the program
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    #-- NASA Earthdata hostname
+    # NASA Earthdata hostname
     URS = 'urs.earthdata.nasa.gov'
-    #-- get NASA Earthdata credentials
+    # get NASA Earthdata credentials
     try:
         args.user,_,args.password = netrc.netrc(args.netrc).authenticators(URS)
     except:
-        #-- check that NASA Earthdata credentials were entered
+        # check that NASA Earthdata credentials were entered
         if not args.user:
             prompt = 'Username for {0}: '.format(URS)
             args.user = builtins.input(prompt)
-        #-- enter password securely from command-line
+        # enter password securely from command-line
         if not args.password:
             prompt = 'Password for {0}@{1}: '.format(args.user,URS)
             args.password = getpass.getpass(prompt)
 
-    #-- build a urllib opener for NASA GESDISC
-    #-- Add the username and password for NASA Earthdata Login system
+    # build a urllib opener for NASA GESDISC
+    # Add the username and password for NASA Earthdata Login system
     SMBcorr.utilities.build_opener(args.user, args.password,
         password_manager=True, authorization_header=False)
 
-    #-- check internet connection before attempting to run program
+    # check internet connection before attempting to run program
     HOST = 'http://disc.sci.gsfc.nasa.gov/'
     if SMBcorr.utilities.check_connection(HOST):
-        #-- for each links list file from GESDISC
+        # for each links list file from GESDISC
         for FILE in args.file:
             gesdisc_merra_download(args.directory, FILE, TIMEOUT=args.timeout,
                 LOG=args.log, VERBOSE=args.verbose, MODE=args.mode)
 
-#-- run main program
+# run main program
 if __name__ == '__main__':
     main()

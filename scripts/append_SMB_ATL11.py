@@ -47,7 +47,6 @@ UPDATE HISTORY:
 import sys
 import os
 import re
-import h5py
 import logging
 import SMBcorr
 import argparse
@@ -55,11 +54,15 @@ import warnings
 import numpy as np
 # attempt imports
 try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
+try:
     import pointCollection as pc
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("pointCollection not available")
-    warnings.warn("Some functions will throw an exception if called")
+    warnings.filterwarnings("module")
+    warnings.warn("pointCollection not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -89,7 +92,7 @@ def set_projection(REGION):
 
 def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
 
-    #-- create logger for verbosity level
+    # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 

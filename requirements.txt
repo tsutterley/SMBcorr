@@ -1,6 +1,3 @@
 numpy
-scipy
-pyproj
+scipy<=1.9.3
 python-dateutil
-netCDF4
-scikit-learn

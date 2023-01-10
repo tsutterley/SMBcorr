@@ -8,13 +8,30 @@ Created on Thu Oct 24 09:25:40 2019
 
 import glob
 import matplotlib.pyplot as plt
-import ATL11
+import warnings
 #from PointDatabase import mapData, point_data
-import pointCollection as pc
 import numpy as np
 import logging
-import h5py
 import time
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
+try:
+    import ATL11
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("ATL11 not available", ImportWarning)
+try:
+    import pointCollection as pc
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pointCollection not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # create logger for verbosity level
 logging.basicConfig(level=logging.INFO)
