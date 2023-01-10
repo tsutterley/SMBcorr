@@ -420,8 +420,11 @@ def from_ftp(HOST, username=None, password=None, timeout=None,
         remote_buffer.seek(0)
         return remote_buffer
 
+# default ssl context
+_default_ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+
 # PURPOSE: check internet connection
-def check_connection(HOST):
+def check_connection(HOST, context=_default_ssl_context):
     """
     Check internet connection with http host
 
@@ -429,17 +432,19 @@ def check_connection(HOST):
     ----------
     HOST: str
         remote http host
+    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
+        SSL context for ``urllib`` opener object
     """
     # attempt to connect to http host
     try:
-        urllib2.urlopen(HOST, timeout=20, context=ssl.SSLContext())
+        urllib2.urlopen(HOST, timeout=20, context=context)
     except urllib2.URLError:
         raise RuntimeError('Check internet connection')
     else:
         return True
 
 # PURPOSE: list a directory on an Apache http Server
-def http_list(HOST, timeout=None, context=ssl.SSLContext(),
+def http_list(HOST, timeout=None, context=_default_ssl_context,
     parser=lxml.etree.HTMLParser(), format='%Y-%m-%d %H:%M',
     pattern='', sort=False):
     """
@@ -451,7 +456,7 @@ def http_list(HOST, timeout=None, context=ssl.SSLContext(),
         remote http host path
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
-    context: obj, default ssl.SSLContext()
+    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
         SSL context for ``urllib`` opener object
     parser: obj, default lxml.etree.HTMLParser()
         HTML parser for ``lxml``
@@ -502,7 +507,7 @@ def http_list(HOST, timeout=None, context=ssl.SSLContext(),
         return (colnames, collastmod)
 
 # PURPOSE: download a file from a http host
-def from_http(HOST, timeout=None, context=ssl.SSLContext(),
+def from_http(HOST, timeout=None, context=_default_ssl_context,
     local=None, hash='', chunk=16384, verbose=False, fid=sys.stdout,
     mode=0o775):
     """
@@ -514,7 +519,7 @@ def from_http(HOST, timeout=None, context=ssl.SSLContext(),
         remote http host path split as list
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
-    context: obj, default ssl.SSLContext()
+    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
         SSL context for ``urllib`` opener object
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
@@ -579,7 +584,7 @@ def from_http(HOST, timeout=None, context=ssl.SSLContext(),
         return remote_buffer
 
 # PURPOSE: "login" to NASA Earthdata with supplied credentials
-def build_opener(username, password, context=ssl.SSLContext(),
+def build_opener(username, password, context=_default_ssl_context,
     password_manager=False, get_ca_certs=False, redirect=False,
     authorization_header=True, urs='https://urs.earthdata.nasa.gov'):
     """
@@ -591,7 +596,7 @@ def build_opener(username, password, context=ssl.SSLContext(),
         NASA Earthdata username
     password: str or NoneType, default None
         NASA Earthdata password
-    context: obj, default ssl.SSLContext()
+    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
         SSL context for ``urllib`` opener object
     password_manager: bool, default False
         Create password manager context using default realm
