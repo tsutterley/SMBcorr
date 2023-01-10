@@ -16,6 +16,13 @@ with open('version.txt') as fh:
 
 # list of all scripts to be included with package
 scripts=[os.path.join('scripts',f) for f in os.listdir('scripts') if f.endswith('.py')]
+# append callable modules
+scripts.append(os.path.join('SMBcorr','mar_smb_cumulative.py'))
+scripts.append(os.path.join('SMBcorr','mar_smb_mean.py'))
+scripts.append(os.path.join('SMBcorr','merra_hybrid_cumulative.py'))
+scripts.append(os.path.join('SMBcorr','merra_smb_cumulative.py'))
+scripts.append(os.path.join('SMBcorr','merra_smb_mean.py'))
+scripts.append(os.path.join('SMBcorr','racmo_downscaled_cumulative.py'))
 
 # install requirements and dependencies
 on_rtd = os.environ.get('READTHEDOCS') == 'True'
