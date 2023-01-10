@@ -44,11 +44,20 @@ import os
 import re
 import uuid
 import gzip
-import netCDF4
 import argparse
+import warnings
 import numpy as np
 from datetime import date
 import SMBcorr.time
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # data product longnames
 longname = {}

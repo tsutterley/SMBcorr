@@ -29,9 +29,18 @@ import os
 import re
 import time
 import logging
-import netCDF4
 import argparse
+import warnings
 import numpy as np
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: calculate cumulative anomalies in GEMB
 # surface mass balance variables

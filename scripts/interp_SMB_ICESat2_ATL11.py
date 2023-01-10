@@ -44,14 +44,27 @@ from __future__ import print_function
 
 import os
 import re
-import h5py
-import pyproj
 import logging
 import argparse
 import datetime
+import warnings
 import numpy as np
 import collections
 import SMBcorr
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # available models
 models = dict(AA={}, GL={})

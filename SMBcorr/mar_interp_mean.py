@@ -47,12 +47,25 @@ from __future__ import print_function
 import sys
 import os
 import re
-import pyproj
-import netCDF4
+import warnings
 import numpy as np
 import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: find a valid Delaunay triangulation for coordinates x0 and y0
 # http://www.qhull.org/html/qhull.htm#options

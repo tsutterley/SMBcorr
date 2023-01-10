@@ -70,11 +70,20 @@ import sys
 import os
 import re
 import logging
-import netCDF4
 import argparse
+import warnings
 import numpy as np
 import SMBcorr.time
 import SMBcorr.spatial
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: read variables from MERRA-2 tavgM_2d_int and tavgM_2d_glc files
 def read_merra_variables(merra_flux_file, merra_ice_surface_file):

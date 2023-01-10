@@ -19,7 +19,14 @@ UPDATE HISTORY:
 
 import sys
 import os
-import netCDF4
+import warnings
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 def append_netCDF4():
     input_file = os.path.expanduser(sys.argv[1])

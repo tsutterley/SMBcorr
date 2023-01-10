@@ -40,10 +40,19 @@ from __future__ import print_function
 import sys
 import os
 import re
-import netCDF4
 import argparse
+import warnings
 import numpy as np
 import SMBcorr.time
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # data product longnames
 longname = {}

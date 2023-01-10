@@ -33,13 +33,26 @@ import re
 import io
 import copy
 import gzip
-import h5py
 import time
 import uuid
 import logging
-import netCDF4
 import zipfile
+import warnings
 import numpy as np
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 class spatial(object):
     """

@@ -68,13 +68,30 @@ import os
 import re
 import gzip
 import uuid
-import pyproj
-import netCDF4
+import warnings
 import numpy as np
 import scipy.ndimage
 import scipy.interpolate
-from sklearn.neighbors import KDTree, BallTree
 from SMBcorr.regress_model import regress_model
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
+try:
+    from sklearn.neighbors import KDTree, BallTree
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("scikit-learn not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: set the projection parameters based on the region name
 def set_projection(region):

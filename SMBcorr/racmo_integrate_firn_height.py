@@ -38,11 +38,20 @@ from __future__ import print_function
 import sys
 import os
 import re
-import netCDF4
 import argparse
+import warnings
 import numpy as np
 import scipy.interpolate
 from SMBcorr.regress_model import regress_model
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: read and integrate RACMO2.3 firn corrections
 def racmo_integrate_firn_height(base_dir, MODEL, VARIABLE='zs', OUTPUT=True):

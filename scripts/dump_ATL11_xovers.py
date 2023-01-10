@@ -9,7 +9,16 @@ Created on Wed May 20 16:37:19 2020
 import glob
 import logging
 import numpy as np
-import pointCollection as pc
+import warnings
+# attempt imports
+try:
+    import pointCollection as pc
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("module")
+    warnings.warn("pointCollection not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
+
 thedir='/Volumes/ice2/ben/scf/GL_11/007'
 
 # create logger for verbosity level
