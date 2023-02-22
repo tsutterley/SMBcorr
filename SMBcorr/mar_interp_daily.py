@@ -67,12 +67,12 @@ import SMBcorr.time
 # attempt imports
 try:
     import netCDF4
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 try:
     import pyproj
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
 # ignore warnings
@@ -208,7 +208,7 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     # create list of files to read
     try:
         input_files=sorted([f for f in os.listdir(DIRECTORY) if rx.match(f)])
-    except Exception as e:
+    except Exception as exc:
         print(f"failed to find files matching {VERSION} in {DIRECTORY}")
         raise(e)
 

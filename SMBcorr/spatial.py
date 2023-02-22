@@ -43,12 +43,12 @@ import numpy as np
 # attempt imports
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 try:
     import netCDF4
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
 # ignore warnings
@@ -1019,7 +1019,7 @@ class spatial(object):
             # try expanding mask variable
             try:
                 self.mask = self.mask[:,:,None]
-            except Exception as e:
+            except Exception as exc:
                 pass
         # get spacing and dimensions
         self.update_spacing()
@@ -1038,7 +1038,7 @@ class spatial(object):
         # try squeezing mask variable
         try:
             self.mask = np.squeeze(self.mask)
-        except Exception as e:
+        except Exception as exc:
             pass
         # get spacing and dimensions
         self.update_spacing()
