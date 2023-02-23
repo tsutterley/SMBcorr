@@ -61,7 +61,7 @@ import numpy as np
 # attempt imports
 try:
     import netCDF4
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 # ignore warnings
@@ -129,7 +129,7 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION,
         output_file = 'gsfc_fdm_smb_cumul_{0}_{1}.nc{2}'.format(*args)
         # names of variables to read
         VARIABLES = ('Me','Ra','Ru','Sn-Ev','SMB')
-        AREA = 'iArea'
+        AREA = 'iArea' if REGION.lower() in ('gris',) else None
         # flag to append to output netCDF4 variables
         anomaly_flag = '_a'
 

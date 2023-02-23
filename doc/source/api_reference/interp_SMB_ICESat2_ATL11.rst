@@ -57,8 +57,10 @@ Models
     - ``GSFC-fdm-v1.0``
     - ``GSFC-fdm-v1.1``
     - ``GSFC-fdm-v1.2``
+    - ``GSFC-fdm-v1.2.1``
 * Antarctica
 
     - ``GSFC-fdm-v0``
     - ``GSFC-fdm-v1``
     - ``GSFC-fdm-v1.1``
+    - ``GSFC-fdm-v1.2.1``

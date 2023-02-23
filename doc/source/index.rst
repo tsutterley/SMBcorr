@@ -38,6 +38,7 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     api_reference/append_SMB_averages_ATL11.rst
     api_reference/append_SMB_mean_ATL11.rst
     api_reference/interp_SMB_ICESat2_ATL11.rst
+    api_reference/interp_SMB_ICESat2_ATL15.rst
 
 .. toctree::
     :maxdepth: 1
