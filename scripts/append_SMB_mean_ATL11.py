@@ -51,12 +51,12 @@ import numpy as np
 # attempt imports
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import pointCollection as pc
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pointCollection not available", ImportWarning)
 # ignore warnings
@@ -136,11 +136,13 @@ def append_SMB_mean_ATL11(input_file, base_dir, REGION, MODEL,
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
+    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
+    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
-    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+    # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
 
     # for each model to append to ATL11
     for model_version in models[REGION][MODEL]:
@@ -205,7 +207,7 @@ def append_SMB_mean_ATL11(input_file, base_dir, REGION, MODEL,
             LONGNAME['smb_mean'] = "Ice Sheet Surface Mass Balance"
         elif (MODEL == 'MERRA2-hybrid'):
             # regular expression pattern for extracting version
-            merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
+            merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?(\.\d+)?)$')
             # get MERRA-2 version and major version
             MERRA2_VERSION = merra2_regex.match(model_version).group(1)
             # MERRA-2 hybrid directory

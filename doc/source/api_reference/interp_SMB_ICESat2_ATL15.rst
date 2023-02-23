@@ -1,29 +1,27 @@
 ===========================
-interp_SMB_ICESat2_ATL11.py
+interp_SMB_ICESat2_ATL15.py
 ===========================
 
-- Interpolates daily firn model estimates to the times and locations of ICESat-2 ATL11 annual land ice height data
+- Interpolates daily firn model estimates to the times and locations of ICESat-2 ATL15 gridded land ice height change data
 
-    * Snow Height Change (``zsurf``)
-    * Snow Height Change due to Compaction (``zfirn``)
-    * Snow Height Change due to Surface Melt (``zmelt``)
-    * Snow Height Change due to Surface Mass Balance (``zsmb``)
-    * Snow Height Change due to Surface Accumulation (``zaccum``)
-    * Cumulative Surface Mass Balance (``SMB``)
-- Interpolates firn model estimates for both along-track and across-track locations
+    * Relative Snow Height Change (``delta_h_surf``)
+    * Relative Snow Height Change due to Compaction (``delta_h_firn``)
+    * Relative Snow Height Change due to Surface Melt (``delta_h_melt``)
+    * Relative Snow Height Change due to Surface Mass Balance (``delta_h_smb``)
+    * Relative Snow Height Change due to Surface Accumulation (``delta_h_accum``)
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/SMBcorr/blob/main/scripts/interp_SMB_ICESat2_ATL11.py
+.. __: https://github.com/tsutterley/SMBcorr/blob/main/scripts/interp_SMB_ICESat2_ATL15.py
 
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: interp_SMB_ICESat2_ATL11.py
+    :filename: interp_SMB_ICESat2_ATL15.py
     :func: arguments
-    :prog: interp_SMB_ICESat2_ATL11.py
+    :prog: interp_SMB_ICESat2_ATL15.py
     :nodescription:
     :nodefault:
 

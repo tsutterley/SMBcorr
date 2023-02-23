@@ -77,17 +77,17 @@ from SMBcorr.regress_model import regress_model
 # attempt imports
 try:
     import netCDF4
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 try:
     import pyproj
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
 try:
     from sklearn.neighbors import KDTree, BallTree
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("scikit-learn not available", ImportWarning)
 # ignore warnings
@@ -195,6 +195,8 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     fd = {}
     # time is year decimal at time step 5 days
     time_step = 5.0/365.25
+    # data at first time step for calculating anomalies
+    z0 = fileID.variables[VARIABLE][0,:,:].copy()
     # if extrapolating data: read the full dataset
     # if simply interpolating with fill values: reduce to a subset
     if EXTRAPOLATE:
@@ -251,8 +253,8 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     for t in range(nt):
         # replace fill values before smoothing data
         temp1 = np.zeros((nx,ny))
-        # reference to first firn field
-        temp1[i,j] = fd[VARIABLE][t,i,j] - fd[VARIABLE][0,i,j]
+        # reference to first firn field (z0)
+        temp1[i,j] = fd[VARIABLE][t,i,j] - z0[i,j]
         # smooth firn field
         temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
             mode='constant', cval=0)
@@ -386,7 +388,8 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         extrap_data.interpolation[ind] = 3
 
     # complete mask if any invalid in data
-    invalid, = np.nonzero(extrap_data.data == extrap_data.fill_value)
+    invalid, = np.nonzero((extrap_data.data == extrap_data.fill_value) |
+        np.isnan(extrap_data.data))
     extrap_data.mask[invalid] = True
     # replace fill value if specified
     if FILL_VALUE:
