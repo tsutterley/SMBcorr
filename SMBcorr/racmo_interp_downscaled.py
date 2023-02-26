@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_downscaled.py
-Written by Tyler Sutterley (10/2022)
+Written by Tyler Sutterley (02/2023)
 Interpolates and extrapolates downscaled RACMO products to times and coordinates
 
 INPUTS:
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 02/2023: close in time extrapolations with regular grid interpolator
     Updated 10/2022: added version 4.0 (RACMO2.3p2 for 1958-2022 from FGRN055)
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
@@ -274,11 +275,14 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
     # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
+    # time cutoff allowing for close time interpolation
+    dt = np.abs(d['TIME'][1] - d['TIME'][0])
+    time_cutoff = (d['TIME'].min() - dt, d['TIME'].max() + dt)
     # find days that can be interpolated
-    if np.any((tdec >= d['TIME'].min()) & (tdec <= d['TIME'].max()) & valid):
+    if np.any((tdec >= time_cutoff[0]) & (tdec <= time_cutoff[1]) & valid):
         # indices of dates for interpolated days
-        ind, = np.nonzero((tdec >= d['TIME'].min()) &
-            (tdec <= d['TIME'].max()) & valid)
+        ind, = np.nonzero((tdec >= time_cutoff[0]) &
+            (tdec <= time_cutoff[1]) & valid)
         # determine which subset of time to read from the netCDF4 file
         f = scipy.interpolate.interp1d(d['TIME'], np.arange(nt), kind='linear',
             fill_value=(0,nt-1), bounds_error=False)
@@ -290,22 +294,23 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
         d[VARNAME] = np.zeros((nm,ny,nx))
         for i,m in enumerate(months):
             d[VARNAME][i,:,:] = fileID.variables[VARNAME][m,rows,cols].copy()
-
         # create an interpolator for variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (d['TIME'][months],d['y'],d['x']), d[VARNAME])
-
+            (d['TIME'][months],d['y'],d['x']), d[VARNAME],
+            bounds_error=False, fill_value=None)
         # interpolate to points
         interp_data.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
         interp_data.mask[ind] = MI.__call__(np.c_[iy[ind],ix[ind]])
         # set interpolation type (1: interpolated)
         interp_data.interpolation[ind] = 1
 
+    # time cutoff without close time interpolation
+    time_cutoff = (d['TIME'].min(), d['TIME'].max())
     # check if needing to extrapolate backwards in time
-    count = np.count_nonzero((tdec < d['TIME'].min()) & valid)
+    count = np.count_nonzero((tdec < time_cutoff[0]) & valid)
     if (count > 0):
         # indices of dates before RACMO model
-        ind, = np.nonzero((tdec < d['TIME'].min()) & valid)
+        ind, = np.nonzero((tdec < time_cutoff[0]) & valid)
         # calculate a regression model for calculating values
         # read first 10 years of data to create regression model
         N = 120
@@ -333,10 +338,10 @@ def interpolate_racmo_downscaled(base_dir, EPSG, VERSION, tdec, X, Y,
         interp_data.interpolation[ind] = 2
 
     # check if needing to extrapolate forward in time
-    count = np.count_nonzero((tdec > d['TIME'].max()) & valid)
+    count = np.count_nonzero((tdec > time_cutoff[1]) & valid)
     if (count > 0):
         # indices of dates after RACMO model
-        ind, = np.nonzero((tdec > d['TIME'].max()) & valid)
+        ind, = np.nonzero((tdec > time_cutoff[1]) & valid)
         # calculate a regression model for calculating values
         # read last 10 years of data to create regression model
         N = 120
