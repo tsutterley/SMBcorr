@@ -336,7 +336,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
         delta_time['AT'].mask = (delta_time['AT'] == delta_time['AT'].fill_value)
         # allocate for output height for along-track data
         OUTPUT['AT'] = {}
-        for key in KEYS:
+        for key,var in zip(KEYS,VARIABLES):
             OUTPUT['AT'][key] = np.ma.empty((n_points,n_cycles),fill_value=fv)
             OUTPUT['AT'][key].mask = np.ones((n_points,n_cycles),dtype=bool)
             OUTPUT['AT'][key].interpolation = np.zeros((n_points,n_cycles),dtype=np.uint8)
@@ -359,7 +359,7 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
             delta_time['XT'].mask = (delta_time['XT'] == delta_time['XT'].fill_value)
             # allocate for output height for across-track data
             OUTPUT['XT'] = {}
-            for key in KEYS:
+            for key,var in zip(KEYS,VARIABLES):
                 OUTPUT['XT'][key] = np.ma.empty((n_cross),fill_value=fv)
                 OUTPUT['XT'][key].mask = np.ones((n_cross),dtype=bool)
                 OUTPUT['XT'][key].interpolation = np.zeros((n_cross),dtype=np.uint8)

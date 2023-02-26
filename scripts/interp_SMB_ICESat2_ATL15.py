@@ -297,7 +297,7 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
     for att_name in ['description','source','long_name','units']:
         attributes['time'][att_name] = attrib['time'][att_name]
     # allocate for output variables
-    for key in KEYS:
+    for key,var in zip(KEYS,VARIABLES):
         output_data[key] = np.ma.empty((nt, ny, nx), fill_value=fill_value)
         output_data[key].mask = np.ones((nt, ny, nx), dtype=bool)
         # attributes for output variable
@@ -368,7 +368,7 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
     # remove epoch from all time points
     indt, = np.flatnonzero(ATL15['time'] == (EPOCH - 2018.0)*365.25)
     # calculate as anomalies with respect to epoch
-    for key in KEYS:
+    for key,var in zip(KEYS,VARIABLES):
         # data at epoch for calculating anomalies
         z0 = output_data[key].data[indt,iY,iX].copy()
         for iT, delta_time in enumerate(ATL15['time']):

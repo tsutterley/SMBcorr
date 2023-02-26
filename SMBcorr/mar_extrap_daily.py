@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_daily.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (02/2023)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 02/2023: don't recompute min and max time cutoffs for cases
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
@@ -295,10 +296,12 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap.interpolation = np.zeros((npts),dtype=np.uint8)
 
+    # time cutoff without close time interpolation
+    time_cutoff = (fd['TIME'].min(), fd['TIME'].max())
     # find days that can be interpolated
-    if np.any((tdec >= fd['TIME'].min()) & (tdec < fd['TIME'].max())):
+    if np.any((tdec >= time_cutoff[0]) & (tdec < time_cutoff[1])):
         # indices of dates for interpolated days
-        ind,=np.nonzero((tdec >= fd['TIME'].min()) & (tdec < fd['TIME'].max()))
+        ind,=np.nonzero((tdec >= time_cutoff[0]) & (tdec < time_cutoff[1]))
         # reduce x, y and t coordinates
         xind,yind,tind = (X[ind],Y[ind],tdec[ind])
         # find indices for linearly interpolating in time
@@ -330,10 +333,10 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         extrap.interpolation[ind] = 1
 
     # check if needing to extrapolate backwards in time
-    count = np.count_nonzero(tdec < fd['TIME'].min())
+    count = np.count_nonzero(tdec < time_cutoff[0])
     if (count > 0) and EXTRAPOLATE:
         # indices of dates before model
-        ind, = np.nonzero(tdec < fd['TIME'].min())
+        ind, = np.nonzero(tdec < time_cutoff[0])
         # query the search tree to find the NN closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=NN, return_distance=True)
@@ -363,10 +366,10 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         extrap.interpolation[ind] = 2
 
     # check if needing to extrapolate forward in time
-    count = np.count_nonzero(tdec >= fd['TIME'].max())
+    count = np.count_nonzero(tdec >= time_cutoff[1])
     if (count > 0) and EXTRAPOLATE:
         # indices of dates after model
-        ind, = np.nonzero(tdec >= fd['TIME'].max())
+        ind, = np.nonzero(tdec >= time_cutoff[1])
         # query the search tree to find the NN closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=NN, return_distance=True)

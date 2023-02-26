@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_interp_firn_height.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (02/2023)
 Interpolates and extrapolates firn heights to times and coordinates
 
 INPUTS:
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 02/2023: close in time extrapolations with regular grid interpolator
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 01/2021: using conversion protocols following pyproj-2 updates
@@ -323,30 +324,35 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
     # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
+    # time cutoff allowing for close time interpolation
+    dt = np.abs(fd['time'][1] - fd['time'][0])
+    time_cutoff = (fd['time'].min() - dt, fd['time'].max() + dt)
     # find days that can be interpolated
-    if np.any((tdec >= fd['time'].min()) & (tdec <= fd['time'].max()) & valid):
+    if np.any((tdec >= time_cutoff[0]) & (tdec <= time_cutoff[1]) & valid):
         # indices of dates for interpolated days
-        ind, = np.nonzero((tdec >= fd['time'].min()) &
-            (tdec <= fd['time'].max()) & valid)
-
+        ind, = np.nonzero((tdec >= time_cutoff[0]) &
+            (tdec <= time_cutoff[1]) & valid)
         # create an interpolator for model variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (fd['time'],fd['y'],fd['x']), gs[VARIABLE].data)
+            (fd['time'],fd['y'],fd['x']), gs[VARIABLE].data,
+            bounds_error=False, fill_value=None)
         # create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
-            (fd['time'],fd['y'],fd['x']), gs[VARIABLE].mask)
-
+            (fd['time'],fd['y'],fd['x']), gs[VARIABLE].mask,
+            bounds_error=False, fill_value=None)
         # interpolate to points
         interp_data.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
         interp_data.mask[ind] = MI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
         # set interpolation type (1: interpolated)
         interp_data.interpolation[ind] = 1
 
+    # time cutoff without close time interpolation
+    time_cutoff = (fd['time'].min(), fd['time'].max())
     # check if needing to extrapolate backwards in time
-    count = np.count_nonzero((tdec < fd['time'].min()) & valid)
+    count = np.count_nonzero((tdec < time_cutoff[0]) & valid)
     if (count > 0):
         # indices of dates before firn model
-        ind, = np.nonzero((tdec < fd['time'].min()) & valid)
+        ind, = np.nonzero((tdec < time_cutoff[0]) & valid)
         # calculate a regression model for calculating values
         # read first 10 years of data to create regression model
         N = 365
@@ -376,10 +382,10 @@ def interpolate_racmo_firn(base_dir, EPSG, MODEL, tdec, X, Y, VARIABLE='zs',
         interp_data.interpolation[ind] = 2
 
     # check if needing to extrapolate forward in time
-    count = np.count_nonzero((tdec > fd['time'].max()) & valid)
+    count = np.count_nonzero((tdec > time_cutoff[1]) & valid)
     if (count > 0):
         # indices of dates after firn model
-        ind, = np.nonzero((tdec > fd['time'].max()) & valid)
+        ind, = np.nonzero((tdec > time_cutoff[1]) & valid)
         # calculate a regression model for calculating values
         # read last 10 years of data to create regression model
         N = 365
