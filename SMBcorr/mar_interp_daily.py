@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_interp_daily.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (02/2023)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 INPUTS:
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 02/2023: close in time extrapolations with regular grid interpolator
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
     Updated 01/2021: using conversion protocols following pyproj-2 updates
@@ -351,29 +352,35 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp.interpolation = np.zeros((npts),dtype=np.uint8)
 
+    # time cutoff allowing for close time interpolation
+    dt = np.abs(fd['TIME'][1] - fd['TIME'][0])
+    time_cutoff = (fd['TIME'].min() - dt, fd['TIME'].max() + dt)
     # find days that can be interpolated
-    if np.any((tdec >= fd['TIME'].min()) & (tdec <= fd['TIME'].max()) & valid):
+    if np.any((tdec >= time_cutoff[0]) & (tdec <= time_cutoff[1]) & valid):
         # indices of dates for interpolated days
-        ind, = np.nonzero((tdec >= fd['TIME'].min()) &
-            (tdec <= fd['TIME'].max()) & valid)
+        ind, = np.nonzero((tdec >= time_cutoff[0]) &
+            (tdec <= time_cutoff[1]) & valid)
         # create an interpolator for model variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].data)
+            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].data,
+            bounds_error=False, fill_value=None)
         # create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
-            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].mask)
-
+            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].mask,
+            bounds_error=False, fill_value=None)
         # interpolate to points
         interp.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
         interp.mask[ind] = MI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
         # set interpolation type (1: interpolated)
         interp.interpolation[ind] = 1
 
+    # time cutoff without close time interpolation
+    time_cutoff = (fd['TIME'].min(), fd['TIME'].max())
     # check if needing to extrapolate backwards in time
-    count = np.count_nonzero((tdec < fd['TIME'].min()) & valid)
+    count = np.count_nonzero((tdec < time_cutoff[0]) & valid)
     if (count > 0) and EXTRAPOLATE:
         # indices of dates before model
-        ind, = np.nonzero((tdec < fd['TIME'].min()) & valid)
+        ind, = np.nonzero((tdec < time_cutoff[0]) & valid)
         # read the first year of data to create regression model
         N = 365
         # calculate a regression model for calculating values
@@ -403,10 +410,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         interp.interpolation[ind] = 2
 
     # check if needing to extrapolate forward in time
-    count = np.count_nonzero((tdec > fd['TIME'].max()) & valid)
+    count = np.count_nonzero((tdec > time_cutoff[1]) & valid)
     if (count > 0) and EXTRAPOLATE:
         # indices of dates after model
-        ind, = np.nonzero((tdec > fd['TIME'].max()) & valid)
+        ind, = np.nonzero((tdec > time_cutoff[1]) & valid)
         # read the last year of data to create regression model
         N = 365
         # calculate a regression model for calculating values

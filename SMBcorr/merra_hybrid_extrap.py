@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_extrap.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (02/2023)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
 
 MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 02/2023: don't recompute min and max time cutoffs for cases
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 05/2021: set bounds error to false when reducing temporal range
     Updated 04/2021: can reduce input dataset to a temporal subset
@@ -286,10 +287,12 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
+    # time cutoff without close time interpolation
+    time_cutoff = (fd['time'].min(), fd['time'].max())
     # find days that can be interpolated
-    if np.any((tdec >= fd['time'].min()) & (tdec < fd['time'].max())):
+    if np.any((tdec >= time_cutoff[0]) & (tdec < time_cutoff[1])):
         # indices of dates for interpolated days
-        ind,=np.nonzero((tdec >= fd['time'].min()) & (tdec < fd['time'].max()))
+        ind,=np.nonzero((tdec >= time_cutoff[0]) & (tdec < time_cutoff[1]))
         # reduce x, y and t coordinates
         xind,yind,tind = (X[ind],Y[ind],tdec[ind])
         # find indices for linearly interpolating in time
@@ -321,10 +324,10 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         extrap_data.interpolation[ind] = 1
 
     # check if needing to extrapolate backwards in time
-    count = np.count_nonzero(tdec < fd['time'].min())
+    count = np.count_nonzero(tdec < time_cutoff[0])
     if (count > 0) and EXTRAPOLATE:
         # indices of dates before firn model
-        ind, = np.nonzero(tdec < fd['time'].min())
+        ind, = np.nonzero(tdec < time_cutoff[0])
         # query the search tree to find the N closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=N, return_distance=True)
@@ -354,10 +357,10 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         extrap_data.interpolation[ind] = 2
 
     # check if needing to extrapolate forward in time
-    count = np.count_nonzero(tdec >= fd['time'].max())
+    count = np.count_nonzero(tdec >= time_cutoff[1])
     if (count > 0) and EXTRAPOLATE:
         # indices of dates after firn model
-        ind, = np.nonzero(tdec >= fd['time'].max())
+        ind, = np.nonzero(tdec >= time_cutoff[1])
         # query the search tree to find the N closest points
         xy2 = np.concatenate((X[ind,None],Y[ind,None]),axis=1)
         dist,indices = tree.query(xy2, k=N, return_distance=True)
