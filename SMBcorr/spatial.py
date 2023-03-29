@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 spatial.py
-Written by Tyler Sutterley (04/2022)
+Written by Tyler Sutterley (03/2023)
 
 Data class for reading, writing and processing spatial data
 
@@ -16,15 +16,30 @@ PYTHON DEPENDENCIES:
     h5py: Pythonic interface to the HDF5 binary data format.
         https://www.h5py.org/
 
-PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
-
 UPDATE HISTORY:
+    Updated 03/2023: customizable file-level attributes to netCDF4 and HDF5
+        add attributes fetching to from_dict function
+        retrieve all root attributes from HDF5 and netCDF4 datasets
+        fix indexing of filenames in single string case
+        add indexing of filenames to spatial object iterator
+        use copy.copy and not numpy.copy in copy spatial object function
+        fix mask and shape of subsetted spatial grid objects
+        add extend_matrix function and add error output to from_list
+        convert spacing, extent, shape and ndim to spatial class properties
+        improve typing for variables in docstrings
+        set case insensitive filename to None if filename is empty
+    Updated 02/2023: use monospaced text to note spatial objects in docstrings
+    Updated 12/2022: add software information to output HDF5 and netCDF4
+        make spatial objects iterable and with length
+    Updated 11/2022: use f-strings for formatting verbose or ascii output
+    Updated 08/2022: fix output latitude HDF5 and netCDF4 attributes
+        place index filename within try/except statement
     Updated 04/2022: updated docstrings to numpy documentation format
         generalized internal netCDF4 and HDF5 readers and writers
         include utf-8 encoding in reads to be windows compliant
         include filename attribute when copying spatial objects
     Updated 12/2021: logging case_insensitive_filename output for debugging
+    Updated 11/2021: fix kwargs to index and hdf5 read functions
     Updated 10/2021: using python logging for handling verbose output
     Written 10/2021
 """
@@ -39,18 +54,19 @@ import logging
 import zipfile
 import warnings
 import numpy as np
+import SMBcorr.version
 
 # attempt imports
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
+    warnings.warn("h5py not available", ImportWarning)
 try:
     import netCDF4
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
-    warnings.warn("pyproj not available", ImportWarning)
+    warnings.warn("netCDF4 not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -60,30 +76,20 @@ class spatial(object):
 
     Attributes
     ----------
-    data: float
+    data: np.ndarray
         spatial grid data
-    mask: bool
+    mask: np.ndarray
         spatial grid mask
-    lon: float
+    lon: np.ndarray
         grid longitudes
-    lat: float
+    lat: np.ndarray
         grid latitudes
-    time: float
+    time: np.ndarray
         time variable of the spatial data
     fill_value: float or NoneType, default None
         invalid value for spatial grid data
     attributes: dict
-        attributes of spatial variables
-    extent: list, default [None,None,None,None]
-        spatial grid bounds
-        ``[minimum longitude, maximum longitude,
-        minimum latitude, maximum latitude]``
-    spacing: list, default [None,None]
-        grid step size ``[longitude,latitude]``
-    shape: tuple
-        dimensions of spatial object
-    ndim: int
-        number of dimensions of spatial object
+        attributes of ``spatial`` variables
     filename: str
         input or output filename
 
@@ -91,10 +97,6 @@ class spatial(object):
     np.seterr(invalid='ignore')
     def __init__(self, **kwargs):
         # set default keyword arguments
-        kwargs.setdefault('spacing',[None,None])
-        kwargs.setdefault('nlat',None)
-        kwargs.setdefault('nlon',None)
-        kwargs.setdefault('extent',[None]*4)
         kwargs.setdefault('fill_value',None)
         # set default class attributes
         self.data=None
@@ -104,11 +106,9 @@ class spatial(object):
         self.time=None
         self.fill_value=kwargs['fill_value']
         self.attributes=dict()
-        self.extent=kwargs['extent']
-        self.spacing=kwargs['spacing']
-        self.shape=[kwargs['nlat'],kwargs['nlon'],None]
-        self.ndim=None
         self.filename=None
+        # iterator
+        self.__index__ = 0
 
     def case_insensitive_filename(self,filename):
         """
@@ -122,6 +122,8 @@ class spatial(object):
         # check if filename is open file object
         if isinstance(filename, io.IOBase):
             self.filename = copy.copy(filename)
+        elif isinstance(filename, type(None)) or not bool(filename):
+            self.filename = None
         else:
             # tilde-expand input filename
             self.filename = os.path.expanduser(filename)
@@ -132,7 +134,7 @@ class spatial(object):
                 directory = os.path.dirname(os.path.expanduser(filename))
                 f = [f for f in os.listdir(directory) if re.match(basename,f,re.I)]
                 if not f:
-                    errmsg = '{0} not found in file system'.format(filename)
+                    errmsg = f'{filename} not found in file system'
                     raise FileNotFoundError(errmsg)
                 self.filename = os.path.join(directory,f.pop())
         # print filename
@@ -141,7 +143,7 @@ class spatial(object):
 
     def from_ascii(self, filename, date=True, **kwargs):
         """
-        Read a spatial object from an ascii file
+        Read a ``spatial`` object from an ascii file
 
         Parameters
         ----------
@@ -155,6 +157,16 @@ class spatial(object):
                 - ``'gzip'``
                 - ``'zip'``
                 - ``'bytes'``
+        spacing: list, default [None,None]
+            grid step size ``[longitude,latitude]``
+        extent: list, default [None,None,None,None]
+            spatial grid bounds
+            ``[minimum longitude, maximum longitude,
+            minimum latitude, maximum latitude]``
+        nlat: int or NoneType, default None
+            length of latitude dimension
+        nlon: int or NoneType, default None
+            length of longitude dimension
         columns: list, default ['lon','lat','data','time']
             variable names for each column
         header: int, default 0
@@ -167,6 +179,10 @@ class spatial(object):
         # set default parameters
         kwargs.setdefault('verbose',False)
         kwargs.setdefault('compression',None)
+        kwargs.setdefault('spacing',[None,None])
+        kwargs.setdefault('nlat',None)
+        kwargs.setdefault('nlon',None)
+        kwargs.setdefault('extent',[None]*4)
         kwargs.setdefault('columns',['lon','lat','data','time'])
         kwargs.setdefault('header',0)
         # open the ascii file and extract contents
@@ -192,15 +208,29 @@ class spatial(object):
         regex_pattern = r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[EeD][+-]?\d+)?'
         rx = re.compile(regex_pattern, re.VERBOSE)
         # output spatial dimensions
-        if (None not in self.extent):
-            self.lat = np.linspace(self.extent[3],self.extent[2],self.shape[0])
-            self.lon = np.linspace(self.extent[0],self.extent[1],self.shape[1])
+        if (None not in kwargs['extent']) and kwargs['nlat'] and kwargs['nlon']:
+            extent = kwargs.get('extent')
+            self.lat = np.linspace(extent[3], extent[2], kwargs['nlat'])
+            self.lon = np.linspace(extent[0], extent[1], kwargs['nlon'])
+            dlon = np.abs(self.lon[1] - self.lon[0])
+            dlat = np.abs(self.lat[1] - self.lat[0])
+        elif (None not in kwargs['extent']) and (None not in kwargs['spacing']):
+            extent = kwargs.get('extent')
+            dlon, dlat = kwargs.get('spacing')
+            self.lat = np.arange(extent[3], extent[2] - dlat, dlat)
+            self.lon = np.arange(extent[0], extent[1] + dlon, dlon)
+        elif kwargs['nlat'] and kwargs['nlon'] and (None not in kwargs['spacing']):
+            dlon, dlat = kwargs.get('spacing')
+            self.lat = np.zeros((kwargs['nlat']))
+            self.lon = np.zeros((kwargs['nlon']))
         else:
-            self.lat = np.zeros((self.shape[0]))
-            self.lon = np.zeros((self.shape[1]))
+            raise ValueError('Unknown dimensions for input ``spatial`` object')
+        # get spatial dimensions
+        nlat = len(self.lat)
+        nlon = len(self.lon)
         # output spatial data
-        self.data = np.zeros((self.shape[0],self.shape[1]))
-        self.mask = np.zeros((self.shape[0],self.shape[1]),dtype=bool)
+        self.data = np.zeros((nlat, nlon))
+        self.mask = np.zeros((nlat, nlon), dtype=bool)
         # remove time from list of column names if not date
         columns = [c for c in kwargs['columns'] if (c != 'time')]
         # extract spatial data array and convert to matrix
@@ -211,25 +241,22 @@ class spatial(object):
             # convert fortran exponentials if applicable
             d = {c:r.replace('D','E') for c,r in zip(columns,rx.findall(line))}
             # convert line coordinates to integers
-            ilon = np.int64(np.float64(d['lon'])/self.spacing[0])
-            ilat = np.int64((90.0-np.float64(d['lat']))//self.spacing[1])
-            self.data[ilat,ilon] = np.float64(d['data'])
-            self.mask[ilat,ilon] = False
+            ilon = np.int64(np.float64(d['lon'])/dlon)
+            ilat = np.int64((90.0 - np.float64(d['lat']))//dlat)
+            self.data[ilat, ilon] = np.float64(d['data'])
+            self.mask[ilat, ilon] = False
             self.lon[ilon] = np.float64(d['lon'])
             self.lat[ilat] = np.float64(d['lat'])
             # if the ascii file contains date variables
             if date:
                 self.time = np.array(d['time'],dtype='f')
-        # get spacing and dimensions
-        self.update_spacing()
-        self.update_extents()
-        self.update_dimensions()
+        # update mask
         self.update_mask()
         return self
 
     def from_netCDF4(self, filename, **kwargs):
         """
-        Read a spatial object from a netCDF4 file
+        Read a ``spatial`` object from a netCDF4 file
 
         Parameters
         ----------
@@ -270,12 +297,12 @@ class spatial(object):
         # Open the NetCDF4 file for reading
         if (kwargs['compression'] == 'gzip'):
             # read as in-memory (diskless) netCDF4 dataset
-            with gzip.open(os.path.expanduser(filename),'r') as f:
-                fileID = netCDF4.Dataset(os.path.basename(filename),memory=f.read())
+            with gzip.open(self.filename, mode='r') as f:
+                fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=f.read())
         elif (kwargs['compression'] == 'zip'):
             # read zipped file and extract file into in-memory file object
             fileBasename,_ = os.path.splitext(os.path.basename(filename))
-            with zipfile.ZipFile(os.path.expanduser(filename)) as z:
+            with zipfile.ZipFile(self.filename) as z:
                 # first try finding a netCDF4 file with same base filename
                 # if none found simply try searching for a netCDF4 file
                 try:
@@ -289,7 +316,7 @@ class spatial(object):
             fileID = netCDF4.Dataset(uuid.uuid4().hex, memory=filename.read())
         else:
             # read netCDF4 dataset
-            fileID = netCDF4.Dataset(os.path.expanduser(filename), 'r')
+            fileID = netCDF4.Dataset(self.filename, 'r')
         # Output NetCDF file information
         logging.info(fileID.filepath())
         logging.info(list(fileID.variables.keys()))
@@ -319,14 +346,10 @@ class spatial(object):
                         fileID.variables[key].getncattr(attr)
                 except (KeyError,ValueError,AttributeError):
                     pass
-        # Global attributes
-        for att_name in ['title','description','reference']:
-            try:
-                ncattr, = [s for s in fileID.ncattrs()
-                    if re.match(att_name,s,re.I)]
-                self.attributes[att_name] = fileID.getncattr(ncattr)
-            except (ValueError, KeyError, AttributeError):
-                pass
+        # get global netCDF4 attributes
+        self.attributes['ROOT'] = {}
+        for att_name in fileID.ncattrs():
+            self.attributes['ROOT'][att_name] = fileID.getncattr(att_name)
         # Closing the NetCDF file
         fileID.close()
         # switching data array to lat/lon if lon/lat
@@ -339,16 +362,13 @@ class spatial(object):
             self.mask = (self.data == self.fill_value)
         else:
             self.mask = np.zeros(self.data.shape, dtype=bool)
-        # get spacing and dimensions
-        self.update_spacing()
-        self.update_extents()
-        self.update_dimensions()
+        # update mask
         self.update_mask()
         return self
 
     def from_HDF5(self, filename, **kwargs):
         """
-        Read a spatial object from a HDF5 file
+        Read a ``spatial`` object from a HDF5 file
 
         Parameters
         ----------
@@ -389,7 +409,7 @@ class spatial(object):
         # Open the HDF5 file for reading
         if (kwargs['compression'] == 'gzip'):
             # read gzip compressed file and extract into in-memory file object
-            with gzip.open(os.path.expanduser(filename),'r') as f:
+            with gzip.open(self.filename, mode='r') as f:
                 fid = io.BytesIO(f.read())
             # set filename of BytesIO object
             fid.filename = os.path.basename(filename)
@@ -400,7 +420,7 @@ class spatial(object):
         elif (kwargs['compression'] == 'zip'):
             # read zipped file and extract file into in-memory file object
             fileBasename,_ = os.path.splitext(os.path.basename(filename))
-            with zipfile.ZipFile(os.path.expanduser(filename)) as z:
+            with zipfile.ZipFile(self.filename) as z:
                 # first try finding a HDF5 file with same base filename
                 # if none found simply try searching for a HDF5 file
                 try:
@@ -414,13 +434,13 @@ class spatial(object):
             # rewind to start of file
             fid.seek(0)
             # read as in-memory (diskless) HDF5 dataset from BytesIO object
-            fileID = h5py.File(fid, 'r')
+            fileID = h5py.File(fid, mode='r')
         elif (kwargs['compression'] == 'bytes'):
             # read as in-memory (diskless) HDF5 dataset
-            fileID = h5py.File(filename, 'r')
+            fileID = h5py.File(filename, mode='r')
         else:
             # read HDF5 dataset
-            fileID = h5py.File(os.path.expanduser(filename), 'r')
+            fileID = h5py.File(self.filename, 'r')
         # Output HDF5 file information
         logging.info(fileID.filename)
         logging.info(list(fileID.keys()))
@@ -446,12 +466,10 @@ class spatial(object):
                     self.attributes[field][attr] = fileID[key].attrs[attr]
                 except (KeyError, AttributeError):
                     pass
-        # Global attributes
-        for att_name in ['title','description','reference']:
-            try:
-                self.attributes[att_name] = fileID.attrs[att_name]
-            except (ValueError, KeyError, AttributeError):
-                pass
+        # get global HDF5 attributes
+        self.attributes['ROOT'] = {}
+        for att_name,att_val in fileID.attrs.items():
+            self.attributes['ROOT'][att_name] = att_val
         # Closing the HDF5 file
         fileID.close()
         # switching data array to lat/lon if lon/lat
@@ -464,16 +482,130 @@ class spatial(object):
             self.mask = (self.data == self.fill_value)
         else:
             self.mask = np.zeros(self.data.shape, dtype=bool)
-        # get spacing and dimensions
-        self.update_spacing()
-        self.update_extents()
-        self.update_dimensions()
+        # update mask
         self.update_mask()
+        return self
+
+    def from_index(self, filename, **kwargs):
+        """
+        Read a ``spatial`` object from an index of
+        ascii, netCDF4 or HDF5 files
+
+        Parameters
+        ----------
+        filename: str
+            full path of index file
+        format: str or NoneType, default None
+            format of individual files within index
+
+                - ``'ascii'``
+                - ``'netCDF4'``
+                - ``'HDF5'``
+        date: bool, default True
+            files contains date information
+        sort: bool, default True
+            sort ``spatial`` objects by date information
+        **kwargs: dict
+            keyword arguments for input readers
+        """
+        # set default keyword arguments
+        kwargs.setdefault('format',None)
+        kwargs.setdefault('date',True)
+        kwargs.setdefault('sort',True)
+        # set filename
+        self.case_insensitive_filename(filename)
+        # file parser for reading index files
+        # removes commented lines (can comment out files in the index)
+        # removes empty lines (if there are extra empty lines)
+        parser = re.compile(r'^(?!\#|\%|$)', re.VERBOSE)
+        # Read index file of input spatial data
+        with open(self.filename, mode='r', encoding='utf8') as f:
+            file_list = [l for l in f.read().splitlines() if parser.match(l)]
+        # create a list of spatial objects
+        s = []
+        # for each file in the index
+        for i,f in enumerate(file_list):
+            if (kwargs['format'] == 'ascii'):
+                # netcdf (.nc)
+                s.append(spatial().from_ascii(f, **kwargs))
+            elif (kwargs['format'] == 'netCDF4'):
+                # netcdf (.nc)
+                s.append(spatial().from_netCDF4(f, **kwargs))
+            elif (kwargs['format'] == 'HDF5'):
+                # HDF5 (.H5)
+                s.append(spatial().from_HDF5(f, **kwargs))
+        # create a single spatial object from the list
+        return self.from_list(s,date=kwargs['date'],sort=kwargs['sort'])
+
+    def from_list(self, object_list, **kwargs):
+        """
+        Build a sorted ``spatial`` object from a list of
+        other ``spatial`` objects
+
+        Parameters
+        ----------
+        object_list: list
+            list of ``spatial`` objects to be merged
+        date: bool, default True
+            files contains date information
+        sort: bool, default True
+            sort ``spatial`` objects by date information
+        clear: bool, default True
+            clear the list of ``spatial`` objects from memory
+        """
+        # set default keyword arguments
+        kwargs.setdefault('date',True)
+        kwargs.setdefault('sort',True)
+        kwargs.setdefault('clear',False)
+        # number of spatial objects in list
+        n = len(object_list)
+        # indices to sort data objects if spatial list contain dates
+        if kwargs['date'] and kwargs['sort']:
+            list_sort = np.argsort([d.time for d in object_list],axis=None)
+        else:
+            list_sort = np.arange(n)
+        # extract grid spacing
+        shape = object_list[0].shape
+        # create output spatial grid and mask
+        self.data = np.zeros((shape[0], shape[1], n))
+        self.mask = np.zeros((shape[0], shape[1], n),dtype=bool)
+        # add error if in original list attributes
+        if hasattr(object_list[0], 'error'):
+            self.error = np.zeros((shape[0], shape[1], n))
+        self.fill_value = object_list[0].fill_value
+        self.lon = object_list[0].lon.copy()
+        self.lat = object_list[0].lat.copy()
+        # create list of files and attributes
+        self.filename = []
+        self.attributes = []
+        # output dates
+        if kwargs['date']:
+            self.time = np.zeros((n))
+        # for each indice
+        for t,i in enumerate(list_sort):
+            self.data[:,:,t] = object_list[i].data[:,:].copy()
+            self.mask[:,:,t] |= object_list[i].mask[:,:]
+            if hasattr(object_list[i], 'error'):
+                self.error[:,:,t] = object_list[i].error[:,:].copy()
+            if kwargs['date']:
+                self.time[t] = np.atleast_1d(object_list[i].time)
+            # append filename to list
+            if getattr(object_list[i], 'filename'):
+                self.filename.append(object_list[i].filename)
+            # append attributes to list
+            if getattr(object_list[i], 'attributes'):
+                self.attributes.append(object_list[i].attributes)
+        # update mask
+        self.update_mask()
+        # clear the input list to free memory
+        if kwargs['clear']:
+            object_list = None
+        # return the single spatial object
         return self
 
     def from_file(self, filename, format=None, date=True, **kwargs):
         """
-        Read a spatial object from a specified format
+        Read a ``spatial`` object from a specified format
 
         Parameters
         ----------
@@ -507,72 +639,9 @@ class spatial(object):
             # HDF5 (.H5)
             return spatial().from_HDF5(filename, date=date, **kwargs)
 
-    def from_list(self, object_list, **kwargs):
-        """
-        Build a sorted spatial object from a list of other spatial objects
-
-        Parameters
-        ----------
-        object_list: list
-            list of spatial objects to be merged
-        date: bool, default True
-            files contains date information
-        sort: bool, default True
-            sort spatial objects by date information
-        clear: bool, default True
-            clear the spatial list from memory
-        """
-        # set default keyword arguments
-        kwargs.setdefault('date',True)
-        kwargs.setdefault('sort',True)
-        kwargs.setdefault('clear',False)
-        # number of spatial objects in list
-        n = len(object_list)
-        # indices to sort data objects if spatial list contain dates
-        if kwargs['date'] and kwargs['sort']:
-            list_sort = np.argsort([d.time for d in object_list],axis=None)
-        else:
-            list_sort = np.arange(n)
-        # extract dimensions and grid spacing
-        self.spacing = object_list[0].spacing
-        self.extent = object_list[0].extent
-        self.shape = object_list[0].shape
-        # create output spatial grid and mask
-        self.data = np.zeros((self.shape[0],self.shape[1],n))
-        self.mask = np.zeros((self.shape[0],self.shape[1],n),dtype=bool)
-        self.fill_value = object_list[0].fill_value
-        self.lon = object_list[0].lon.copy()
-        self.lat = object_list[0].lat.copy()
-        # create list of files and attributes
-        self.filename = []
-        self.attributes = []
-        # output dates
-        if kwargs['date']:
-            self.time = np.zeros((n))
-        # for each indice
-        for t,i in enumerate(list_sort):
-            self.data[:,:,t] = object_list[i].data[:,:].copy()
-            self.mask[:,:,t] |= object_list[i].mask[:,:]
-            if kwargs['date']:
-                self.time[t] = np.atleast_1d(object_list[i].time)
-            # append filename to list
-            if getattr(object_list[i], 'filename'):
-                self.filename.append(object_list[i].filename)
-            # append attributes to list
-            if getattr(object_list[i], 'attributes'):
-                self.attributes.append(object_list[i].attributes)
-        # update the dimensions
-        self.update_dimensions()
-        self.update_mask()
-        # clear the input list to free memory
-        if kwargs['clear']:
-            object_list = None
-        # return the single spatial object
-        return self
-
     def from_dict(self, d, **kwargs):
         """
-        Convert a dict object to a spatial object
+        Convert a ``dict`` object to a ``spatial`` object
 
         Parameters
         ----------
@@ -580,30 +649,29 @@ class spatial(object):
             dictionary object to be converted
         """
         # assign variables to self
-        for key in ['lon','lat','data','error','time']:
+        for key in ['lon','lat','data','error','time','directory']:
             try:
                 setattr(self, key, d[key].copy())
             except (AttributeError, KeyError):
                 pass
         # create output mask for data
-        self.mask = np.zeros_like(self.data,dtype=bool)
-        # get spacing and dimensions
-        self.update_spacing()
-        self.update_extents()
-        self.update_dimensions()
+        self.mask = np.zeros_like(self.data, dtype=bool)
+        # add attributes to root if in dictionary
+        self.attributes['ROOT'] = d.get('attributes')
+        # update mask
         self.update_mask()
         return self
 
     def to_ascii(self, filename, **kwargs):
         """
-        Write a spatial object to ascii file
+        Write a ``spatial`` object to ascii file
 
         Parameters
         ----------
         filename: str
             full path of output ascii file
         date: bool, default True
-            spatial objects contain date information
+            ``spatial`` objects contain date information
         verbose: bool, default False
             Output file and variable information
         """
@@ -613,7 +681,7 @@ class spatial(object):
         kwargs.setdefault('verbose',False)
         logging.info(self.filename)
         # open the output file
-        fid = open(self.filename, 'w')
+        fid = open(self.filename, mode='w', encoding='utf8')
         if kwargs['date']:
             file_format = '{0:10.4f} {1:10.4f} {2:12.4f} {3:10.4f}'
         else:
@@ -627,7 +695,7 @@ class spatial(object):
 
     def to_netCDF4(self, filename, **kwargs):
         """
-        Write a spatial object to netCDF4 file
+        Write a ``spatial`` object to netCDF4 file
 
         Parameters
         ----------
@@ -642,7 +710,7 @@ class spatial(object):
         field_mapping: dict, default {}
             mapping between input variables and output netCDF4
         attributes: dict, default {}
-            output netCDF4 variable attributes
+            output netCDF4 variable and file-level attributes
         units: str or NoneType, default: None
             data variable units
         longname: str or NoneType, default: None
@@ -653,10 +721,12 @@ class spatial(object):
             time variable unit description
         title: str or NoneType, default None
             title attribute of dataset
+        source: str or NoneType, default None
+            source attribute of dataset
         reference: str or NoneType, default None
             reference attribute of dataset
         date: bool, default True
-            spatial objects contain date information
+            ``spatial`` objects contain date information
         clobber: bool, default True
             Overwrite an existing netCDF4 file
         verbose: bool, default False
@@ -669,12 +739,14 @@ class spatial(object):
         kwargs.setdefault('latname','lat')
         kwargs.setdefault('timename','time')
         kwargs.setdefault('field_mapping',{})
-        kwargs.setdefault('attributes',{})
+        attributes = self.attributes.get('ROOT') or {}
+        kwargs.setdefault('attributes',dict(ROOT=attributes))
         kwargs.setdefault('units',None)
         kwargs.setdefault('longname',None)
         kwargs.setdefault('time_units','years')
         kwargs.setdefault('time_longname','Date_in_Decimal_Years')
         kwargs.setdefault('title',None)
+        kwargs.setdefault('source',None)
         kwargs.setdefault('reference',None)
         kwargs.setdefault('date',True)
         kwargs.setdefault('clobber',True)
@@ -692,13 +764,13 @@ class spatial(object):
             if kwargs['date']:
                 kwargs['field_mapping']['time'] = kwargs['timename']
         # create attributes dictionary for output variables
-        if not kwargs['attributes']:
+        if not all(key in kwargs['attributes'] for key in kwargs['field_mapping'].values()):
             # Defining attributes for longitude and latitude
             kwargs['attributes'][kwargs['field_mapping']['lon']] = {}
             kwargs['attributes'][kwargs['field_mapping']['lon']]['long_name'] = 'longitude'
             kwargs['attributes'][kwargs['field_mapping']['lon']]['units'] = 'degrees_east'
             kwargs['attributes'][kwargs['field_mapping']['lat']] = {}
-            kwargs['attributes'][kwargs['field_mapping']['lat']]['long_name'] = 'longitude'
+            kwargs['attributes'][kwargs['field_mapping']['lat']]['long_name'] = 'latitude'
             kwargs['attributes'][kwargs['field_mapping']['lat']]['units'] = 'degrees_north'
             # Defining attributes for dataset
             kwargs['attributes'][kwargs['field_mapping']['data']] = {}
@@ -709,6 +781,13 @@ class spatial(object):
                 kwargs['attributes'][kwargs['field_mapping']['time']] = {}
                 kwargs['attributes'][kwargs['field_mapping']['time']]['long_name'] = kwargs['time_longname']
                 kwargs['attributes'][kwargs['field_mapping']['time']]['units'] = kwargs['time_units']
+        # add default global (file-level) attributes
+        if kwargs['title']:
+            kwargs['attributes']['ROOT']['title'] = kwargs['title']
+        if kwargs['source']:
+            kwargs['attributes']['ROOT']['source'] = kwargs['source']
+        if kwargs['reference']:
+            kwargs['attributes']['ROOT']['reference'] = kwargs['reference']
         # netCDF4 dimension variables
         dimensions = []
         dimensions.append('lat')
@@ -738,13 +817,18 @@ class spatial(object):
             nc[key][:] = getattr(self,field)
             # filling netCDF dataset attributes
             for att_name,att_val in kwargs['attributes'][key].items():
+                # skip variable attribute if None
+                if not att_val:
+                    continue
+                # skip variable attributes if in list
                 if att_name not in ('DIMENSION_LIST','CLASS','NAME','_FillValue'):
                     nc[key].setncattr(att_name, att_val)
-        # filling global netCDF attributes
-        if kwargs['title']:
-            fileID.title = kwargs['title']
-        if kwargs['reference']:
-            fileID.reference = kwargs['reference']
+        # global attributes of NetCDF4 file
+        for att_name,att_val in kwargs['attributes']['ROOT'].items():
+            fileID.setncattr(att_name, att_val)
+        # add software information
+        fileID.software_reference = SMBcorr.version.project_name
+        fileID.software_version = SMBcorr.version.full_version
         # date created
         fileID.date_created = time.strftime('%Y-%m-%d',time.localtime())
         # Output NetCDF structure information
@@ -755,7 +839,7 @@ class spatial(object):
 
     def to_HDF5(self, filename, **kwargs):
         """
-        Write a spatial object to HDF5 file
+        Write a ``spatial`` object to HDF5 file
 
         Parameters
         ----------
@@ -770,7 +854,7 @@ class spatial(object):
         field_mapping: dict, default {}
             mapping between input variables and output HDF5
         attributes: dict, default {}
-            output HDF5 variable attributes
+            output HDF5 variable and file-level attributes
         units: str or NoneType, default: None
             data variable units
         longname: str or NoneType, default: None
@@ -781,10 +865,12 @@ class spatial(object):
             time variable unit description
         title: str or NoneType, default None
             description attribute of dataset
+        source: str or NoneType, default None
+            source attribute of dataset
         reference: str or NoneType, default None
             reference attribute of dataset
         date: bool, default True
-            spatial objects contain date information
+            ``spatial`` objects contain date information
         clobber: bool, default True
             Overwrite an existing HDF5 file
         verbose: bool, default False
@@ -797,12 +883,14 @@ class spatial(object):
         kwargs.setdefault('latname','lat')
         kwargs.setdefault('timename','time')
         kwargs.setdefault('field_mapping',{})
-        kwargs.setdefault('attributes',{})
+        attributes = self.attributes.get('ROOT') or {}
+        kwargs.setdefault('attributes',dict(ROOT=attributes))
         kwargs.setdefault('units',None)
         kwargs.setdefault('longname',None)
         kwargs.setdefault('time_units','years')
         kwargs.setdefault('time_longname','Date_in_Decimal_Years')
         kwargs.setdefault('title',None)
+        kwargs.setdefault('source',None)
         kwargs.setdefault('reference',None)
         kwargs.setdefault('date',True)
         kwargs.setdefault('clobber',True)
@@ -820,13 +908,13 @@ class spatial(object):
             if kwargs['date']:
                 kwargs['field_mapping']['time'] = kwargs['timename']
         # create attributes dictionary for output variables
-        if not kwargs['attributes']:
+        if not all(key in kwargs['attributes'] for key in kwargs['field_mapping'].values()):
             # Defining attributes for longitude and latitude
             kwargs['attributes'][kwargs['field_mapping']['lon']] = {}
             kwargs['attributes'][kwargs['field_mapping']['lon']]['long_name'] = 'longitude'
             kwargs['attributes'][kwargs['field_mapping']['lon']]['units'] = 'degrees_east'
             kwargs['attributes'][kwargs['field_mapping']['lat']] = {}
-            kwargs['attributes'][kwargs['field_mapping']['lat']]['long_name'] = 'longitude'
+            kwargs['attributes'][kwargs['field_mapping']['lat']]['long_name'] = 'latitude'
             kwargs['attributes'][kwargs['field_mapping']['lat']]['units'] = 'degrees_north'
             # Defining attributes for dataset
             kwargs['attributes'][kwargs['field_mapping']['data']] = {}
@@ -837,6 +925,13 @@ class spatial(object):
                 kwargs['attributes'][kwargs['field_mapping']['time']] = {}
                 kwargs['attributes'][kwargs['field_mapping']['time']]['long_name'] = kwargs['time_longname']
                 kwargs['attributes'][kwargs['field_mapping']['time']]['units'] = kwargs['time_units']
+        # add default global (file-level) attributes
+        if kwargs['title']:
+            kwargs['attributes']['ROOT']['title'] = kwargs['title']
+        if kwargs['source']:
+            kwargs['attributes']['ROOT']['source'] = kwargs['source']
+        if kwargs['reference']:
+            kwargs['attributes']['ROOT']['reference'] = kwargs['reference']
         # HDF5 dimension variables
         dimensions = []
         dimensions.append('lat')
@@ -855,6 +950,10 @@ class spatial(object):
                 data=temp, dtype=temp.dtype, compression='gzip')
             # filling HDF5 dataset attributes
             for att_name,att_val in kwargs['attributes'][key].items():
+                # skip variable attribute if None
+                if not att_val:
+                    continue
+                # skip variable attributes if in list
                 if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
                     h5[key].attrs[att_name] = att_val
         # add dimensions
@@ -867,13 +966,12 @@ class spatial(object):
             # Dataset contains missing values
             if (self.fill_value is not None):
                 h5[key].attrs['_FillValue'] = self.fill_value
-        # filling global HDF5 attributes
-        # description of file
-        if kwargs['title']:
-            fileID.attrs['description'] = kwargs['title']
-        # reference of file
-        if kwargs['reference']:
-            fileID.attrs['reference'] = kwargs['reference']
+        # global attributes of HDF5 file
+        for att_name,att_val in kwargs['attributes']['ROOT'].items():
+            fileID.attrs[att_name] = att_val
+        # add software information
+        fileID.attrs['software_reference'] = SMBcorr.version.project_name
+        fileID.attrs['software_version'] = SMBcorr.version.full_version
         # date created
         fileID.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
         # Output HDF5 structure information
@@ -882,9 +980,56 @@ class spatial(object):
         # Closing the NetCDF file
         fileID.close()
 
+    def to_index(self, filename, file_list, format=None, date=True, **kwargs):
+        """
+        Write a ``spatial`` object to index of ascii, netCDF4 or HDF5 files
+
+        Parameters
+        ----------
+        filename: str
+            full path of index file to be written
+        file_list: list
+            list of filenames for each output file
+        format: str or NoneType, default None
+            format of files in index
+
+                - ``'ascii'``
+                - ``'netCDF4'``
+                - ``'HDF5'``
+        date: bool, default True
+            ``spatial`` object contains date information
+        verbose: bool, default False
+            print file and variable information
+        kwargs: dict
+            keyword arguments for output writers
+        """
+        # Write index file of output spatial files
+        self.filename = os.path.expanduser(filename)
+        fid = open(self.filename, mode='w', encoding='utf8')
+        # set default verbosity
+        kwargs.setdefault('verbose',False)
+        # for each file to be in the index
+        for i,f in enumerate(file_list):
+            # print filename to index
+            print(f.replace(os.path.expanduser('~'),'~'), file=fid)
+            # index spatial object at i
+            s = self.index(i, date=date)
+            # write to file
+            if (format == 'ascii'):
+                # ascii (.txt)
+                s.to_ascii(f, date=date, **kwargs)
+            elif (format == 'netCDF4'):
+                # netcdf (.nc)
+                s.to_netCDF4(f, date=date, **kwargs)
+            elif (format == 'HDF5'):
+                # HDF5 (.H5)
+                s.to_HDF5(f, date=date, **kwargs)
+        # close the index file
+        fid.close()
+
     def to_file(self, filename, format=None, date=True, **kwargs):
         """
-        Write a spatial object to a specified format
+        Write a ``spatial`` object to a specified format
 
         Parameters
         ----------
@@ -897,7 +1042,7 @@ class spatial(object):
                 - ``'netCDF4'``
                 - ``'HDF5'``
         date: bool, default True
-            spatial object contains date information
+            ``spatial`` object contains date information
         verbose: bool, default False
             print file and variable information
         kwargs: dict
@@ -918,41 +1063,14 @@ class spatial(object):
 
     def to_masked_array(self):
         """
-        Convert a spatial object to a masked numpy array
+        Convert a ``spatial`` object to a masked numpy array
         """
         return np.ma.array(self.data, mask=self.mask,
             fill_value=self.fill_value)
 
-    def update_spacing(self):
-        """
-        Calculate the step size of spatial object
-        """
-        # calculate degree spacing
-        dlat = np.abs(self.lat[1] - self.lat[0])
-        dlon = np.abs(self.lon[1] - self.lon[0])
-        self.spacing = (dlon,dlat)
-        return self
-
-    def update_extents(self):
-        """
-        Calculate the bounds of spatial object
-        """
-        self.extent[0] = np.min(self.lon)
-        self.extent[1] = np.max(self.lon)
-        self.extent[2] = np.min(self.lat)
-        self.extent[3] = np.max(self.lat)
-
-    def update_dimensions(self):
-        """
-        Update the dimensions of the spatial object
-        """
-        self.shape = np.shape(self.data)
-        self.ndim = np.ndim(self.data)
-        return self
-
     def update_mask(self):
         """
-        Update the mask of the spatial object
+        Update the mask of the ``spatial`` object
         """
         if self.fill_value is not None:
             self.mask |= (self.data == self.fill_value)
@@ -962,32 +1080,29 @@ class spatial(object):
 
     def copy(self):
         """
-        Copy a spatial object to a new spatial object
+        Copy a ``spatial`` object to a new ``spatial`` object
         """
         temp = spatial(fill_value=self.fill_value)
         # copy attributes or update attributes dictionary
-        if isinstance(self.attributes,list):
+        if isinstance(self.attributes, list):
             setattr(temp,'attributes',self.attributes)
-        elif isinstance(self.attributes,dict):
+        elif isinstance(self.attributes, dict):
             temp.attributes.update(self.attributes)
         # assign variables to self
         var = ['lon','lat','data','mask','error','time','filename']
         for key in var:
             try:
                 val = getattr(self, key)
-                setattr(temp, key, np.copy(val))
+                setattr(temp, key, copy.copy(val))
             except AttributeError:
                 pass
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
+        # update mask
         temp.replace_masked()
         return temp
 
     def zeros_like(self):
         """
-        Create a spatial object using the dimensions of another
+        Create a ``spatial`` object using the dimensions of another
         """
         temp = spatial(fill_value=self.fill_value)
         # assign variables to self
@@ -1000,16 +1115,13 @@ class spatial(object):
                 setattr(temp, key, np.zeros_like(val))
             except AttributeError:
                 pass
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
+        # update mask
         temp.replace_masked()
         return temp
 
     def expand_dims(self):
         """
-        Add a singleton dimension to a spatial object if non-existent
+        Add a singleton dimension to a ``spatial`` object if non-existent
         """
         # change time dimensions to be iterable
         self.time = np.atleast_1d(self.time)
@@ -1021,16 +1133,57 @@ class spatial(object):
                 self.mask = self.mask[:,:,None]
             except Exception as exc:
                 pass
-        # get spacing and dimensions
-        self.update_spacing()
-        self.update_extents()
-        self.update_dimensions()
+        # update mask
         self.update_mask()
         return self
 
+    # PURPOSE: Extend a global matrix
+    def extend_matrix(self):
+        """
+        Extends a global matrix to wrap along longitudes
+
+        Returns
+        -------
+        temp: float
+            extended matrix
+        """
+        temp = self.copy()
+        # shape of the original data object
+        ny, nx, *nt = self.shape
+        # extended longitude array [x-1,x0,...,xN,xN+1]
+        temp.lon = np.zeros((nx+2), dtype=self.lon.dtype)
+        temp.lon[0] = self.lon[0] - self.spacing[0]
+        temp.lon[1:-1] = self.lon[:]
+        temp.lon[-1] = self.lon[-1] + self.spacing[1]
+        # attempt to extend possible data variables
+        for key in ['data','mask','error']:
+            try:
+                # get the original data variable
+                var = getattr(self, key)
+                # extended data matrices along longitude axis
+                if (self.ndim == 2):
+                    tmp = np.zeros((ny, nx+2), dtype=var.dtype)
+                    tmp[:,0] = var[:,-1]
+                    tmp[:,1:-1] = var[:,:]
+                    tmp[:,-1] = var[:,0]
+                elif (self.ndim == 3):
+                    var = getattr(self, key)
+                    tmp = np.zeros((ny, nx+2, nt[0]), dtype=var.dtype)
+                    tmp[:,0,:] = var[:,-1,:]
+                    tmp[:,1:-1,:] = var[:,:,:]
+                    tmp[:,-1,:] = var[:,0,:]
+                # set the output extended data variable
+                setattr(temp, key, tmp)
+            except Exception as exc:
+                pass
+        # update mask
+        temp.update_mask()
+        # return the extended spatial object
+        return temp
+
     def squeeze(self):
         """
-        Remove singleton dimensions from a spatial object
+        Remove singleton dimensions from a ``spatial`` object
         """
         # squeeze singleton dimensions
         self.time = np.squeeze(self.time)
@@ -1040,23 +1193,20 @@ class spatial(object):
             self.mask = np.squeeze(self.mask)
         except Exception as exc:
             pass
-        # get spacing and dimensions
-        self.update_spacing()
-        self.update_extents()
-        self.update_dimensions()
+        # update mask
         self.update_mask()
         return self
 
     def index(self, indice, date=True):
         """
-        Subset a spatial object to specific index
+        Subset a ``spatial`` object to specific index
 
         Parameters
         ----------
         indice: int
             index in matrix for subsetting
         date: bool, default True
-            spatial objects contain date information
+            ``spatial`` objects contain date information
         """
         # output spatial object
         temp = spatial(fill_value=self.fill_value)
@@ -1066,7 +1216,7 @@ class spatial(object):
         # subset output spatial error
         try:
             temp.error = self.error[:,:,indice].copy()
-        except AttributeError:
+        except AttributeError as exc:
             pass
         # copy dimensions
         temp.lon = self.lon.copy()
@@ -1074,23 +1224,23 @@ class spatial(object):
         # subset output dates
         if date:
             temp.time = self.time[indice].copy()
-        # subset filenames
+        # subset filenames if applicable
         if getattr(self, 'filename'):
-            temp.filename = self.filename[indice]
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
-        return temp
+            if isinstance(self.filename, (list, tuple, np.ndarray)):
+                temp.filename = str(self.filename[indice])
+            elif isinstance(self.filename, str):
+                temp.filename = copy.copy(self.filename)
+        # remove singleton dimensions if importing a single value
+        return temp.squeeze()
 
     def offset(self, var):
         """
-        Offset a spatial object by a constant
+        Offset a ``spatial`` object by a constant
 
         Parameters
         ----------
         var: float
-            scalar value to which the spatial object will be offset
+            scalar value to which the ``spatial`` object will be offset
         """
         temp = self.copy()
         # offset by a single constant or a time-variable scalar
@@ -1114,22 +1264,18 @@ class spatial(object):
         elif (np.ndim(var) == 3) and (self.ndim == 3):
             for i,t in enumerate(self.time):
                 temp.data[:,:,i] = self.data[:,:,i] + var[:,:,i]
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
         # update mask
         temp.update_mask()
         return temp
 
     def scale(self, var):
         """
-        Multiply a spatial object by a constant
+        Multiply a ``spatial`` object by a constant
 
         Parameters
         ----------
         var: float
-            scalar value to which the spatial object will be multiplied
+            scalar value to which the ``spatial`` object will be multiplied
         """
         temp = self.copy()
         # multiply by a single constant or a time-variable scalar
@@ -1153,10 +1299,6 @@ class spatial(object):
         elif (np.ndim(var) == 3) and (self.ndim == 3):
             for i,t in enumerate(self.time):
                 temp.data[:,:,i] = var[:,:,i]*self.data[:,:,i]
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
         # update mask
         temp.update_mask()
         return temp
@@ -1168,9 +1310,9 @@ class spatial(object):
         Parameters
         ----------
         apply: bool, default False
-            remove the mean field from the input spatial data
+            remove the mean field from the input ``spatial`` object
         indices: int, default Ellipsis
-            indices of input spatial object to compute mean
+            indices of input ``spatial`` object to compute mean
         """
         # output spatial object
         temp = spatial(nlon=self.shape[0],nlat=self.shape[1],
@@ -1191,10 +1333,6 @@ class spatial(object):
         if apply:
             for i,t in enumerate(self.time):
                 self.data[:,:,i] -= temp.data[:,:]
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
         # update mask
         temp.update_mask()
         return temp
@@ -1220,15 +1358,12 @@ class spatial(object):
             temp.lon = temp.lon[::-1].copy()
             temp.data = temp.data[:,::-1,:].copy()
             temp.mask = temp.mask[:,::-1,:].copy()
-        # squeeze output spatial object
-        # get spacing and dimensions
-        # update mask
-        temp.squeeze()
-        return temp
+        # remove singleton dimensions if importing a single value
+        return temp.squeeze()
 
     def transpose(self, axes=None):
         """
-        Reverse or permute the axes of a spatial object
+        Reverse or permute the axes of a ``spatial`` object
 
         Parameters
         ----------
@@ -1240,17 +1375,13 @@ class spatial(object):
         # copy dimensions and reverse order
         temp.data = np.transpose(temp.data, axes=axes)
         temp.mask = np.transpose(temp.mask, axes=axes)
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
         # update mask
         temp.update_mask()
         return temp
 
     def sum(self, power=1):
         """
-        Compute summation of spatial field
+        Compute summation of a ``spatial`` object
 
         Parameters
         ----------
@@ -1266,32 +1397,26 @@ class spatial(object):
         # create output summation spatial object
         temp.data = np.sum(np.power(self.data,power),axis=2)
         temp.mask = np.any(self.mask,axis=2)
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
         # update mask
         temp.update_mask()
         return temp
 
     def power(self, power):
         """
-        Raise a spatial object to a power
+        Raise a ``spatial`` object to a power
 
         Parameters
         ----------
         power: int
-            power to which the spatial object will be raised
+            power to which the ``spatial`` object will be raised
         """
         temp = self.copy()
         temp.data = np.power(self.data,power)
-        # assign ndim and shape attributes
-        temp.update_dimensions()
         return temp
 
     def max(self):
         """
-        Compute maximum value of spatial field
+        Compute maximum value of a ``spatial`` object
         """
         # output spatial object
         temp = spatial(nlon=self.shape[0],nlat=self.shape[1],
@@ -1302,17 +1427,13 @@ class spatial(object):
         # create output maximum spatial object
         temp.data = np.max(self.data,axis=2)
         temp.mask = np.any(self.mask,axis=2)
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
         # update mask
         temp.update_mask()
         return temp
 
     def min(self):
         """
-        Compute minimum value of spatial field
+        Compute minimum value of a ``spatial`` object
         """
         # output spatial object
         temp = spatial(nlon=self.shape[0],nlat=self.shape[1],
@@ -1323,17 +1444,13 @@ class spatial(object):
         # create output minimum spatial object
         temp.data = np.min(self.data,axis=2)
         temp.mask = np.any(self.mask,axis=2)
-        # get spacing and dimensions
-        temp.update_spacing()
-        temp.update_extents()
-        temp.update_dimensions()
         # update mask
         temp.update_mask()
         return temp
 
     def replace_invalid(self, fill_value, mask=None):
         """
-        Replace the masked values with a new fill_value
+        Replace the masked values with a new ``fill_value``
 
         Parameters
         ----------
@@ -1360,8 +1477,86 @@ class spatial(object):
 
     def replace_masked(self):
         """
-        Replace the masked values with fill_value
+        Replace the masked values with ``fill_value``
         """
         if self.fill_value is not None:
             self.data[self.mask] = self.fill_value
         return self
+
+    @property
+    def dtype(self):
+        """Main data type of ``spatial`` object"""
+        return self.data.dtype
+
+    @property
+    def spacing(self):
+        """Step size of ``spatial`` object ``[longitude,latitude]``
+        """
+        dlat = np.abs(self.lat[1] - self.lat[0])
+        dlon = np.abs(self.lon[1] - self.lon[0])
+        return (dlon,dlat)
+
+    @property
+    def extent(self):
+        """Bounds of ``spatial`` object
+        ``[minimum longitude, maximum longitude,
+        minimum latitude, maximum latitude]``
+        """
+        lonmin = np.min(self.lon)
+        lonmax = np.max(self.lon)
+        latmin = np.min(self.lat)
+        latmax = np.max(self.lat)
+        return [lonmin, lonmax, latmin, latmax]
+
+    @property
+    def shape(self):
+        """Dimensions of ``spatial`` object
+        """
+        return np.shape(self.data)
+
+    @property
+    def ndim(self):
+        """Number of dimensions in ``spatial`` object
+        """
+        return np.ndim(self.data)
+
+    def __len__(self):
+        """Number of time bands
+        """
+        return len(self.time)
+
+    def __iter__(self):
+        """Iterate over time bands
+        """
+        self.__index__ = 0
+        return self
+
+    def __next__(self):
+        """Get the next time band of data
+        """
+        # output spatial object
+        temp = spatial(fill_value=self.fill_value)
+        # subset output spatial field and dates
+        try:
+            temp.data = self.data[:,:,self.__index__].copy()
+            temp.mask = self.mask[:,:,self.__index__].copy()
+            temp.time = self.time[self.__index__].copy()
+        except IndexError as exc:
+            raise StopIteration from exc
+        # subset output spatial error
+        try:
+            temp.error = self.error[:,:,self.__index__].copy()
+        except AttributeError as exc:
+            pass
+        # subset filename
+        if getattr(self, 'filename'):
+            if isinstance(self.filename, (list, tuple, np.ndarray)):
+                temp.filename = str(self.filename[self.__index__])
+            elif isinstance(self.filename, str):
+                temp.filename = copy.copy(self.filename)
+        # copy dimensions
+        temp.lon = self.lon.copy()
+        temp.lat = self.lat.copy()
+        # add to index
+        self.__index__ += 1
+        return temp
