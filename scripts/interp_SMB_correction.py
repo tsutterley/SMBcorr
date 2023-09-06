@@ -8,8 +8,8 @@ INPUTS:
     csv file with columns for spatial and temporal coordinates
     HDF5 file with variables for spatial and temporal coordinates
     netCDF4 file with variables for spatial and temporal coordinates
-    geotiff file with bands in spatial coordinates
     parquet file with variables for spatial and temporal coordinates
+    geotiff file with bands in spatial coordinates
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
@@ -19,8 +19,8 @@ COMMAND LINE OPTIONS:
         csv (default)
         netCDF4
         HDF5
-        geotiff
         parquet
+        geotiff
     -v X, --variables X: variable names of data in csv, HDF5 or netCDF4 file
         for csv files: the order of the columns within the file
         for HDF5, netCDF4 and parquet files: time, y, x and data variable names
