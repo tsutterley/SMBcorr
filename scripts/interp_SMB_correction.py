@@ -206,13 +206,6 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         dinput = pd.read_parquet(input_file, columns=VARIABLES)
         dinput.rename(columns=remap, inplace=True)
         attributes = {}
-
-    # get coordinate reference system of input data
-    crs = get_projection(attributes, PROJECTION)
-    # dictionary of coordinate reference system variables
-    cs_to_cf = crs.cs_to_cf()
-    proj4_params = crs.to_proj4()
-
     # update time variable if entered as argument
     if TIME is not None:
         dinput['time'] = np.copy(TIME)
@@ -223,6 +216,12 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         epoch1, to_secs = timescale.time.parse_date_string(time_string)
     except (TypeError, KeyError, ValueError):
         epoch1, to_secs = timescale.time.parse_date_string(TIME_UNITS)
+
+    # get coordinate reference system of input data
+    crs = get_projection(attributes, PROJECTION)
+    # dictionary of coordinate reference system variables
+    cs_to_cf = crs.cs_to_cf()
+    proj4_params = crs.to_proj4()
 
     # invalid value
     fill_value = -9999.0
