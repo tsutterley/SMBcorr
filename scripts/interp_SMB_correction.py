@@ -84,7 +84,7 @@ import SMBcorr
 try:
     import pandas as pd
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.critical("geopandas not available")
+    logging.critical("pandas not available")
 try:
     import pyproj
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
