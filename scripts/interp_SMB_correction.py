@@ -338,6 +338,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
     elif (FORMAT == 'parquet'):
         field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
         remap = SMBcorr.spatial.inverse_mapping(field_mapping)
+        dinput = pd.read_parquet(input_file, columns=VARIABLES)
         dinput.rename(columns=remap, inplace=True)
         attributes = None
 
