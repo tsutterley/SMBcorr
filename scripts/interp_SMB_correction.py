@@ -422,16 +422,16 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
             delimiter=DELIMITER, header=False,
             columns=['time','y','x',*KEYS])
         # change the permissions level to MODE
-        outfile.chmod(mode=MODE)
+        output_file.chmod(mode=MODE)
     elif (FORMAT == 'netCDF4'):
         SMBcorr.spatial.to_netCDF4(output, attrib, output_file,
             data_type=TYPE)
         # change the permissions level to MODE
-        outfile.chmod(mode=MODE)
+        output_file.chmod(mode=MODE)
     elif (FORMAT == 'HDF5'):
         SMBcorr.spatial.to_HDF5(output, attrib, output_file)
         # change the permissions level to MODE
-        outfile.chmod(mode=MODE)
+        output_file.chmod(mode=MODE)
     elif (FORMAT == 'geotiff'):
         for key in KEYS:
             # individual output files for each variable
@@ -445,7 +445,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         # write to parquet file
         pd.DataFrame(output).to_parquet(output_file)
         # change the permissions level to MODE
-        outfile.chmod(mode=MODE)
+        output_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
