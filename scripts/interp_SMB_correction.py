@@ -177,8 +177,90 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
+    # read input file to extract time, spatial coordinates and data
+    if (FORMAT == 'csv'):
+        parse_dates = (TIME_STANDARD.lower() == 'datetime')
+        dinput = SMBcorr.spatial.from_ascii(input_file, columns=VARIABLES,
+            delimiter=DELIMITER, header=HEADER, parse_dates=parse_dates)
+        attributes = dinput['attributes']
+    elif (FORMAT == 'netCDF4'):
+        field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
+        dinput = SMBcorr.spatial.from_netCDF4(input_file,
+            field_mapping=field_mapping)
+        attributes = dinput['attributes']
+    elif (FORMAT == 'HDF5'):
+        field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
+        dinput = SMBcorr.spatial.from_HDF5(input_file,
+            field_mapping=field_mapping)
+        attributes = dinput['attributes']
+    elif (FORMAT == 'geotiff'):
+        dinput = SMBcorr.spatial.from_geotiff(input_file)
+        attributes = dinput['attributes']
+        # copy global geotiff attributes for projection and grid parameters
+        for att_name in ['projection','wkt','spacing','extent']:
+            attributes[att_name] = dinput['attributes'][att_name]
+    elif (FORMAT == 'parquet'):
+        field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
+        remap = SMBcorr.spatial.inverse_mapping(field_mapping)
+        dinput = pd.read_parquet(input_file, columns=VARIABLES)
+        dinput.rename(columns=remap, inplace=True)
+        attributes = {}
 
-    # verify data directory
+    # get coordinate reference system of input data
+    crs = get_projection(attributes, PROJECTION)
+    # dictionary of coordinate reference system variables
+    cs_to_cf = crs.cs_to_cf()
+    proj4_params = crs.to_proj4()
+
+    # update time variable if entered as argument
+    if TIME is not None:
+        dinput['time'] = np.copy(TIME)
+
+    # extract time units from netCDF4 and HDF5 attributes or from TIME_UNITS
+    try:
+        time_string = dinput['attributes']['time']['units']
+        epoch1, to_secs = timescale.time.parse_date_string(time_string)
+    except (TypeError, KeyError, ValueError):
+        epoch1, to_secs = timescale.time.parse_date_string(TIME_UNITS)
+
+    # invalid value
+    fill_value = -9999.0
+    # dictionary with output variables
+    output = {}
+    # copy variables to output
+    output['x'] = np.copy(dinput['x'])
+    output['y'] = np.copy(dinput['y'])
+    output['time'] = np.ravel(dinput['time'])
+    # attributes for each output variable
+    attrib = dict(x={}, y={}, time={})
+    # x and y
+    for att_name in ['long_name','standard_name','units']:
+        attrib['x'][att_name] = cs_to_cf[0][att_name]
+        attrib['y'][att_name] = cs_to_cf[1][att_name]
+    # time
+    attrib['time'] = {}
+    attrib['time']['long_name'] = 'Time'
+    attrib['time']['units'] = TIME_UNITS
+    attrib['time']['calendar'] = 'standard'
+
+    # currently only supporting "drift" data type
+    if (TYPE == 'drift'):
+        X = np.ravel(output['x'])
+        Y = np.ravel(output['y'])
+    else:
+        raise ValueError(f'Unsupported data type {TYPE}')
+
+    # convert delta times or datetimes objects to timescale
+    if (TIME_STANDARD.lower() == 'datetime'):
+        ts = timescale.time.Timescale().from_datetime(output['time'])
+    else:
+        # convert time to seconds
+        ts = timescale.time.Timescale().from_deltatime(to_secs*output['time'],
+            epoch=epoch1, standard=TIME_STANDARD)
+    # number of time points
+    nt = len(ts)
+
+    # verify data directory for SMB/firn models
     base_dir = pathlib.Path(base_dir).expanduser().absolute()
     # determine main model group from region and model_version
     MODEL, = [key for key,val in models[REGION].items() if model_version in val]
@@ -294,89 +376,8 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         DESCRIPTION['zsmb'] = "Snow Height Change due to Surface Mass Balance"
         DESCRIPTION['zmelt'] = "Snow Height Change due to Surface Melt"
 
-    # invalid value
-    fill_value = -9999.0
-    # output netCDF4 and HDF5 file attributes
-    # will be added to YAML header in csv files
-    attrib = {}
-    # latitude
-    attrib['lat'] = {}
-    attrib['lat']['long_name'] = 'Latitude'
-    attrib['lat']['units'] = 'Degrees_North'
-    # longitude
-    attrib['lon'] = {}
-    attrib['lon']['long_name'] = 'Longitude'
-    attrib['lon']['units'] = 'Degrees_East'
-    # time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Time'
-    attrib['time']['units'] = TIME_UNITS
-    attrib['time']['calendar'] = 'standard'
-
-    # read input file to extract time, spatial coordinates and data
-    if (FORMAT == 'csv'):
-        parse_dates = (TIME_STANDARD.lower() == 'datetime')
-        dinput = SMBcorr.spatial.from_ascii(input_file, columns=VARIABLES,
-            delimiter=DELIMITER, header=HEADER, parse_dates=parse_dates)
-        attributes = dinput['attributes']
-    elif (FORMAT == 'netCDF4'):
-        field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
-        dinput = SMBcorr.spatial.from_netCDF4(input_file,
-            field_mapping=field_mapping)
-        attributes = dinput['attributes']
-    elif (FORMAT == 'HDF5'):
-        field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
-        dinput = SMBcorr.spatial.from_HDF5(input_file,
-            field_mapping=field_mapping)
-        attributes = dinput['attributes']
-    elif (FORMAT == 'geotiff'):
-        dinput = SMBcorr.spatial.from_geotiff(input_file)
-        attributes = dinput['attributes']
-        # copy global geotiff attributes for projection and grid parameters
-        for att_name in ['projection','wkt','spacing','extent']:
-            attrib[att_name] = dinput['attributes'][att_name]
-    elif (FORMAT == 'parquet'):
-        field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
-        remap = SMBcorr.spatial.inverse_mapping(field_mapping)
-        dinput = pd.read_parquet(input_file, columns=VARIABLES)
-        dinput.rename(columns=remap, inplace=True)
-        attributes = None
-
-    # update time variable if entered as argument
-    if TIME is not None:
-        dinput['time'] = np.copy(TIME)
-
-    # get coordinate reference system of input data
-    proj4_params = get_projection(attributes, PROJECTION).to_proj4()
-
-    # extract time units from netCDF4 and HDF5 attributes or from TIME_UNITS
-    try:
-        time_string = dinput['attributes']['time']['units']
-        epoch1, to_secs = timescale.time.parse_date_string(time_string)
-    except (TypeError, KeyError, ValueError):
-        epoch1, to_secs = timescale.time.parse_date_string(TIME_UNITS)
-
-    # copy variables to output
-    output = {}
-    output['time'] = np.ravel(dinput['time'])
-    if (TYPE == 'drift'):
-        X = np.ravel(dinput['x'])
-        Y = np.ravel(dinput['y'])
-    else:
-        raise ValueError(f'Unsupported data type {TYPE}')
-
-    # convert delta times or datetimes objects to timescale
-    if (TIME_STANDARD.lower() == 'datetime'):
-        ts = timescale.time.Timescale().from_datetime(output['time'])
-    else:
-        # convert time to seconds
-        ts = timescale.time.Timescale().from_deltatime(to_secs*output['time'],
-            epoch=epoch1, standard=TIME_STANDARD)
-    # number of time points
-    nt = len(ts)
-
     # allocate for output height for each variable
-    for key,var in zip(KEYS,VARIABLES):
+    for key,var in zip(KEYS, VARIABLES):
         output[key] = np.ma.empty((nt), fill_value=fill_value)
         output[key].mask = np.ones((nt), dtype=bool)
 
@@ -434,8 +435,8 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         # change the permissions level to MODE
         output_file.chmod(mode=MODE)
     elif (FORMAT == 'geotiff'):
+        # create individual geotiff files for each variable
         for key in KEYS:
-            # individual output files for each variable
             vars = (output_file.stem, key, output_file.suffix)
             outfile = output_file.with_name('{0}_{1}{2}'.format(*vars))
             SMBcorr.spatial.to_geotiff(output, attrib, outfile,
@@ -444,6 +445,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
             outfile.chmod(mode=MODE)
     elif (FORMAT == 'parquet'):
         # write to parquet file
+        logging.info(str(output_file))
         pd.DataFrame(output).to_parquet(output_file)
         # change the permissions level to MODE
         output_file.chmod(mode=MODE)
