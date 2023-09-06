@@ -9,7 +9,7 @@ CALLING SEQUENCE:
 
 COMMAND LINE OPTIONS:
     --mean: Start and end year of mean
-    -f X, --fill-value X: set fill_value for input spatial fields
+    -f X, --fill-value X: set invalid value for spatial fields
     -V, --verbose: Output information for each output file
     -M X, --mode X: Local permissions mode of the directories and files
 
@@ -252,10 +252,10 @@ def arguments():
         metavar=('START','END'), type=int, nargs=2,
         default=[1980,1995],
         help='Start and end year range for mean')
-    # fill value for ascii
+    # fill value for output spatial fields
     parser.add_argument('--fill-value','-f',
         type=float, default=np.nan,
-        help='Output invalid value')
+        help='Invalid value for spatial fields')
     # print information about each input and output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',

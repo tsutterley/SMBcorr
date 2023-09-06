@@ -172,6 +172,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
     TIME_STANDARD='UTC',
     PROJECTION='4326',
     GZIP=False,
+    FILL_VALUE=-9999.0,
     VERBOSE=False,
     MODE=0o775):
 
@@ -198,9 +199,6 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
     elif (FORMAT == 'geotiff'):
         dinput = SMBcorr.spatial.from_geotiff(input_file)
         attributes = dinput['attributes']
-        # copy global geotiff attributes for projection and grid parameters
-        for att_name in ['projection','wkt','spacing','extent']:
-            attributes[att_name] = dinput['attributes'][att_name]
     elif (FORMAT == 'parquet'):
         logging.info(str(input_file))
         field_mapping = SMBcorr.spatial.default_field_mapping(VARIABLES)
@@ -225,39 +223,20 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
     cs_to_cf = crs.cs_to_cf()
     proj4_params = crs.to_proj4()
 
-    # invalid value
-    fill_value = -9999.0
-    # dictionary with output variables
-    output = {}
-    # copy variables to output
-    output['x'] = np.copy(dinput['x'])
-    output['y'] = np.copy(dinput['y'])
-    output['time'] = np.ravel(dinput['time'])
-    # attributes for each output variable
-    attrib = dict(x={}, y={}, time={})
-    # x and y
-    for att_name in ['long_name','standard_name','units']:
-        attrib['x'][att_name] = cs_to_cf[0][att_name]
-        attrib['y'][att_name] = cs_to_cf[1][att_name]
-    # time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Time'
-    attrib['time']['units'] = TIME_UNITS
-    attrib['time']['calendar'] = 'standard'
-
     # currently only supporting "drift" data type
     if (TYPE == 'drift'):
-        X = np.ravel(output['x'])
-        Y = np.ravel(output['y'])
+        X = np.ravel(dinput['x'])
+        Y = np.ravel(dinput['y'])
     else:
         raise ValueError(f'Unsupported data type {TYPE}')
 
     # convert delta times or datetimes objects to timescale
     if (TIME_STANDARD.lower() == 'datetime'):
-        ts = timescale.time.Timescale().from_datetime(output['time'])
+        ts = timescale.time.Timescale().from_datetime(np.ravel(dinput['time']))
     else:
         # convert time to seconds
-        ts = timescale.time.Timescale().from_deltatime(to_secs*output['time'],
+        delta_time = to_secs*np.ravel(dinput['time'])
+        ts = timescale.time.Timescale().from_deltatime(delta_time,
             epoch=epoch1, standard=TIME_STANDARD)
     # number of time points
     nt = len(ts)
@@ -378,9 +357,27 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         DESCRIPTION['zsmb'] = "Snow Height Change due to Surface Mass Balance"
         DESCRIPTION['zmelt'] = "Snow Height Change due to Surface Melt"
 
+    # attributes for each output variable
+    attrib = dict(x={}, y={}, time={})
+    # dictionary with output variables
+    output = {}
+    # copy variables to output
+    output['x'] = np.copy(dinput['x'])
+    output['y'] = np.copy(dinput['y'])
+    output['time'] = np.copy(dinput['time'])
+    # x and y attributes
+    for att_name in ['long_name','standard_name','units']:
+        attrib['x'][att_name] = cs_to_cf[0][att_name]
+        attrib['y'][att_name] = cs_to_cf[1][att_name]
+    # time
+    attrib['time'] = {}
+    attrib['time']['long_name'] = 'Time'
+    attrib['time']['units'] = TIME_UNITS
+    attrib['time']['calendar'] = 'standard'
+
     # allocate for output height for each variable
     for key,var in zip(KEYS, VARIABLES):
-        output[key] = np.ma.empty((nt), fill_value=fill_value)
+        output[key] = np.ma.empty((nt), fill_value=FILL_VALUE)
         output[key].mask = np.ones((nt), dtype=bool)
 
     if (MODEL == 'MAR'):
@@ -420,6 +417,10 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
             output[key].data[:] = np.copy(OUT.data)
             output[key].mask[:] = np.copy(OUT.mask)
 
+    # mask invalid values
+    for key,var in zip(KEYS, VARIABLES):
+        output[key].data[output[key].mask] = output[key].fill_value
+
     # output to file
     if (FORMAT == 'csv'):
         SMBcorr.spatial.to_ascii(output, attrib, output_file,
@@ -437,12 +438,15 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         # change the permissions level to MODE
         output_file.chmod(mode=MODE)
     elif (FORMAT == 'geotiff'):
+        # copy global geotiff attributes for projection and grid parameters
+        for att_name in ['projection','wkt','spacing','extent']:
+            attrib[att_name] = dinput['attributes'][att_name]
         # create individual geotiff files for each variable
-        for key in KEYS:
+        for key,var in zip(KEYS, VARIABLES):
             vars = (output_file.stem, key, output_file.suffix)
             outfile = output_file.with_name('{0}_{1}{2}'.format(*vars))
             SMBcorr.spatial.to_geotiff(output, attrib, outfile,
-                varname=key, dtype=np.float32, fill_value=fill_value)
+                varname=key, dtype=np.float32, fill_value=FILL_VALUE)
             # change the permissions level to MODE
             outfile.chmod(mode=MODE)
     elif (FORMAT == 'parquet'):
@@ -530,6 +534,10 @@ def arguments():
     parser.add_argument('--gzip','-G',
         default=False, action='store_true',
         help='Model files are gzip compressed')
+    # fill value for output spatial fields
+    parser.add_argument('--fill-value','-f',
+        type=float, default=-9999.0,
+        help='Invalid value for spatial fields')
     # verbose output of processing run
     # print information about each input and output file
     parser.add_argument('--verbose','-V',
@@ -566,6 +574,7 @@ def main():
         TIME_STANDARD=args.standard,
         PROJECTION=args.projection,
         GZIP=args.gzip,
+        FILL_VALUE=args.fill_value,
         VERBOSE=args.verbose,
         MODE=args.mode)
 
