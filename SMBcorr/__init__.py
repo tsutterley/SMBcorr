@@ -1,9 +1,12 @@
+import SMBcorr.spatial
 import SMBcorr.time
 import SMBcorr.utilities
 import SMBcorr.version
 from SMBcorr.regress_model import regress_model
-from SMBcorr.scale_areas import scale_areas
-from SMBcorr.spatial import spatial
+from SMBcorr.constants import (
+    constants,
+    _ellipsoids
+)
 # MAR
 from SMBcorr.mar_smb_cumulative import mar_smb_cumulative
 from SMBcorr.mar_smb_mean import mar_smb_mean

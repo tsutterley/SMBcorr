@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_smb_mean.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (09/2023)
 Reads monthly MERRA-2 datafiles to calculate multi-annual means
     of derived surface mass balance products
 
@@ -24,10 +24,6 @@ INPUTS:
 COMMAND LINE OPTIONS:
     -D X, --directory X: working data directory
     -m X, --mean X: Year range for mean
-    -F X, --format X: input and output data format
-        ascii
-        netcdf
-        HDF5
     -M X, --mode X: Permission mode of directories and files
     -V, --verbose: Output information for each output file
 
@@ -43,14 +39,11 @@ PYTHON DEPENDENCIES:
         https://h5py.org
 
 PROGRAM DEPENDENCIES:
-    spatial.py: spatial data class for reading, writing and processing data
-        ncdf_read.py: reads input spatial data from netCDF4 files
-        hdf5_read.py: reads input spatial data from HDF5 files
-        ncdf_write.py: writes output spatial data to netCDF4
-        hdf5_write.py: writes output spatial data to HDF5
+    spatial.py: utilities for working with geospatial data
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 09/2023: using updated spatial functions
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 10/2021: using python logging for handling verbose output
         add more derived products and include sublimation and condensation
@@ -79,7 +72,7 @@ import SMBcorr.spatial
 # attempt imports
 try:
     import netCDF4
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 # ignore warnings
@@ -137,7 +130,7 @@ def read_merra_variables(merra_flux_file, merra_ice_surface_file):
     return dinput
 
 # PURPOSE: read monthly MERRA-2 datasets to calculate multi-annual means
-def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
+def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None,
     VERBOSE=False, MODE=0o775):
     """
     Reads monthly MERRA-2 datafiles to calculate multi-annual means
@@ -158,12 +151,6 @@ def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
             - ``REFREEZE``: Melt Water Refreeze
     RANGE: list, default [1961,1990]
         Start and end year of mean
-    DATAFORM: str or NoneType, default None
-        Data output format
-
-            - ``ascii``
-            - ``netCDF4``
-            - ``HDF5``
     VERBOSE: bool, default False
         Verbose output of netCDF4 variables
     MODE: oct, default 0o775
@@ -199,8 +186,6 @@ def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     merra_sources['SUBLIM'] = ['EVAP','WESNSC']
     merra_sources['RUNOFF'] = ['RUNOFF']
     merra_reference = ', '.join(merra_sources[PRODUCT])
-    # output data file format
-    suffix = dict(ascii='txt', netCDF4='nc', HDF5='H5')
     # output bad value
     fill_value = -9999.0
     # output dimensions and extents
@@ -215,13 +200,34 @@ def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     # compile regular expression operator for flux product
     rx = re.compile(regex_pattern.format('tavgM_2d_int_Nx'), re.VERBOSE)
 
-    # mean balance flux
-    merra_mean = SMBcorr.spatial(nlat=nlat,nlon=nlon,
-        fill_value=fill_value)
+    # output data and attributes
+    output = {}
+    attrib = {}
+    # latitude
+    attrib['lat'] = {}
+    attrib['lat']['long_name'] = 'Latitude'
+    attrib['lat']['units'] = 'Degrees_North'
+    # longitude
+    attrib['lon'] = {}
+    attrib['lon']['long_name'] = 'Longitude'
+    attrib['lon']['units'] = 'Degrees_East'
+    # output mean of product
+    attrib[PRODUCT] = {}
+    attrib[PRODUCT]['description'] = merra_products[PRODUCT]
+    attrib[PRODUCT]['reference'] = merra_reference
+    attrib[PRODUCT]['model'] = 'MERRA-2'
+    attrib[PRODUCT]['units'] = 'mm w.e.'
+    attrib[PRODUCT]['long_name'] = 'Equivalent_Water_Thickness'
+    attrib[PRODUCT]['_FillValue'] = fill_value
+    # time
+    attrib['time'] = {}
+    attrib['time']['long_name'] = 'Time'
+    attrib['time']['units'] = 'years'
+
     # output data and mask
-    merra_mean.data = np.zeros((nlat,nlon))
-    merra_mean.mask = np.zeros((nlat,nlon),dtype=bool)
-    merra_mean.time = 0.0
+    output[PRODUCT] = np.ma.zeros((nlat,nlon,1), fill_value=fill_value)
+    output[PRODUCT].mask = np.zeros((nlat,nlon,1),dtype=bool)
+    output['time'] = 0.0
     count = 0.0
     # for each input file
     for Y in YEARS:
@@ -251,16 +257,11 @@ def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
                 FORMAT='tuple')
             # calculate the total seconds in month
             seconds = dpm[M]*24.0*60.0*60.0
-            # spatial object for monthly variable
-            dinput = SMBcorr.spatial(nlat=nlat,nlon=nlon,
-                fill_value=fill_value)
-            dinput.lat = np.copy(var['lat'])
-            dinput.lon = np.copy(var['lon'])
             # calculate time in year decimal
-            dinput.time = SMBcorr.time.convert_calendar_decimal(YY,
+            tdec = SMBcorr.time.convert_calendar_decimal(YY,
                 MM,day=DD,hour=hh,minute=mm,second=ss)
-            # output data and mask
-            dinput.data = np.zeros((nlat,nlon))
+            # spatial object for monthly variable
+            dinput = np.ma.zeros((nlat,nlon), fill_value=fill_value)
             dinput.mask = np.zeros((nlat,nlon),dtype=bool)
             for p in ['PRECCU','PRECLS','PRECSN','EVAP','RUNOFF','WESNSC']:
                 dinput.mask |= var[p].mask
@@ -296,50 +297,29 @@ def merra_smb_mean(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
                 for p in ['RUNOFF']:
                     tmp = var[p][indy,indx]*seconds
                     dinput.data[indy,indx] += tmp
-            # update mask
-            dinput.update_mask()
             # add monthly fluxes to total
-            merra_mean.data += dinput.data
-            merra_mean.mask |= dinput.mask
-            merra_mean.time += dinput.time
-            merra_mean.lat = np.copy(dinput.lat)
-            merra_mean.lon = np.copy(dinput.lon)
+            output[PRODUCT].data[:,:] += np.atleast_3d(dinput.data)
+            output[PRODUCT].mask[:,:] |= np.atleast_3d(dinput.mask)
+            output['time'] += tdec
+            output['lat'] = np.copy(var['lat'])
+            output['lon'] = np.copy(var['lon'])
             # add to count
             count += 1.0
 
     # convert from totals to means
-    indy,indx = np.nonzero(np.logical_not(merra_mean.mask))
-    merra_mean.data[indy,indx] /= count
-    merra_mean.update_mask()
-    merra_mean.time /= count
+    indy,indx,indt = np.nonzero(np.logical_not(output[PRODUCT].mask))
+    output[PRODUCT][indy,indx,indt] /= count
+    output[PRODUCT].data[output[PRODUCT].mask] = output[PRODUCT].fill_value
+    output['time'] /= count
 
     # output MERRA-2 mean data file
-    args = (PRODUCT, RANGE[0], RANGE[1], suffix[DATAFORM])
-    FILE = 'MERRA2.tavgM_2d_{0}_mean_Nx.{1:4d}-{2:4d}.{3}'.format(*args)
-    if (DATAFORM == 'ascii'):
-        # ascii (.txt)
-        merra_mean.to_ascii(os.path.join(DIRECTORY,FILE),
-            verbose=VERBOSE)
-    elif (DATAFORM == 'netCDF4'):
-        # netcdf (.nc)
-        merra_mean.to_netCDF4(os.path.join(DIRECTORY,FILE),
-            varname=PRODUCT,
-            UNITS='mm w.e.',
-            LONGNAME='Equivalent_Water_Thickness',
-            TITLE=merra_products[PRODUCT],
-            REFERENCE=merra_reference,
-            verbose=VERBOSE)
-    elif (DATAFORM == 'HDF5'):
-        # HDF5 (.H5)
-        merra_mean.to_HDF5(os.path.join(DIRECTORY,FILE),
-            varname=PRODUCT,
-            UNITS='mm w.e.',
-            LONGNAME='Equivalent_Water_Thickness',
-            TITLE=merra_products[PRODUCT],
-            REFERENCE=merra_reference,
-            verbose=VERBOSE)
+    FILE = f'MERRA2.tavgM_2d_{PRODUCT}_mean_Nx.{RANGE[0]:4d}-{RANGE[1]:4d}.nc'
+    output_file = os.path.join(DIRECTORY, FILE)
+    # netcdf (.nc)
+    SMBcorr.spatial.to_netCDF4(output, attrib, output_file,
+        data_type='grid')
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,FILE), MODE)
+    os.chmod(output_file, MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -364,10 +344,6 @@ def arguments():
         metavar=('START','END'), type=int, nargs=2,
         default=[1980,1995],
         help='Start and end year range for mean')
-    # input and output data format (ascii, netCDF4, HDF5)
-    parser.add_argument('--format','-F',
-        type=str, default='netCDF4', choices=['ascii','netCDF4','HDF5'],
-        help='Input and output data format')
     # print information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -388,7 +364,7 @@ def main():
     # run program for each input product
     for PRODUCT in args.product:
         merra_smb_mean(args.directory, PRODUCT, RANGE=args.mean,
-            DATAFORM=args.format, VERBOSE=args.verbose, MODE=args.mode)
+            VERBOSE=args.verbose, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
