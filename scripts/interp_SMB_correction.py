@@ -58,6 +58,8 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
     gdal: Pythonic interface to the Geospatial Data Abstraction Library (GDAL)
         https://pypi.python.org/pypi/GDAL
+    pandas: Python Data Analysis Library
+        https://pandas.pydata.org/
     dateutil: powerful extensions to datetime
         https://dateutil.readthedocs.io/en/stable/
     pyproj: Python interface to PROJ library
