@@ -20,8 +20,7 @@ COMMAND LINE OPTIONS:
         netCDF4
         HDF5
         parquet
-        GTiff
-        cog
+        geotiff
     -v X, --variables X: variable names of data in csv, HDF5 or netCDF4 file
         for csv files: the order of the columns within the file
         for HDF5, netCDF4 and parquet files: time, y, x and data variable names
@@ -56,7 +55,7 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
     netCDF4: Python interface to the netCDF C library
-        https://unidata.github.io/netcdf4-python/netCDF4/index.html
+         https://unidata.github.io/netcdf4-python/netCDF4/index.html
     gdal: Pythonic interface to the Geospatial Data Abstraction Library (GDAL)
         https://pypi.python.org/pypi/GDAL
     pandas: Python Data Analysis Library
@@ -197,7 +196,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         dinput = SMBcorr.spatial.from_HDF5(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
-    elif FORMAT in ('GTiff', 'cog'):
+    elif (FORMAT == 'geotiff'):
         dinput = SMBcorr.spatial.from_geotiff(input_file)
         attributes = dinput['attributes']
     elif (FORMAT == 'parquet'):
@@ -345,7 +344,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         # use compressed files
         KWARGS['GZIP'] = GZIP
         # output variable keys
-        KEYS = ['zfirn','zsmb','zsurf','zmelt'][:len(VARIABLES)]
+        KEYS = ['zfirn','zsmb','zsurf','zmelt']
         # HDF5 longname and description attributes for each variable
         LONGNAME = {}
         LONGNAME['zsurf'] = "Height"
@@ -438,7 +437,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         SMBcorr.spatial.to_HDF5(output, attrib, output_file)
         # change the permissions level to MODE
         output_file.chmod(mode=MODE)
-    elif FORMAT in ('GTiff', 'cog'):
+    elif (FORMAT == 'geotiff'):
         # copy global geotiff attributes for projection and grid parameters
         for att_name in ['projection','wkt','spacing','extent']:
             attrib[att_name] = dinput['attributes'][att_name]
@@ -492,7 +491,7 @@ def arguments():
     # input and output data format
     parser.add_argument('--format','-F',
         type=str, default='parquet',
-        choices=('csv','netCDF4','HDF5','GTiff','cog','parquet'),
+        choices=('csv','netCDF4','HDF5','geotiff','parquet'),
         help='Input and output data format')
     # variable names (for csv names of columns)
     parser.add_argument('--variables','-v',

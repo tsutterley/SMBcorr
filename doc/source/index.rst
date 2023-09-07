@@ -23,8 +23,8 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     :hidden:
     :caption: API Reference
 
+    api_reference/constants.rst
     api_reference/regress_model.rst
-    api_reference/scale_areas.rst
     api_reference/spatial.rst
     api_reference/time.rst
     api_reference/utilities.rst
@@ -37,6 +37,7 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     api_reference/append_SMB_ATL11.rst
     api_reference/append_SMB_averages_ATL11.rst
     api_reference/append_SMB_mean_ATL11.rst
+    api_reference/interp_SMB_correction.rst
     api_reference/interp_SMB_ICESat2_ATL11.rst
     api_reference/interp_SMB_ICESat2_ATL15.rst
 

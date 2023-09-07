@@ -695,7 +695,7 @@ def gesdisc_list(HOST, username=None, password=None, build=False,
     try:
         # Create and submit request.
         request=urllib2.Request(posixpath.join(*HOST))
-        response=urllib2.urlopen(request,timeout=timeout)
+        response=urllib2.urlopen(request, timeout=timeout)
     except (urllib2.HTTPError, urllib2.URLError):
         raise Exception('List error from {0}'.format(posixpath.join(*HOST)))
     else:
