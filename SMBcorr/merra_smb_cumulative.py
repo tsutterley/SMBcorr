@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_smb_cumulative.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (09/2023)
 Reads MERRA-2 datafiles to calculate monthly cumulative anomalies
     in derived surface mass balance products
 
@@ -24,10 +24,6 @@ INPUTS:
 COMMAND LINE OPTIONS:
     -D X, --directory X: working data directory
     -m X, --mean X: Year range for mean
-    -F X, --format X: input and output data format
-        ascii
-        netcdf
-        HDF5
     -M X, --mode X: Permission mode of directories and files
     -V, --verbose: Output information for each output file
 
@@ -43,14 +39,11 @@ PYTHON DEPENDENCIES:
         https://h5py.org
 
 PROGRAM DEPENDENCIES:
-    spatial.py: spatial data class for reading, writing and processing data
-        ncdf_read.py: reads input spatial data from netCDF4 files
-        hdf5_read.py: reads input spatial data from HDF5 files
-        ncdf_write.py: writes output spatial data to netCDF4
-        hdf5_write.py: writes output spatial data to HDF5
+    spatial.py: utilities for working with geospatial data
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 09/2023: using updated spatial functions
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 10/2021: using python logging for handling verbose output
         add more derived products and include sublimation and condensation
@@ -79,7 +72,7 @@ import SMBcorr.spatial
 # attempt imports
 try:
     import netCDF4
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 # ignore warnings
@@ -138,7 +131,7 @@ def read_merra_variables(merra_flux_file, merra_ice_surface_file):
     return dinput
 
 # PURPOSE: read monthly MERRA-2 datasets to calculate cumulative anomalies
-def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
+def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None,
     VERBOSE=False, MODE=0o775):
     """
     Reads MERRA-2 datafiles to calculate monthly cumulative anomalies
@@ -159,12 +152,6 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
             - ``REFREEZE``: Melt Water Refreeze
     RANGE: list, default [1961,1990]
         Start and end year of mean
-    DATAFORM: str or NoneType, default None
-        Data output format
-
-            - ``ascii``
-            - ``netCDF4``
-            - ``HDF5``
     VERBOSE: bool, default False
         Verbose output of netCDF4 variables
     MODE: oct, default 0o775
@@ -206,32 +193,15 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     merra_sources['SUBLIM'] = ['EVAP','WESNSC']
     merra_sources['RUNOFF'] = ['RUNOFF']
     merra_reference = ', '.join(merra_sources[PRODUCT])
-    # output data file format
-    suffix = dict(ascii='txt', netCDF4='nc', HDF5='H5')
     # output bad value
     fill_value = -9999.0
     # output dimensions and extents
     nlat,nlon = (361,576)
-    extent = [-180.0,179.375,-90.0,90.0]
-    # grid spacing
-    dlon,dlat = (0.625,0.5)
 
     # read mean data from merra_smb_mean.py
-    args=(PRODUCT, RANGE[0], RANGE[1], suffix[DATAFORM])
-    mean_file='MERRA2.tavgM_2d_{0}_mean_Nx.{1:4d}-{2:4d}.{3}'.format(*args)
-    if (DATAFORM == 'ascii'):
-        # ascii (.txt)
-        merra_mean = SMBcorr.spatial(spacing=[dlon,dlat],
-            nlat=nlat, nlon=nlon, extent=extent).from_ascii(
-            os.path.join(DIRECTORY,mean_file),date=False)
-    elif (DATAFORM == 'netCDF4'):
-        # netcdf (.nc)
-        merra_mean = SMBcorr.spatial().from_netCDF4(
-            os.path.join(DIRECTORY,mean_file),date=False,varname=PRODUCT)
-    elif (DATAFORM == 'HDF5'):
-        # HDF5 (.H5)
-        merra_mean = SMBcorr.spatial().from_HDF5(
-            os.path.join(DIRECTORY,mean_file),date=False,varname=PRODUCT)
+    MEAN = f'MERRA2.tavgM_2d_{PRODUCT}_mean_Nx.{RANGE[0]:4d}-{RANGE[1]:4d}.nc'
+    mean_file = os.path.join(DIRECTORY, MEAN)
+    merra_mean = SMBcorr.spatial.from_netCDF4(mean_file, varname=PRODUCT)
 
     # find years of available data
     YEARS = sorted([d for d in os.listdir(os.path.join(DIRECTORY,P1))
@@ -243,14 +213,37 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
     # compile regular expression operator for flux product
     rx = re.compile(regex_pattern.format('tavgM_2d_int_Nx'), re.VERBOSE)
 
+    # output data and attributes
+    output = {}
+    attrib = {}
+    # latitude
+    attrib['lat'] = {}
+    attrib['lat']['long_name'] = 'Latitude'
+    attrib['lat']['units'] = 'Degrees_North'
+    # longitude
+    attrib['lon'] = {}
+    attrib['lon']['long_name'] = 'Longitude'
+    attrib['lon']['units'] = 'Degrees_East'
+    # output mean of product
+    attrib[PRODUCT] = {}
+    attrib[PRODUCT]['description'] = merra_products[PRODUCT]
+    attrib[PRODUCT]['reference'] = merra_reference
+    attrib[PRODUCT]['model'] = 'MERRA-2'
+    attrib[PRODUCT]['units'] = 'mm w.e.'
+    attrib[PRODUCT]['long_name'] = 'Equivalent_Water_Thickness'
+    attrib[PRODUCT]['_FillValue'] = fill_value
+    # time
+    attrib['time'] = {}
+    attrib['time']['long_name'] = 'Time'
+    attrib['time']['units'] = 'years'
+
     # monthly cumulative anomalies
     # cumulative mass anomalies calculated by removing mean balance flux
-    cumul = SMBcorr.spatial(nlat=nlat,nlon=nlon,fill_value=fill_value)
-    cumul.lat = np.copy(merra_mean.lat)
-    cumul.lon = np.copy(merra_mean.lon)
+    output['lat'] = np.copy(merra_mean['y'])
+    output['lon'] = np.copy(merra_mean['x'])
     # output data and mask
-    cumul.data = np.zeros((nlat,nlon))
-    cumul.mask = np.copy(merra_mean.mask)
+    output[PRODUCT] = np.ma.zeros((nlat,nlon,1), fill_value=fill_value)
+    output[PRODUCT].mask = np.copy(merra_mean['data'].mask)
     # for each input file
     for Y in YEARS:
         # find input files for PRODUCT
@@ -279,17 +272,9 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
                 FORMAT='tuple')
             # calculate the total seconds in month
             seconds = dpm[M]*24.0*60.0*60.0
-            # spatial object for monthly variable
-            dinput = SMBcorr.spatial(nlat=nlat,nlon=nlon,
-                fill_value=fill_value)
-            dinput.lat = np.copy(var['lat'])
-            dinput.lon = np.copy(var['lon'])
-            # calculate time in year decimal
-            dinput.time = SMBcorr.time.convert_calendar_decimal(YY,
-                MM,day=DD,hour=hh,minute=mm,second=ss)
-            # output data and mask
-            dinput.data = np.zeros((nlat,nlon))
-            dinput.mask = np.zeros((nlat,nlon),dtype=bool)
+            # data for time step
+            dinput = np.ma.zeros((nlat,nlon), fill_value=fill_value)
+            dinput.mask = np.zeros((nlat,nlon), dtype=bool)
             for p in ['PRECCU','PRECLS','PRECSN','EVAP','RUNOFF','WESNSC']:
                 dinput.mask |= var[p].mask
             # valid indices for all variables
@@ -324,38 +309,20 @@ def merra_smb_cumulative(DIRECTORY, PRODUCT, RANGE=None, DATAFORM=None,
                 for p in ['RUNOFF']:
                     tmp = var[p][indy,indx]*seconds
                     dinput.data[indy,indx] += tmp
-            # update masks
-            dinput.update_mask()
             # subtract mean and add to cumulative anomalies
-            cumul.data += dinput.data - merra_mean.data
-            cumul.mask |= dinput.mask
-            cumul.time = np.copy(dinput.time)
-            cumul.update_mask()
+            output[PRODUCT].data[:,:,:] += np.atleast_3d(dinput.data) - merra_mean['data']
+            output[PRODUCT].mask[:,:,:] |= np.atleast_3d(dinput.mask)
+            output[PRODUCT].data[output[PRODUCT].mask] = output[PRODUCT].fill_value
+            # calculate time in year decimal
+            output['time'] = SMBcorr.time.convert_calendar_decimal(YY,
+                MM,day=DD,hour=hh,minute=mm,second=ss)
             # output MERRA-2 cumulative data file
-            args = (MOD,PRODUCT,Y1,M1,suffix[DATAFORM])
-            FILE = 'MERRA2_{0}.tavgM_2d_{1}_cumul_Nx.{2}{3}.{4}'.format(*args)
-            if (DATAFORM == 'ascii'):
-                # ascii (.txt)
-                cumul.to_ascii(os.path.join(DIRECTORY,cumul_sub,FILE),
-                    verbose=VERBOSE)
-            elif (DATAFORM == 'netCDF4'):
-                # netcdf (.nc)
-                cumul.to_netCDF4(os.path.join(DIRECTORY,cumul_sub,FILE),
-                    varname=PRODUCT, UNITS='mm w.e.',
-                    LONGNAME='Equivalent_Water_Thickness',
-                    TITLE=merra_products[PRODUCT],
-                    REFERENCE=merra_reference,
-                    verbose=VERBOSE)
-            elif (DATAFORM == 'HDF5'):
-                # HDF5 (.H5)
-                cumul.to_HDF5(os.path.join(DIRECTORY,cumul_sub,FILE),
-                    varname=PRODUCT, UNITS='mm w.e.',
-                    LONGNAME='Equivalent_Water_Thickness',
-                    TITLE=merra_products[PRODUCT],
-                    REFERENCE=merra_reference,
-                    verbose=VERBOSE)
+            FILE = f'MERRA2_{MOD}.tavgM_2d_{PRODUCT}_cumul_Nx.{Y1}{M1}.nc'
+            output_file = os.path.join(DIRECTORY,cumul_sub,FILE)
+            SMBcorr.spatial.to_netCDF4(output, attrib, output_file,
+                data_type='grid')
             # change the permissions mode
-            os.chmod(os.path.join(DIRECTORY,cumul_sub,FILE), MODE)
+            os.chmod(output_file, MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -380,10 +347,6 @@ def arguments():
         metavar=('START','END'), type=int, nargs=2,
         default=[1980,1995],
         help='Start and end year range for mean')
-    # input and output data format (ascii, netCDF4, HDF5)
-    parser.add_argument('--format','-F',
-        type=str, default='netCDF4', choices=['ascii','netCDF4','HDF5'],
-        help='Input and output data format')
     # print information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -404,7 +367,7 @@ def main():
     # run program for each input product
     for PRODUCT in args.product:
         merra_smb_cumulative(args.directory, PRODUCT, RANGE=args.mean,
-            DATAFORM=args.format, VERBOSE=args.verbose, MODE=args.mode)
+            VERBOSE=args.verbose, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

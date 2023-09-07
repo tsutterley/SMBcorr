@@ -13,7 +13,7 @@ The programs included in this software have contributed most recently to the fol
     T. C. Sutterley, I. Velicogna, X. Fettweis, E. Rignot, B. No\ |euml|\ l, and M. van den Broeke,
     "Evaluation of Reconstructions of Snow/Ice Melt in Greenland by Regional Atmospheric
     Climate Models Using Laser Altimetry Data", *Geophysical Research Letters*, 45(16),
-    8324-8333, (2018). `doi:10.1029/2018GL078645 <https://doi.org/10.1029/2018GL078645>`_
+    8324-8333, (2018). `doi: 10.1029/2018GL078645 <https://doi.org/10.1029/2018GL078645>`_
 
 
 Contributors

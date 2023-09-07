@@ -1,6 +1,6 @@
-================
-regress_model.py
-================
+=============
+regress_model
+=============
 
 - Estimates a modeled time series for extrapolation by least-squares regression
 
