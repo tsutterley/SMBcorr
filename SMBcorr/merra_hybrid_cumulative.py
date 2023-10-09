@@ -69,7 +69,7 @@ def merra_hybrid_cumulative(base_dir, REGION, VERSION, VARIABLE='p_minus_e',
     fd['y'] = fileID.variables['y'][:,:].copy()
     fd['time'] = fileID.variables['time'][:].copy()
     #-- invalid data value
-    fill_value = np.float(fileID.variables[VARIABLE]._FillValue)
+    fill_value = float(fileID.variables[VARIABLE]._FillValue)
     #-- input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(DATA)
     #-- close the NetCDF files
