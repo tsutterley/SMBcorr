@@ -2,6 +2,7 @@ import SMBcorr.time
 import SMBcorr.utilities
 from SMBcorr.regress_model import regress_model
 from SMBcorr.scale_areas import scale_areas
+from SMBcorr.assign_firn_variable import assign_firn_variable
 # MAR
 from SMBcorr.mar_smb_cumulative import mar_smb_cumulative
 from SMBcorr.mar_smb_mean import mar_smb_mean
@@ -28,3 +29,5 @@ from SMBcorr.racmo_interp_daily import interpolate_racmo_daily
 from SMBcorr.racmo_interp_downscaled import interpolate_racmo_downscaled
 from SMBcorr.racmo_interp_firn_height import interpolate_racmo_firn
 from SMBcorr.racmo_interp_mean import interpolate_racmo_mean
+from SMBcorr.get_h5_structure import get_h5_structure
+from SMBcorr.append_gsfc_zmelt import interp_gsfc_zmelt
