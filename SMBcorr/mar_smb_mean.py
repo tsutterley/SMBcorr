@@ -221,7 +221,7 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         MEAN['x'][:] = fileID.variables[XNAME][:].copy()
         MEAN['y'][:] = fileID.variables[YNAME][:].copy()
         #-- extract delta time and epoch of time
-        delta_time = fileID.variables[TIMENAME][:].astype(np.float)
+        delta_time = fileID.variables[TIMENAME][:].astype(float)
         date_string = fileID.variables[TIMENAME].units
         #-- extract epoch and units
         epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
@@ -295,7 +295,7 @@ def mar_smb_mean(input_dir, VERSION, PRODUCT, RANGE=[1961,1990],
         fileID.close()
 
     #-- convert from total to mean
-    MEAN[PRODUCT].data[iy,ix] /= np.float(c)
+    MEAN[PRODUCT].data[iy,ix] /= float(c)
     #-- replace masked values with fill value
     MEAN[PRODUCT].data[MEAN[PRODUCT].mask] = MEAN[PRODUCT].fill_value
     #-- calculate mean time over period
