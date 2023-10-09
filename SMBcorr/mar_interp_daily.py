@@ -99,9 +99,46 @@ def find_valid_triangulation(x0,y0):
     triangle = []
     return (None,triangle)
 
+#-- PURPOSE: read MAR daily time variables
+def get_tdec_for_file(filename, TIMENAME):
+    with netCDF4.Dataset(filename, 'r') as fileID:
+        #-- number of time variables within file
+        TIME = fileID.variables['TIME'][:]
+        try:
+            t = np.count_nonzero(TIME.data != TIME.fill_value)
+        except AttributeError:
+            t = len(TIME)
+
+        delta_time=fileID.variables[TIMENAME][:t].astype(np.float)
+        date_string=fileID.variables[TIMENAME].units
+        #-- extract epoch and units
+    epoch,to_secs = SMBcorr.time.parse_date_string(date_string)
+    #-- calculate time array in Julian days
+    JD = SMBcorr.time.convert_delta_time(delta_time*to_secs, epoch1=epoch,
+            epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0) + 2400000.5
+    #-- convert from Julian days to calendar dates
+    YY,MM,DD,hh,mm,ss = SMBcorr.time.convert_julian(JD)
+    #-- calculate time in year-decimal
+    return SMBcorr.time.convert_calendar_decimal(YY,MM,
+            day=DD,hour=hh,minute=mm,second=ss)
+
+def select_input_files_by_time(files, tdec, DIRECTORY, CUMULATIVE, TIMENAME):
+    files_to_read=[]
+    t_range=[np.nanmin(tdec), np.nanmax(tdec)]
+    for file in files:
+        t_file = get_tdec_for_file(os.path.join(DIRECTORY,file), TIMENAME)
+        if CUMULATIVE:
+            if np.any((t_file <= t_range[1])):
+                files_to_read += [file]
+        else:
+            if np.any((t_file <= t_range[1]) & (t_file >= t_range[0])):
+                files_to_read += [file]
+    return files_to_read
+
 #-- PURPOSE: read and interpolate daily MAR outputs
 def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
+                          CUMULATIVE=True,
     SIGMA=1.5, FILL_VALUE=None, EXTRAPOLATE=False):
 
     #-- start and end years to read
@@ -126,6 +163,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
         print(f"failed to find files matching {VERSION} in {DIRECTORY}")
         raise(e)
 
+    if not EXTRAPOLATE:
+        input_files=select_input_files_by_time( input_files, tdec, DIRECTORY, CUMULATIVE, TIMENAME)
+
+    print(input_files)
     #-- calculate number of time steps to read
     nt = 0
     for f,FILE in enumerate(input_files):
@@ -139,20 +180,23 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             except AttributeError:
                 nt += len(TIME)
 
+    print(nt)
     #-- python dictionary with file variables
     fd = {}
     fd['TIME'] = np.zeros((nt))
     #-- python dictionary with gaussian filtered variables
     gs = {}
     #-- calculate cumulative sum of gaussian filtered values
-    cumulative = np.zeros((ny,nx))
-    gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
-    gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
+    if CUMULATIVE:
+        cumulative = np.zeros((ny,nx))
+        gs['CUMULATIVE'] = np.ma.zeros((nt,ny,nx), fill_value=FILL_VALUE)
+        gs['CUMULATIVE'].mask = np.ones((nt,ny,nx), dtype=np.bool)
     #-- create a counter variable for filling variables
     c = 0
     #-- for each file in the list
     for f,FILE in enumerate(input_files):
         #-- Open the MAR NetCDF file for reading
+        print(FILE)
         with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
             #-- number of time variables within file
             TIME = fileID.variables['TIME'][:]
@@ -229,10 +273,11 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             gs[VARIABLE].data[tt,i,j] = temp1[i,j]
             #-- set mask variables for time
             gs[VARIABLE].mask[tt,ii,jj] = False
-            #-- calculate cumulative
-            cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
-            gs['CUMULATIVE'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
-            gs['CUMULATIVE'].mask[c+tt,ii,jj] = False
+            if CUMULATIVE:
+                #-- calculate cumulative
+                cumulative[ii,jj] += gs[VARIABLE][tt,ii,jj]
+                gs['CUMULATIVE'].data[c+tt,ii,jj] = np.copy(cumulative[ii,jj])
+                gs['CUMULATIVE'].mask[c+tt,ii,jj] = False
         #-- add to counter
         c += t
 
@@ -265,6 +310,16 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     #-- type designating algorithm used (1:interpolate, 2:backward, 3:forward)
     interp.interpolation = np.zeros((npts),dtype=np.uint8)
 
+
+    # use either cumulative data or original field:
+    if CUMULATIVE:
+        this_data=gs['CUMULATIVE']
+    else:
+        this_data=gs[VARIABLE]
+
+    {key: fd[key].shape for key in fd}
+    {key: this_data[key].shape for key in this_data}
+
     #-- find days that can be interpolated
     if np.any((tdec >= fd['TIME'].min()) & (tdec <= fd['TIME'].max()) & valid):
         #-- indices of dates for interpolated days
@@ -272,10 +327,10 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             (tdec <= fd['TIME'].max()) & valid)
         #-- create an interpolator for model variable
         RGI = scipy.interpolate.RegularGridInterpolator(
-            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].data)
+            (fd['TIME'],fd['y'],fd['x']), this_data.data)
         #-- create an interpolator for input mask
         MI = scipy.interpolate.RegularGridInterpolator(
-            (fd['TIME'],fd['y'],fd['x']), gs['CUMULATIVE'].mask)
+            (fd['TIME'],fd['y'],fd['x']), this_data.mask)
 
         #-- interpolate to points
         interp.data[ind] = RGI.__call__(np.c_[tdec[ind],iy[ind],ix[ind]])
@@ -301,9 +356,9 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             TIME[k] = fd['TIME'][k]
             #-- spatially interpolate model variable
             S1 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs['CUMULATIVE'].data[k,:,:].T, kx=1, ky=1)
+                this_data.data[k,:,:].T, kx=1, ky=1)
             S2 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs['CUMULATIVE'].mask[k,:,:].T, kx=1, ky=1)
+                this_data.mask[k,:,:].T, kx=1, ky=1)
             #-- create numpy masked array of interpolated values
             DATA[:,k] = S1.ev(ix[ind],iy[ind])
             MASK[:,k] = S2.ev(ix[ind],iy[ind])
@@ -335,9 +390,9 @@ def interpolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
             TIME[k] = fd['TIME'][kk]
             #-- spatially interpolate model variable
             S1 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs['CUMULATIVE'].data[kk,:,:].T, kx=1, ky=1)
+                this_data.data[kk,:,:].T, kx=1, ky=1)
             S2 = scipy.interpolate.RectBivariateSpline(fd['x'], fd['y'],
-                gs['CUMULATIVE'].mask[kk,:,:].T, kx=1, ky=1)
+                this_data.mask[kk,:,:].T, kx=1, ky=1)
             #-- create numpy masked array of interpolated values
             DATA[:,k] = S1.ev(ix[ind],iy[ind])
             MASK[:,k] = S2.ev(ix[ind],iy[ind])
