@@ -1,3 +1,6 @@
+lxml
+netCDF4
 numpy
+pyproj
 scipy>=1.10.1
 python-dateutil
