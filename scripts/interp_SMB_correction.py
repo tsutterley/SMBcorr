@@ -344,7 +344,7 @@ def interp_SMB_correction(base_dir, input_file, output_file, model_version,
         # use compressed files
         KWARGS['GZIP'] = GZIP
         # output variable keys
-        KEYS = ['zfirn','zsmb','zsurf','zmelt']
+        KEYS = ['zfirn','zsmb','zsurf','zmelt'][:len(VARIABLES)]
         # HDF5 longname and description attributes for each variable
         LONGNAME = {}
         LONGNAME['zsurf'] = "Height"
