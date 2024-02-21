@@ -1,17 +1,17 @@
-=========
-constants
-=========
+=====
+datum
+=====
 
 Gravitational and ellipsoidal parameters [1]_ [2]_
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/SMBcorr/blob/main/SMBcorr/constants.py
+.. __: https://github.com/tsutterley/SMBcorr/blob/main/SMBcorr/datum.py
 
 General Attributes and Methods
 ==============================
 
-.. autoclass:: SMBcorr.constants
+.. autoclass:: SMBcorr.datum
    :members:
 
 References

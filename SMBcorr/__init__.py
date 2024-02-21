@@ -3,8 +3,8 @@ import SMBcorr.time
 import SMBcorr.utilities
 import SMBcorr.version
 from SMBcorr.regress_model import regress_model
-from SMBcorr.constants import (
-    constants,
+from SMBcorr.datum import (
+    datum,
     _ellipsoids
 )
 # MAR

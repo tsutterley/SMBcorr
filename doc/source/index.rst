@@ -23,7 +23,7 @@ Python-based tools for correcting altimetry data for surface mass balance and fi
     :hidden:
     :caption: API Reference
 
-    api_reference/constants.rst
+    api_reference/datum.rst
     api_reference/regress_model.rst
     api_reference/spatial.rst
     api_reference/time.rst
