@@ -119,7 +119,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     #-- input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(fd[VARIABLE])
     #print(f"merra_hybrid_interp: shape is:{[nt, nx, ny]}")
-    
+
     #-- extract x and y coordinate arrays from grids if applicable
     if (np.ndim(fileID.variables['x'][:]) == 2):
         xg = fileID.variables['x'][:].copy()

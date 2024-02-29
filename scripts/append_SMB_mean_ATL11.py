@@ -319,7 +319,7 @@ def main():
         help='Working data directory')
     # region of firn model
     parser.add_argument('--region','-R',
-        metavar='REGION', type=str,
+        metavar='REGION', type=str, nargs='+',
         default=['GL'], choices=('AA','GL'),
         help='Region of model to interpolate')
     # surface mass balance product
@@ -332,8 +332,8 @@ def main():
         metavar=('START','END'), type=int, nargs=2,
         default=[2000,2019],
         help='Range of years to use in climatology')
-    parser.add_argument('--group_depth','-g', 
-        type=int, 
+    parser.add_argument('--group_depth','-g',
+        type=int,
         help='loop over groups in file to sepecified depth, write output to subgroups')
 
     args = parser.parse_args()

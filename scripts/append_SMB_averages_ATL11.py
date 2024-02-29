@@ -91,13 +91,13 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
     #models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
     models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
     models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
-    
+
     # RACMO
     models['GL']['RACMO'] = []
     # models['GL']['RACMO'].append('RACMO2.3-XGRN11')
     # models['GL']['RACMO'].append('RACMO2.3p2-XGRN11')
     models['GL']['RACMO'].append('RACMO2.3p2-FGRN055')
-    
+
     # MERRA2-hybrid
     models['GL']['MERRA2-hybrid'] = []
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
@@ -369,7 +369,7 @@ def main():
         help='Working data directory')
     # region of firn model
     parser.add_argument('--region','-R',
-        metavar='REGION', type=str,
+        metavar='REGION', type=str, nargs='+',
         default=['GL'], choices=('AA','GL'),
         help='Region of model to interpolate')
     # surface mass balance product
@@ -382,8 +382,8 @@ def main():
         metavar=('START','END'), type=int, nargs=2,
         default=[2000,2019],
         help='Range of years to use in climatology')
-    parser.add_argument('--group_depth','-g', 
-        type=int, 
+    parser.add_argument('--group_depth','-g',
+        type=int,
         help='loop over groups in file to sepecified depth, write output to subgroups')
     args = parser.parse_args()
 

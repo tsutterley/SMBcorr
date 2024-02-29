@@ -100,7 +100,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
     ##models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
     models['GL']['MAR'].append('MARv3.11.5-ERA-20km')
     models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
-    
+
     # RACMO
     models['GL']['RACMO'] = []
     # models['GL']['RACMO'].append('RACMO2.3-XGRN11')
@@ -111,10 +111,10 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
     #models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
-    #  
+    #
     models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
     models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
-    
+
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
@@ -408,7 +408,7 @@ def main():
         help='Working data directory')
     # region of firn model
     parser.add_argument('--region','-R',
-        metavar='REGION', type=str,
+        metavar='REGION', type=str, nargs='+',
         default=['GL'], choices=('AA','GL'),
         help='Region of model to interpolate')
     # surface mass balance product
@@ -416,15 +416,13 @@ def main():
         metavar='MODEL', type=str, nargs='+',
         default=['MAR'], choices=('MAR','RACMO','MERRA2-hybrid'),
         help='Regional climate model to run')
-    parser.add_argument('--group_depth','-g', 
-        type=int, 
+    parser.add_argument('--group_depth','-g',
+        type=int,
         help='loop over groups in file to sepecified depth, write output to subgroups')
 
     args = parser.parse_args()
 
     # run program with parameters
-    
-    
     for f in args.infile:
         if args.group_depth:
             groups=SMBcorr.get_h5_structure(f, args.group_depth)
