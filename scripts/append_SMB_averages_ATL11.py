@@ -39,10 +39,10 @@ UPDATE HISTORY:
     Updated 09/2020: added MARv3.11.2 6km outputs and MERRA2-hybrid subversions
     Written 06/2020
 """
-from email import parser
 import sys
 import os
 import re
+import sys
 import logging
 import SMBcorr
 import argparse
@@ -86,22 +86,18 @@ def set_projection(REGION):
         projection_flag = 'EPSG:3413'
     return projection_flag
 
-def append_SMB_averages_ATL11(input_file, base_dir, REGION, MODEL,
-    RANGE=[2000,2019], VERBOSE=False):
-
-    # create logger for verbosity level
-    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
-
+def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019], group=None):
     # read input file
-    field_dict = {None:('delta_time','h_corr','x','y')}
+    field_dict = {group:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
     # check if running crossover or along-track ATL11
     if (D11.h_corr.ndim == 3):
         nseg,ncycle,ncross = D11.shape
-    else:
+    elif (D11.h_corr.ndim == 2):
         nseg,ncycle = D11.shape
-
+    elif (D11.h_corr.ndim == 1):
+        nseg = D11.size
+        ncycle = 1
     # get projection of input coordinates
     EPSG = set_projection(REGION)
 
@@ -306,12 +302,17 @@ def append_SMB_averages_ATL11(input_file, base_dir, REGION, MODEL,
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
                 OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=bool)
             # check that there are valid elevations
-            cycle = [c for c in range(ncycle) if
-                np.any(np.isfinite(D11.delta_time[:,c]))]
+            if ncycle > 1:
+                cycle = [c for c in range(ncycle) if
+                         np.any(np.isfinite(D11.delta_time[:,c]))]
+            else:
+                cycle = [0]
             # for each valid cycle of ICESat-2 ATL11 data
-            for c in cycle:
+            for this_c in cycle:
+                if ncycle == 1:
+                    c = None
                 # find valid elevations
-                i, = np.nonzero(np.isfinite(D11.delta_time[:,c]))
+                i = np.flatnonzero(np.isfinite(D11.delta_time[:,c]))
                 # convert from delta time to decimal-years
                 tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
                 if (MODEL == 'MAR'):
@@ -366,7 +367,7 @@ def append_SMB_averages_ATL11(input_file, base_dir, REGION, MODEL,
                     np.isnan(OUTPUT[key].data)
             OUTPUT[key].data[OUTPUT[key].mask] = OUTPUT[key].fill_value
             # output variable to HDF5
-            val = '{0}/{1}'.format(model_version,key)
+            val = f'{group}/{model_version}/{key}'
             if val not in fileID:
                 h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
                             data=OUTPUT[key], dtype=OUTPUT[key].dtype,
@@ -412,6 +413,9 @@ def arguments():
         metavar=('START','END'), type=int, nargs=2,
         default=[2000,2019],
         help='Range of years to use in climatology')
+    parser.add_argument('--group_depth','-g',
+        type=int,
+        help='loop over groups in file to sepecified depth, write output to subgroups')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -426,11 +430,20 @@ def main():
     parser = arguments()
     args = parser.parse_args()
 
+    # create logger for verbosity level
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # run program with parameters
     for f in args.infile:
+        if args.group_depth:
+            groups=SMBcorr.get_h5_structure(f, args.group_depth)
+        else:
+            groups=['/']
         for m in args.model:
-            append_SMB_averages_ATL11(f, args.directory, args.region, m,
-                RANGE=args.year, VERBOSE=args.verbose)
+            for group in groups:
+                append_SMB_averages_ATL11(f,args.directory,
+                                          args.region,m,RANGE=args.year, group=group)
 
 # run main program
 if __name__ == '__main__':

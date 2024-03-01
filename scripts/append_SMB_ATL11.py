@@ -44,9 +44,9 @@ UPDATE HISTORY:
         copy mask variable from interpolation programs
     Written 05/2020
 """
-import sys
 import os
 import re
+import sys
 import logging
 import SMBcorr
 import argparse
@@ -90,20 +90,21 @@ def set_projection(REGION):
         projection_flag = 'EPSG:3413'
     return projection_flag
 
-def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
-
-    # create logger for verbosity level
-    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
-
+def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, group=None):
     # read input file
-    field_dict = {None:('delta_time','h_corr','x','y')}
+    field_dict = {group:('delta_time','h_corr','x','y')}
     D11 = pc.data().from_h5(input_file, field_dict=field_dict)
     # check if running crossover or along-track ATL11
     if (D11.h_corr.ndim == 3):
         nseg,ncycle,ncross = D11.shape
-    else:
+    elif (D11.h_corr.ndim == 2):
         nseg,ncycle = D11.shape
+    elif (D11.h_corr.ndim == 1):
+        for field in D11.fields:
+            setattr(D11, field, getattr(D11, field)[:, None])
+        D11.__update_size_and_shape__()
+        nseg = D11.size
+        ncycle = 1
 
     # get projection of input coordinates
     EPSG = set_projection(REGION)
@@ -315,12 +316,17 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
                 OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=bool)
                 OUTPUT[key].interpolation = np.zeros((nseg,ncycle),dtype=np.uint8)
             # check that there are valid elevations
+            #if ncycle > 1:
             cycle = [c for c in range(ncycle) if
-                np.any(np.isfinite(D11.delta_time[:,c]))]
+                         np.any(np.isfinite(D11.delta_time[:,c]))]
+            #else:
+            #    cycle = [0]
             # for each valid cycle of ICESat-2 ATL11 data
             for c in cycle:
+                #if ncycle == 1:
+                #    c = None
                 # find valid elevations
-                i, = np.nonzero(np.isfinite(D11.delta_time[:,c]))
+                i = np.flatnonzero(np.isfinite(D11.delta_time[:,c]))
                 # convert from delta time to decimal-years
                 tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
                 if (MODEL == 'MAR'):
@@ -376,7 +382,7 @@ def append_SMB_ATL11(input_file, base_dir, REGION, MODEL, VERBOSE=False):
                     np.isnan(OUTPUT[key].data)
             OUTPUT[key].data[OUTPUT[key].mask] = OUTPUT[key].fill_value
             # output variable to HDF5
-            val = '{0}/{1}'.format(model_version,key)
+            val = '{0}/{1}/{2}'.format(group, model_version,key)
             if val not in fileID:
                 h5[key] = fileID.create_dataset(val, OUTPUT[key].shape,
                     data=OUTPUT[key], dtype=OUTPUT[key].dtype,
@@ -417,6 +423,9 @@ def arguments():
         metavar='MODEL', type=str, nargs='+',
         default=['MAR'], choices=('MAR','RACMO','MERRA2-hybrid'),
         help='Regional climate model to run')
+    parser.add_argument('--group_depth','-g',
+        type=int,
+        help='loop over groups in file to sepecified depth, write output to subgroups')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -431,11 +440,19 @@ def main():
     parser = arguments()
     args = parser.parse_args()
 
+    # create logger for verbosity level
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # run program with parameters
     for f in args.infile:
+        if args.group_depth:
+            groups=SMBcorr.get_h5_structure(f, args.group_depth)
+        else:
+            groups=['/']
         for m in args.model:
-            append_SMB_ATL11(f, args.directory, args.region, m,
-                VERBOSE=args.verbose)
+            for group in groups:
+                append_SMB_ATL11(f,args.directory,args.region,m, group=group)
 
 # run main program
 if __name__ == '__main__':

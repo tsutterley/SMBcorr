@@ -32,7 +32,6 @@ UPDATE HISTORY:
     Updated 08/2020: added NASA Earthdata routines for downloading from CDDIS
     Written 07/2020
 """
-import os
 import re
 import copy
 import logging

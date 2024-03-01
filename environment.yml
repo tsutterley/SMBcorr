@@ -5,6 +5,9 @@ dependencies:
   - lxml
   - notebook
   - numpy
+  - scipy
+  - pyproj
+  - python-dateutil
   - netCDF4
   - pip
   - pyproj

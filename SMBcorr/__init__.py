@@ -34,5 +34,7 @@ from SMBcorr.racmo_interp_daily import interpolate_racmo_daily
 from SMBcorr.racmo_interp_downscaled import interpolate_racmo_downscaled
 from SMBcorr.racmo_interp_firn_height import interpolate_racmo_firn
 from SMBcorr.racmo_interp_mean import interpolate_racmo_mean
+from SMBcorr.get_h5_structure import get_h5_structure
+from SMBcorr.append_gsfc_zmelt import interp_gsfc_zmelt
 # get version number
 __version__ = SMBcorr.version.version
