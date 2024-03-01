@@ -1,5 +1,6 @@
+lxml
 numpy
-scipy
+scipy>=1.10.1
 pyproj
 python-dateutil
 netCDF4

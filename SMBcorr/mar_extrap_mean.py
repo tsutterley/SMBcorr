@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_mean.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates mean MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -47,6 +47,7 @@ PYTHON DEPENDENCIES:
         https://github.com/scikit-learn/scikit-learn
 
 UPDATE HISTORY:
+    Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
     Written 08/2020
@@ -56,125 +57,197 @@ from __future__ import print_function
 import sys
 import os
 import re
-import pyproj
-import netCDF4
+import warnings
 import numpy as np
 import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
-from sklearn.neighbors import KDTree, BallTree
 
-#-- PURPOSE: read and interpolate a mean field of MAR outputs
+# attempt imports
+try:
+    import netCDF4
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
+try:
+    from sklearn.neighbors import KDTree, BallTree
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("scikit-learn not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
+
+# PURPOSE: read and interpolate a mean field of MAR outputs
 def extrapolate_mar_mean(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     XNAME=None, YNAME=None, TIMENAME='TIME', VARIABLE='SMB',
-    RANGE=[2000,2019], SIGMA=1.5, SEARCH='BallTree', NN=10, POWER=2.0,
-    FILL_VALUE=None):
+    RANGE=[2000,2019], SEARCH='BallTree', NN=10, POWER=2.0,
+    SIGMA=1.5, FILL_VALUE=None):
+    """
+    Spatially extrapolates the temporal mean of MAR products
 
-    #-- regular expression pattern for MAR dataset
+    Parameters
+    ----------
+    DIRECTORY: str
+        Working data directory
+    EPSG: str or int
+        input coordinate reference system
+    VERSION: str
+        MAR Version
+
+            - ``v3.5.2``
+            - ``v3.9``
+            - ``v3.10``
+            - ``v3.11``
+    tdec: float
+        time coordinates to interpolate in year-decimal
+    X: float
+        x-coordinates to interpolate
+    Y: float
+        y-coordinates to interpolate
+    VARIABLE: str, default 'SMB'
+        MAR product to interpolate
+
+            - ``SMB``: Surface Mass Balance
+            - ``PRECIP``: Precipitation
+            - ``SNOWFALL``: Snowfall
+            - ``RAINFALL``: Rainfall
+            - ``RUNOFF``: Melt Water Runoff
+            - ``SNOWMELT``: Snowmelt
+            - ``REFREEZE``: Melt Water Refreeze
+            - ``SUBLIM``: Sublimation
+
+    XNAME: str or NoneType, default None
+        Name of the x-coordinate variable
+    YNAME: str or NoneType, default None
+        Name of the y-coordinate variable
+    TIMENAME: str or NoneType, default 'TIME'
+        Name of the time variable
+    RANGE: list, default [2000,2019]
+        Start and end year of mean
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+    NN: int, default 10
+        number of nearest-neighbor points to use
+    POWER: int or float, default 2.0
+        Inverse distance weighting power
+    SIGMA: float, default 1.5
+        Standard deviation for Gaussian kernel
+    FILL_VALUE: float or NoneType, default None
+        Output fill_value for invalid points
+
+        Default will use fill values from data file
+    """
+
+    # regular expression pattern for MAR dataset
     rx = re.compile('MAR_SMBavg(.*?){0}-{1}.nc$'.format(*RANGE))
-    #-- find mar mean file for RANGE
+    # find mar mean file for RANGE
     FILE, = [f for f in os.listdir(DIRECTORY) if rx.match(f)]
-    #-- Open the MAR NetCDF file for reading
+    # Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
         nx = len(fileID.variables[XNAME][:])
         ny = len(fileID.variables[YNAME][:])
 
-    #-- python dictionary with file variables
+    # python dictionary with file variables
     fd = {}
-    #-- create a masked array with all data
+    # create a masked array with all data
     fd[VARIABLE] = np.ma.zeros((ny,nx),fill_value=FILL_VALUE)
-    fd[VARIABLE].mask = np.zeros((ny,nx),dtype=np.bool)
-    #-- python dictionary with gaussian filtered variables
+    fd[VARIABLE].mask = np.zeros((ny,nx),dtype=bool)
+    # python dictionary with gaussian filtered variables
     gs = {}
-    #-- use a gaussian filter to smooth each model field
+    # use a gaussian filter to smooth each model field
     gs[VARIABLE] = np.ma.zeros((ny,nx), fill_value=FILL_VALUE)
-    gs[VARIABLE].mask = np.ones((ny,nx), dtype=np.bool)
-    #-- Open the MAR NetCDF file for reading
+    gs[VARIABLE].mask = np.ones((ny,nx), dtype=bool)
+    # Open the MAR NetCDF file for reading
     with netCDF4.Dataset(os.path.join(DIRECTORY,FILE), 'r') as fileID:
-        #-- surface type
+        # surface type
         SRF=fileID.variables['SRF'][:]
-        #-- indices of specified ice mask
+        # indices of specified ice mask
         i,j=np.nonzero(SRF == 4)
-        #-- Get data from netCDF variable and remove singleton dimensions
+        # Get data from netCDF variable and remove singleton dimensions
         tmp=np.squeeze(fileID.variables[VARIABLE][:])
-        #-- combine sectors for multi-layered data
+        # combine sectors for multi-layered data
         if (np.ndim(tmp) == 3):
-            #-- ice fraction
+            # ice fraction
             FRA=fileID.variables['FRA'][:]/100.0
-            #-- create mask for combining data
+            # create mask for combining data
             MASK = np.zeros((ny,nx))
             MASK[i,j] = FRA[i,j]
-            #-- combine data
+            # combine data
             fd[VARIABLE][:,:] = MASK*tmp[0,:,:] + \
                 (1.0-MASK)*tmp[1,:,:]
         else:
-            #-- copy data
+            # copy data
             fd[VARIABLE][:,:] = tmp.copy()
-        #-- verify mask object for interpolating data
+        # verify mask object for interpolating data
         fd[VARIABLE].mask[:,:] |= (SRF != 4)
-        #-- combine mask object through time to create a single mask
-        fd['MASK']=1.0 - np.array(fd[VARIABLE].mask,dtype=np.float)
-        #-- MAR coordinates
+        # combine mask object through time to create a single mask
+        fd['MASK']=1.0 - np.array(fd[VARIABLE].mask,dtype=np.float64)
+        # MAR coordinates
         fd['LON']=fileID.variables['LON'][:,:].copy()
         fd['LAT']=fileID.variables['LAT'][:,:].copy()
-        #-- convert x and y coordinates to meters
+        # convert x and y coordinates to meters
         fd['x']=1000.0*fileID.variables[XNAME][:].copy()
         fd['y']=1000.0*fileID.variables[YNAME][:].copy()
-        #-- use a gaussian filter to smooth mask
+        # use a gaussian filter to smooth mask
         gs['MASK']=scipy.ndimage.gaussian_filter(fd['MASK'],SIGMA,
             mode='constant',cval=0)
-        #-- indices of smoothed ice mask
+        # indices of smoothed ice mask
         ii,jj = np.nonzero(np.ceil(gs['MASK']) == 1.0)
-        #-- replace fill values before smoothing data
+        # replace fill values before smoothing data
         temp1 = np.zeros((ny,nx))
         i,j = np.nonzero(~fd[VARIABLE].mask)
         temp1[i,j] = fd[VARIABLE][i,j].copy()
-        #-- smooth spatial field
+        # smooth spatial field
         temp2 = scipy.ndimage.gaussian_filter(temp1, SIGMA,
             mode='constant', cval=0)
-        #-- scale output smoothed field
+        # scale output smoothed field
         gs[VARIABLE].data[ii,jj] = temp2[ii,jj]/gs['MASK'][ii,jj]
-        #-- replace valid values with original
+        # replace valid values with original
         gs[VARIABLE].data[i,j] = temp1[i,j]
-        #-- set mask variables for time
+        # set mask variables for time
         gs[VARIABLE].mask[ii,jj] = False
 
-    #-- convert MAR latitude and longitude to input coordinates (EPSG)
+    # convert MAR latitude and longitude to input coordinates (EPSG)
     crs1 = pyproj.CRS.from_string(EPSG)
     crs2 = pyproj.CRS.from_epsg(4326)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     direction = pyproj.enums.TransformDirection.INVERSE
-    #-- convert projection from model coordinates
+    # convert projection from model coordinates
     xg,yg = transformer.transform(fd['LON'], fd['LAT'], direction=direction)
 
-    #-- construct search tree from original points
-    #-- can use either BallTree or KDTree algorithms
+    # construct search tree from original points
+    # can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[i,j,None],yg[i,j,None]),axis=1)
     tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
 
-    #-- number of output data points
+    # number of output data points
     npts = len(tdec)
-    #-- output interpolated arrays of output variable
-    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float)
-    extrap.mask = np.ones((npts),dtype=np.bool)
+    # output interpolated arrays of output variable
+    extrap = np.ma.zeros((npts),fill_value=FILL_VALUE,dtype=np.float64)
+    extrap.mask = np.ones((npts),dtype=bool)
 
-    #-- query the search tree to find the NN closest points
+    # query the search tree to find the NN closest points
     xy2 = np.concatenate((X[:,None],Y[:,None]),axis=1)
     dist,indices = tree.query(xy2, k=NN, return_distance=True)
-    #-- normalized weights if POWER > 0 (typically between 1 and 3)
-    #-- in the inverse distance weighting
+    # normalized weights if POWER > 0 (typically between 1 and 3)
+    # in the inverse distance weighting
     power_inverse_distance = dist**(-POWER)
     s = np.sum(power_inverse_distance)
     w = power_inverse_distance/s
-    #-- variable for valid points
+    # variable for valid points
     var1 = gs[VARIABLE][i,j]
-    #-- spatially extrapolate using inverse distance weighting
+    # spatially extrapolate using inverse distance weighting
     extrap.data[:] = np.sum(w*var1[indices],axis=1)
 
-    #-- complete mask if any invalid in data
+    # complete mask if any invalid in data
     invalid, = np.nonzero((extrap.data == extrap.fill_value) |
         np.isnan(extrap.data))
     extrap.mask[invalid] = True
 
-    #-- return the interpolated values
+    # return the interpolated values
     return extrap

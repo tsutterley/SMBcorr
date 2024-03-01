@@ -12,15 +12,6 @@ echo "Along-track file: "$AT_file
 
 [ -f $xover_file ] && [ -f $AT_file ] && echo "yep"
 #exit
-=======
-# dest_dir=/Volumes/ice2/ben/MAR/ATL11_with_corrections/temp
-dest_dir=/Volumes/ice3/tyler/MAR/ATL11_with_corrections/rel002a
-
-atl11_files=( "rel002_crossover_data.h5" "rel002_dump_every_2nd.h5" )
-
-for i in "${atl11_files[@]}"
-do
-
     # check if running crossover or along track file
     if [[ $i =~ "crossover" ]]
     then

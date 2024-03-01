@@ -12,25 +12,27 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: [3.5, 3.6, 3.7, 3.8]
+        os: [ubuntu-20.04, macos-latest]
+        python-version: [3.8]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies for Linux
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-20.04'
       run: |
-        sudo apt-get install gdal-bin libgdal-dev libproj-dev proj-data proj-bin libgeos-dev
-        sudo apt-get install libhdf5-dev libnetcdf-dev
-        pip install --upgrade pip
-        pip install flake8 pytest pytest-cov numpy
+        sudo apt-get update
+        sudo apt-get install gdal-bin libgdal-dev libproj-dev proj-data proj-bin \
+            libgeos-dev libhdf5-dev libnetcdf-dev
         export CPLUS_INCLUDE_PATH=/usr/include/gdal
         export C_INCLUDE_PATH=/usr/include/gdal
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install --upgrade pip
+        pip install flake8 pytest pytest-cov numpy
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        pip install .
     - name: Install dependencies for MacOS
       if: matrix.os == 'macos-latest'
       run: |
@@ -42,14 +44,11 @@ jobs:
         pip install --upgrade pip
         pip install --upgrade setuptools
         pip install flake8 pytest pytest-cov numpy
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install --no-deps git+https://github.com/SmithB/pointCollection.git
+        pip install .
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Test with pytest
-      run: |
-        pip install --no-deps .
-        #pytest

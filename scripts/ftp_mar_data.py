@@ -1,26 +1,33 @@
 #!/usr/bin/env python
 u"""
 ftp_mar_data.py
-Written by Tyler Sutterley (05/2020)
+Written by Tyler Sutterley (10/2021)
 
 Syncs MAR regional climate outputs for a given ftp url
     ftp://ftp.climato.be/fettweis
 
 CALLING SEQUENCE:
-    python ftp_mar_data.py --directory=<path> <ftp://url>
+    python ftp_mar_data.py --directory <path> <ftp://url>
 
 INPUTS:
     full ftp url
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
-    -P X, --np=X: Run in parallel with X number of processes
-    -D X, --directory=X: full path to working data directory
-    -Y X, --year=X: Reduce files to years of interest
+    -P X, --np X: Run in parallel with X number of processes
+    -D X, --directory X: full path to working data directory
+    -Y X, --year X: Reduce files to years of interest
     -C, --clobber: Overwrite existing data in transfer
-    -M X, --mode=X: Local permissions mode of the directories and files synced
+    -T X, --timeout X: Timeout in seconds for blocking operations
+    -l, --log: output log of files downloaded
+    -M X, --mode X: Local permissions mode of the directories and files synced
+
+PROGRAM DEPENDENCIES:
+    utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 10/2021: using python logging for handling verbose output
+        use utilities module for finding and retrieving files
     Updated 05/2020: added years option to reduce list of files
     Updated 11/2019: added multiprocessing option to run in parallel
     Written 07/2019
@@ -28,155 +35,174 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import getopt
 import os
-import re
-import calendar, time
-import ftplib
+import time
+import logging
+import argparse
 import traceback
 import posixpath
 import multiprocessing
-if sys.version_info[0] == 2:
-    import urlparse
-else:
-    import urllib.parse as urlparse
+import SMBcorr.utilities
 
-#-- PURPOSE: check internet connection
-def check_connection():
-    #-- attempt to connect to ftp host for MAR datasets
-    try:
-        f = ftplib.FTP('ftp.climato.be')
-        f.login()
-        f.voidcmd("NOOP")
-    except IOError:
-        raise RuntimeError('Check internet connection')
+# PURPOSE: sync local MAR files with ftp and handle error exceptions
+def ftp_mar_data(parsed_ftp, DIRECTORY=None, YEARS=None, TIMEOUT=None,
+    LOG=False, PROCESSES=0, CLOBBER=False, MODE=0o775):
+
+    # check if local directory exists and recursively create if not
+    if not os.path.exists(DIRECTORY):
+        os.makedirs(DIRECTORY,mode=MODE)
+
+    # output of synchronized files
+    if LOG:
+        # format: MAR_sync_2002-04-01.log
+        today = time.strftime('%Y-%m-%d',time.localtime())
+        LOGFILE = 'MAR_sync_{0}.log'.format(today)
+        logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
+            level=logging.INFO)
+        logging.info(f'MAR Data Sync Log ({today})')
+
     else:
-        return True
+        # standard output (terminal output)
+        logging.basicConfig(level=logging.INFO)
 
-#-- PURPOSE: sync local MAR files with ftp and handle error exceptions
-def ftp_mar_data(netloc, remote_file, local_file, CLOBBER=False, MODE=0o775):
-    #-- try to download the file
+    # list directories from ftp
+    R1 = r'\d+' if not YEARS else r'|'.join(map(str,YEARS))
+    # find files and reduce to years of interest if specified
+    remote_files,remote_times = SMBcorr.utilities.ftp_list(
+        [parsed_ftp.netloc,parsed_ftp.path], timeout=TIMEOUT,
+        basename=True, pattern=R1, sort=True)
+
+    # sync each data file
+    out = []
+    # set multiprocessing start method
+    ctx = multiprocessing.get_context("fork")
+    # sync in parallel with multiprocessing Pool
+    pool = ctx.Pool(processes=PROCESSES)
+    # download remote MAR files to local directory
+    for colname,collastmod in zip(remote_files,remote_times):
+        remote_path = [parsed_ftp.netloc, parsed_ftp.path, colname]
+        local_file = os.path.join(DIRECTORY,colname)
+        kwds = dict(TIMEOUT=TIMEOUT, CLOBBER=CLOBBER, MODE=MODE)
+        out.append(pool.apply_async(multiprocess_sync,
+            args=(remote_path,collastmod,local_file),
+            kwds=kwds))
+    # start multiprocessing jobs
+    # close the pool
+    # prevents more tasks from being submitted to the pool
+    pool.close()
+    # exit the completed processes
+    pool.join()
+    # print the output string
+    for output in out:
+        temp = output.get()
+        logging.info(temp) if temp else None
+
+    # close log file and set permissions level to MODE
+    if LOG:
+        os.chmod(os.path.join(DIRECTORY,LOGFILE), MODE)
+
+# PURPOSE: wrapper for running the sync program in multiprocessing mode
+def multiprocess_sync(*args, **kwds):
     try:
-        #-- connect and login to MAR ftp server
-        ftp = ftplib.FTP(netloc)
-        ftp.login()
-        ftp_mirror_file(ftp,remote_file,local_file,CLOBBER=CLOBBER,MODE=MODE)
-    except:
-        #-- if there has been an error exception
-        #-- print the type, value, and stack trace of the
-        #-- current exception being handled
-        print('process id {0:d} failed'.format(os.getpid()))
-        traceback.print_exc()
+        output = ftp_mirror_file(*args, **kwds)
+    except Exception as exc:
+        # if there has been an error exception
+        # print the type, value, and stack trace of the
+        # current exception being handled
+        logging.critical(f'process id {os.getpid():d} failed')
+        logging.error(traceback.format_exc())
     else:
-        #-- close the ftp connection
-        ftp.quit()
+        return output
 
-#-- PURPOSE: pull file from a remote host checking if file exists locally
-#-- and if the remote file is newer than the local file
-def ftp_mirror_file(ftp, remote_file, local_file, CLOBBER=False, MODE=0o775):
-    #-- if file exists in file system: check if remote file is newer
-    TEST = False
-    OVERWRITE = ' (clobber)'
-    #-- get last modified date of remote file and convert into unix time
-    mdtm = ftp.sendcmd('MDTM {0}'.format(remote_file))
-    remote_mtime = calendar.timegm(time.strptime(mdtm[4:],"%Y%m%d%H%M%S"))
-    #-- check if local version of file exists
+# PURPOSE: pull file from a remote host checking if file exists locally
+# and if the remote file is newer than the local file
+def ftp_mirror_file(remote_path, remote_mtime, local_file, **kwargs):
+    # check if local version of file exists
+    local_hash = SMBcorr.utilities.get_hash(local_file)
     if os.access(local_file, os.F_OK):
-        #-- check last modification time of local file
+        # check last modification time of local file
         local_mtime = os.stat(local_file).st_mtime
-        #-- if remote file is newer: overwrite the local file
+        # if remote file is newer: overwrite the local file
         if (remote_mtime > local_mtime):
             TEST = True
             OVERWRITE = ' (overwrite)'
     else:
         TEST = True
         OVERWRITE = ' (new)'
-    #-- if file does not exist locally, is to be overwritten, or CLOBBER is set
-    if TEST or CLOBBER:
-        #-- Printing files transferred
-        print('{0} -->'.format(posixpath.join('ftp://',ftp.host,remote_file)))
-        print('\t{0}{1}\n'.format(local_file,OVERWRITE))
-        #-- copy remote file contents to local file
-        with open(local_file, 'wb') as f:
-            ftp.retrbinary('RETR {0}'.format(remote_file), f.write)
-        #-- keep remote modification time of file and local access time
+    # if file does not exist locally, is to be overwritten, or CLOBBER is set
+    if TEST or kwargs['CLOBBER']:
+        # output string for printing files transferred
+        output = '{0} -->\n\t{1}{2}\n'.format(posixpath.join(*remote_path),
+            local_file,OVERWRITE)
+        # copy remote file contents to local file
+        SMBcorr.utilities.from_ftp(remote_path,timeout=kwargs['TIMEOUT'],
+            local=local_file,hash=local_hash)
+        # keep remote modification time of file and local access time
         os.utime(local_file, (os.stat(local_file).st_atime, remote_mtime))
-        os.chmod(local_file, MODE)
+        os.chmod(local_file, kwargs['MODE'])
+        # return the output string
+        return output
 
-#-- PURPOSE: help module to describe the optional input parameters
-def usage():
-    print('\nHelp: {}'.format(os.path.basename(sys.argv[0])))
-    print(' -P X, --np=X\tRun in parallel with X number of processes')
-    print(' -D X, --directory=X\tWorking Data Directory')
-    print(' -Y X, --year=X\tReduce files to years of interest')
-    print(' -C, --clobber\t\tOverwrite existing data in transfer')
-    print(' -M X, --mode=X\t\tPermission mode of directories and files\n')
+# PURPOSE: create arguments parser
+def arguments():
+    parser = argparse.ArgumentParser(
+        description="""Syncs MAR regional climate outputs for a given ftp url
+            """
+    )
+    parser.add_argument('url',
+        type=str,
+        help='MAR ftp url')
+    # working data directory
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
+    # years of data to sync
+    parser.add_argument('--year','-Y',
+        type=int, nargs='+',
+        help='Years to sync')
+    # Output log file
+    parser.add_argument('--log','-l',
+        default=False, action='store_true',
+        help='Output log file')
+    # run sync in series if processes is 0
+    parser.add_argument('--np','-P',
+        metavar='PROCESSES', type=int, default=1,
+        help='Number of processes to use in file downloads')
+    # connection timeout
+    parser.add_argument('--timeout','-T',
+        type=int, default=120,
+        help='Timeout in seconds for blocking operations')
+    # clobber will overwrite the existing data
+    parser.add_argument('--clobber','-C',
+        default=False, action='store_true',
+        help='Overwrite existing data')
+    # permissions mode of the local directories and files (number in octal)
+    parser.add_argument('--mode','-M',
+        type=lambda x: int(x,base=8), default=0o775,
+        help='permissions mode of output files')
+    # return the parser
+    return parser
 
-#-- This is the main part of the program that calls the individual modules
+# This is the main part of the program that calls the individual modules
 def main():
-    #-- Read the system arguments listed after the program
-    long_options = ['help','np=','directory=','year=','clobber','mode=']
-    optlist,arglist = getopt.getopt(sys.argv[1:],'hP:D:Y:CM:',long_options)
+    # Read the system arguments listed after the program
+    parser = arguments()
+    args,_ = parser.parse_known_args()
 
-    #-- command line parameters
-    local_dir = os.getcwd()
-    #-- years to sync (default all)
-    YEARS = '\d+'
-    #-- number of processes
-    PROCESSES = 1
-    CLOBBER = False
-    #-- permissions mode of the local directories and files (number in octal)
-    MODE = 0o775
-    for opt, arg in optlist:
-        if opt in ('-h','--help'):
-            usage()
-            sys.exit()
-        elif opt in ("-D","--directory"):
-            local_dir = os.path.expanduser(arg)
-        elif opt in ("-Y","--year"):
-            YEARS = '|'.join(arg.split(','))
-        elif opt in ("-P","--np"):
-            PROCESSES = int(arg)
-        elif opt in ("-C","--clobber"):
-            CLOBBER = True
-        elif opt in ("-M","--mode"):
-            MODE = int(arg, 8)
+    # check internet connection
+    if SMBcorr.utilities.check_ftp_connection('ftp.climato.be'):
+        # run program for parsed ftp
+        parsed_ftp = SMBcorr.utilities.urlparse.urlparse(args.url)
+        ftp_mar_data(parsed_ftp,
+            DIRECTORY=args.directory,
+            YEARS=args.year,
+            TIMEOUT=args.timeout,
+            LOG=args.log,
+            PROCESSES=args.np,
+            CLOBBER=args.clobber,
+            MODE=args.mode)
 
-    #-- need to input a ftp path
-    if not arglist:
-        raise IOError('Need to input a path to the MAR ftp server')
-
-    #-- check internet connection
-    if check_connection():
-        #-- check if local directory exists and recursively create if not
-        os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
-
-        #-- connect and login to MAR ftp server
-        #-- get list of files to download
-        parsed_ftp = urlparse.urlparse(arglist[0])
-        ftp = ftplib.FTP(parsed_ftp.netloc)
-        ftp.login()
-        # find files and reduce to years of interest if specified
-        remote_files = sorted([f for f in ftp.nlst(parsed_ftp.path)
-            if re.search(YEARS,posixpath.basename(f))])
-        ftp.quit()
-
-        #-- run in parallel with multiprocessing Pool
-        pool = multiprocessing.Pool(processes=PROCESSES)
-        #-- download remote MAR files to local directory
-        for j,remote_file in enumerate(remote_files):
-            #-- extract filename
-            url,fi = posixpath.split(remote_file)
-            args = (parsed_ftp.netloc, remote_file, os.path.join(local_dir,fi),)
-            kwds = dict(CLOBBER=CLOBBER, MODE=MODE)
-            pool.apply_async(ftp_mar_data, args=args, kwds=kwds)
-        #-- start multiprocessing jobs
-        #-- close the pool
-        #-- prevents more tasks from being submitted to the pool
-        pool.close()
-        #-- exit the completed processes
-        pool.join()
-
-#-- run main program
+# run main program
 if __name__ == '__main__':
     main()

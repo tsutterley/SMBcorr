@@ -1,17 +1,21 @@
 #!/usr/bin/env python
 u"""
 append_SMB_averages_ATL11.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (08/2022)
 Interpolates seasonal averages of model firn estimates to the coordinates
     of an ATL11 file
 
 CALLING SEQUENCE:
     python append_SMB_averages_ATL11.py --directory=<path> --region=GL <path_to_file>
 
+INPUTS:
+    Merged ATL11 file
+
 COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working data directory
-    -R X, --region=X: Region to interpolate (GL, AA)
-    -M X, --model=X: Regional climate models to run
+    -D X, --directory X: Working data directory
+    -R X, --region X: Region to interpolate (GL, AA)
+    -M X, --model X: Regional climate models to run
+    -V, --verbose: Output information about each created file
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -25,18 +29,37 @@ PYTHON DEPENDENCIES:
         https://github.com/SmithB/pointCollection
 
 UPDATE HISTORY:
-    Updated 02/2021: set a keyword argument dict with parameters
+    Updated 08/2022: use argparse descriptions within documentation
+    Updated 12/2021: added GSFC MERRA-2 Hybrid Greenland v1.2
+    Updated 04/2021: added GSFC MERRA-2 Hybrid Antarctica v1.1
+    Updated 02/2021: added new MERRA2-hybrid v1.1 variables
+        added new MARv3.11.5 Greenland outputs
+        set a keyword argument dict with standard and optional parameters
     Updated 01/2021: using utilities from time module for conversions
     Updated 09/2020: added MARv3.11.2 6km outputs and MERRA2-hybrid subversions
     Written 06/2020
 """
+import sys
 import os
 import re
-import h5py
+import logging
 import SMBcorr
 import argparse
+import warnings
 import numpy as np
-import pointCollection as pc
+# attempt imports
+try:
+    import h5py
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
+try:
+    import pointCollection as pc
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pointCollection not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: convert time from delta seconds into Julian and year-decimal
 def convert_delta_time(delta_time, gps_epoch=1198800018.0):
@@ -85,12 +108,16 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
     # models['GL']['MAR'].append('MARv3.10-ERA')
     # models['GL']['MAR'].append('MARv3.11-NCEP')
     # models['GL']['MAR'].append('MARv3.11-ERA')
-    #models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
-    #models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
-    #models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
-    models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
-    models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
+    # models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
+    # models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
+    # models['GL']['MAR'].append('MARv3.11.5-ERA-6km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-10km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-15km')
+    models['GL']['MAR'].append('MARv3.11.5-ERA-20km')
 
     # RACMO
     models['GL']['RACMO'] = []
@@ -102,13 +129,14 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
     models['GL']['MERRA2-hybrid'] = []
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
     # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-    models={'GL':{'MERRA2-hybrid':['GSFC-fdm-v1.2']}
+    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+    # models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
+    models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
     models['AA']['MERRA2-hybrid'] = []
     # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
-    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-
-
+    # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+    # models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+    models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
 
     # for each model to append to ATL11
     for model_version in models[REGION][MODEL]:
@@ -131,6 +159,10 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             SUBDIRECTORY['GL']['MARv3.11.2-ERA-15km']=['15km_ERA5']
             SUBDIRECTORY['GL']['MARv3.11.2-ERA-20km']=['20km_ERA5']
             SUBDIRECTORY['GL']['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-6km']=['6km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-10km']=['10km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-15km']=['15km_ERA5']
+            SUBDIRECTORY['GL']['MARv3.11.5-ERA-20km']=['20km_ERA5']
             MAR_MODEL=SUBDIRECTORY[REGION][model_version]
             DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
             # keyword arguments for variable coordinates
@@ -145,9 +177,15 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             MAR_KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
             MAR_KWARGS['GL']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             MAR_KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
+            MAR_KWARGS['GL']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
             KWARGS.update(MAR_KWARGS[REGION][model_version])
+            # netCDF4 variable names for direct fields
+            VARIABLES = ['ZN6','ZN4','ZN5']
             # output variable keys for both direct and derived fields
-            KEYS = ['zsurf_ave', 'zfirn_ave','zmelt_ave','zsmb_ave','zaccum_ave','SMB']
+            KEYS = ['zsurf_ave', 'zfirn_ave','zmelt_ave','zsmb_ave','zaccum_ave']
             # HDF5 longname attributes for each variable
             LONGNAME = {}
             LONGNAME['zsurf_ave'] = "Snow Height Change"
@@ -155,9 +193,10 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             LONGNAME['zmelt_ave'] = "Snow Height Change due to Surface Melt"
             LONGNAME['zsmb_ave'] = "Snow Height Change due to Surface Mass Balance"
             LONGNAME['zaccum_ave'] = "Snow Height Change due to Surface Accumulation"
-            LONGNAME['SMB'] = 'Cumulative SMB'
         elif (MODEL == 'RACMO'):
             RACMO_VERSION,RACMO_MODEL=model_version.split('-')
+            # netCDF4 variable names
+            VARIABLES = ['hgtsrf']
             # output variable keys
             KEYS = ['zsurf_ave']
             # HDF5 longname attributes for each variable
@@ -165,7 +204,7 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             LONGNAME['zsurf_ave'] = "Snow Height Change"
         elif (MODEL == 'MERRA2-hybrid'):
             # regular expression pattern for extracting version
-            merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?)$')
+            merra2_regex = re.compile(r'GSFC-fdm-((v\d+)(\.\d+)?(\.\d+)?)$')
             # get MERRA-2 version and major version
             MERRA2_VERSION = merra2_regex.match(model_version).group(1)
             # MERRA-2 hybrid directory
@@ -175,17 +214,28 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             # keyword arguments for MERRA-2 interpolation programs
             if MERRA2_VERSION in ('v0','v1','v1.0'):
                 KWARGS['VERSION'] = merra2_regex.match(model_version).group(2)
+                # netCDF4 variable names
                 VARIABLES = ['FAC','cum_smb_anomaly','height']
+                # add additional Greenland variables
+                if (MERRA2_REGION == 'gris'):
+                    VARIABLES.append('runoff_anomaly')
             else:
                 KWARGS['VERSION'] = MERRA2_VERSION.replace('.','_')
+                # netCDF4 variable names
                 VARIABLES = ['FAC','SMB_a','h_a']
-            # output variable keys for both direct and derived fields
-            KEYS = ['zsurf_ave','zfirn_ave','zsmb_ave']
+                # add additional Greenland variables
+                if (MERRA2_REGION == 'gris'):
+                    VARIABLES.append('Me_a')
+            # output variable keys
+            KEYS = ['zfirn_ave','zsmb_ave','zsurf_ave','zmelt_ave']
             # HDF5 longname attributes for each variable
             LONGNAME = {}
             LONGNAME['zsurf_ave'] = "Snow Height Change"
             LONGNAME['zfirn_ave'] = "Snow Height Change due to Compaction"
             LONGNAME['zsmb_ave'] = "Snow Height Change due to Surface Mass Balance"
+            LONGNAME['zmelt_ave'] = "Snow Height Change due to to Surface Melt"
+        else:
+            raise ValueError(f'Unknown model {MODEL}')
 
         # check if running crossover or along track
         if (D11.h_corr.ndim == 3):
@@ -193,7 +243,7 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle,ncross),fill_value=np.nan)
-                OUTPUT[key].mask = np.ones((nseg,ncycle,ncross),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle,ncross),dtype=bool)
             # for each cycle of ICESat-2 ATL11 data
             for c in range(ncycle):
                 # check that there are valid crossovers
@@ -206,60 +256,50 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
                     # convert from delta time to decimal-years
                     tdec = convert_delta_time(D11.delta_time[i,c,xo])['decimal']
                     if (MODEL == 'MAR'):
-                        # read and interpolate daily MAR outputs
-                        ZN4 = SMBcorr.interpolate_mar_seasonal(DIRECTORY, EPSG,
-                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN4', **KWARGS)
-                        ZN5 = SMBcorr.interpolate_mar_seasonal(DIRECTORY, EPSG,
-                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN5', **KWARGS)
-                        ZN6 = SMBcorr.interpolate_mar_seasonal(DIRECTORY, EPSG,
-                            MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                            VARIABLE='ZN6', **KWARGS)
-                        # set attributes to output for iteration
-                        OUTPUT['zfirn_ave'].data[i,c,xo] = np.copy(ZN4.data)
-                        OUTPUT['zfirn_ave'].mask[i,c,xo] = np.copy(ZN4.mask)
-                        OUTPUT['zsurf_ave'].data[i,c,xo] = np.copy(ZN6.data)
-                        OUTPUT['zsurf_ave'].mask[i,c,xo] = np.copy(ZN6.mask)
-                        OUTPUT['zmelt_ave'].data[i,c,xo] = np.copy(ZN5.data)
-                        OUTPUT['zmelt_ave'].mask[i,c,xo] = np.copy(ZN5.mask)
+                        for key,var in zip(KEYS,VARIABLES):
+                            # read and interpolate daily MAR outputs
+                            OUT =  SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                                MAR_VERSION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                                VARIABLE=var, **KWARGS)
+                            # set attributes to output for iteration
+                            OUTPUT[key].data[i,c,xo] = np.copy(OUT.data)
+                            OUTPUT[key].mask[i,c,xo] = np.copy(OUT.mask)
+                            OUTPUT[key].interpolation[i,c,xo] = np.copy(OUT.interpolation)
                         # calculate derived fields
-                        OUTPUT['zsmb_ave'].data[i,c,xo] = ZN6.data - ZN4.data
-                        OUTPUT['zsmb_ave'].mask[i,c,xo] = ZN4.mask | ZN6.mask
-                        OUTPUT['zaccum_ave'].data[i,c,xo] = ZN6.data - ZN4.data - ZN5.data
-                        OUTPUT['zaccum_ave'].mask[i,c,xo] = ZN4.mask | ZN5.mask | ZN6.mask
-                    # elif (MODEL == 'RACMO'):
-                    #     # read and interpolate daily RACMO outputs
-                    #     hgtsrf = SMBcorr.interpolate_racmo_seasonal(base_dir, EPSG,
-                    #         RACMO_MODEL, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VARIABLE='hgtsrf', **KWARGS)
-                    #     # set attributes to output for iteration
-                    #     OUTPUT['zsurf_ave'].data[i,c,xo] = np.copy(hgtsrf.data)
-                    #     OUTPUT['zsurf_ave'].mask[i,c,xo] = np.copy(hgtsrf.mask)
-                    # elif (MODEL == 'MERRA2-hybrid'):
-                    #     # read and interpolate 5-day MERRA2-Hybrid outputs
-                    #     FAC = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
-                    #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VARIABLE=VARIABLES[0], **KWARGS)
-                    #     smb = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
-                    #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VARIABLE=VARIABLES[1], **KWARGS)
-                    #     height = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
-                    #         MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
-                    #         VARIABLE=VARIABLES[2], **KWARGS)
-                    #     # set attributes to output for iteration
-                    #     OUTPUT['zfirn_ave'].data[i,c,xo] = np.copy(FAC.data)
-                    #     OUTPUT['zfirn_ave'].mask[i,c,xo] = np.copy(FAC.mask)
-                    #     OUTPUT['zsurf_ave'].data[i,c,xo] = np.copy(height.data)
-                    #     OUTPUT['zsurf_ave'].mask[i,c,xo] = np.copy(height.mask)
-                    #     OUTPUT['zsmb_ave'].data[i,c,xo] = np.copy(smb.data)
-                    #     OUTPUT['zsmb_ave'].mask[i,c,xo] = np.copy(smb.mask)
+                        OUTPUT['zsmb_ave'].data[i,c,xo] = OUTPUT['zsurf_ave'].data[i,c,xo] - \
+                            OUTPUT['zfirn_ave'].data[i,c,xo]
+                        OUTPUT['zsmb_ave'].mask[i,c,xo] = OUTPUT['zsurf_ave'].mask[i,c,xo] | \
+                            OUTPUT['zfirn_ave'].mask[i,c,xo]
+                        OUTPUT['zaccum_ave'].data[i,c,xo] = OUTPUT['zsurf_ave'].data[i,c,xo] - \
+                            OUTPUT['zfirn_ave'].data[i,c,xo] - OUTPUT['zmelt_ave'].data[i,c,xo]
+                        OUTPUT['zaccum_ave'].mask[i,c,xo] = OUTPUT['zsurf_ave'].mask[i,c,xo] | \
+                            OUTPUT['zfirn_ave'].mask[i,c,xo] | OUTPUT['zmelt_ave'].mask[i,c,xo]
+                    elif (MODEL == 'RACMO'):
+                        # read and interpolate daily RACMO outputs
+                        for key,var in zip(KEYS,VARIABLES):
+                            OUT = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                                RACMO_MODEL, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                                VARIABLE=var, **KWARGS)
+                            # set attributes to output for iteration
+                            OUTPUT[key].data[i,c,xo] = np.copy(OUT.data)
+                            OUTPUT[key].mask[i,c,xo] = np.copy(OUT.mask)
+                            OUTPUT[key].interpolation[i,c,xo] = np.copy(OUT.interpolation)
+                    elif (MODEL == 'MERRA2-hybrid'):
+                        # read and interpolate 5-day MERRA2-Hybrid outputs
+                        for key,var in zip(KEYS,VARIABLES):
+                            OUT = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
+                                MERRA2_REGION, tdec, D11.x[i,c,xo], D11.y[i,c,xo],
+                                VARIABLE=var, **KWARGS)
+                            # set attributes to output for iteration
+                            OUTPUT[key].data[i,c,xo] = np.copy(OUT.data)
+                            OUTPUT[key].mask[i,c,xo] = np.copy(OUT.mask)
+                            OUTPUT[key].interpolation[i,c,xo] = np.copy(OUT.interpolation)
         else:
             # allocate for output height for along-track data
             OUTPUT = {}
             for key in KEYS:
                 OUTPUT[key] = np.ma.zeros((nseg,ncycle),fill_value=np.nan)
-                OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=np.bool)
+                OUTPUT[key].mask = np.ones((nseg,ncycle),dtype=bool)
             # check that there are valid elevations
             if ncycle > 1:
                 cycle = [c for c in range(ncycle) if
@@ -275,61 +315,52 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
                 # convert from delta time to decimal-years
                 tdec = convert_delta_time(D11.delta_time[i,c])['decimal']
                 if (MODEL == 'MAR'):
-                    # read and interpolate daily MAR outputs
-                    ZN4 = SMBcorr.interpolate_mar_seasonal(DIRECTORY, EPSG,
-                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN4', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
-                    ZN5 = SMBcorr.interpolate_mar_seasonal(DIRECTORY, EPSG,
-                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN5', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
-                    ZN6 = SMBcorr.interpolate_mar_seasonal(DIRECTORY, EPSG,
-                        MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
-                        VARIABLE='ZN6', SIGMA=1.5, FILL_VALUE=np.nan, **MAR_KWARGS)
-                    # set attributes to output for iteration
-                    OUTPUT['zfirn_ave'].data[i,c] = np.copy(ZN4.data)
-                    OUTPUT['zfirn_ave'].mask[i,c] = np.copy(ZN4.mask)
-                    OUTPUT['zsurf_ave'].data[i,c] = np.copy(ZN6.data)
-                    OUTPUT['zsurf_ave'].mask[i,c] = np.copy(ZN6.mask)
-                    OUTPUT['zmelt_ave'].data[i,c] = np.copy(ZN5.data)
-                    OUTPUT['zmelt_ave'].mask[i,c] = np.copy(ZN5.mask)
+                    for key,var in zip(KEYS,VARIABLES):
+                        # read and interpolate daily MAR outputs
+                        OUT =  SMBcorr.interpolate_mar_daily(DIRECTORY, EPSG,
+                            MAR_VERSION, tdec, D11.x[i,c], D11.y[i,c],
+                            VARIABLE=var, **KWARGS)
+                        # set attributes to output for iteration
+                        OUTPUT[key].data[i,c] = np.copy(OUT.data)
+                        OUTPUT[key].mask[i,c] = np.copy(OUT.mask)
+                        OUTPUT[key].interpolation[i,c] = np.copy(OUT.interpolation)
                     # calculate derived fields
-                    OUTPUT['zsmb_ave'].data[i,c] = ZN6.data - ZN4.data
-                    OUTPUT['zsmb_ave'].mask[i,c] = ZN4.mask | ZN6.mask
-                    OUTPUT['zaccum_ave'].data[i,c] = ZN6.data - ZN4.data - ZN5.data
-                    OUTPUT['zaccum_ave'].mask[i,c] = ZN4.mask | ZN5.mask | ZN6.mask
-                # elif (MODEL == 'RACMO'):
-                #     # read and interpolate daily RACMO outputs
-                #     hgtsrf = SMBcorr.interpolate_racmo_seasonal(base_dir, EPSG,
-                #         RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
-                #         VARIABLE='hgtsrf', **KWARGS)
-                #     # set attributes to output for iteration
-                #     OUTPUT['zsurf_ave'].data[i,c] = np.copy(hgtsrf.data)
-                #     OUTPUT['zsurf_ave'].mask[i,c] = np.copy(hgtsrf.mask)
-                # elif (MODEL == 'MERRA2-hybrid'):
-                #     # read and interpolate 5-day MERRA2-Hybrid outputs
-                #     FAC = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
-                #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VARIABLE=VARIABLES[0], **KWARGS)
-                #     smb = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
-                #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VARIABLE=VARIABLES[1], **KWARGS)
-                #     height = SMBcorr.interpolate_merra_hybrid_seasonal(DIRECTORY, EPSG,
-                #         MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
-                #         VARIABLE=VARIABLES[2], **KWARGS)
-                #     # set attributes to output for iteration
-                #     OUTPUT['zfirn_ave'].data[i,c] = np.copy(FAC.data)
-                #     OUTPUT['zfirn_ave'].mask[i,c] = np.copy(FAC.mask)
-                #     OUTPUT['zsurf_ave'].data[i,c] = np.copy(height.data)
-                #     OUTPUT['zsurf_ave'].mask[i,c] = np.copy(height.mask)
-                #     OUTPUT['zsmb_ave'].data[i,c] = np.copy(smb.data)
-                #     OUTPUT['zsmb_ave'].mask[i,c] = np.copy(smb.mask)
+                    OUTPUT['zsmb_ave'].data[i,c] = OUTPUT['zsurf_ave'].data[i,c] - \
+                        OUTPUT['zfirn_ave'].data[i,c]
+                    OUTPUT['zsmb_ave'].mask[i,c] = OUTPUT['zsurf_ave'].mask[i,c] | \
+                        OUTPUT['zfirn_ave'].mask[i,c]
+                    OUTPUT['zaccum'].data[i,c] = OUTPUT['zsurf_ave'].data[i,c] - \
+                        OUTPUT['zfirn_ave'].data[i,c] - OUTPUT['zmelt_ave'].data[i,c]
+                    OUTPUT['zaccum'].mask[i,c] = OUTPUT['zsurf_ave'].mask[i,c] | \
+                        OUTPUT['zfirn_ave'].mask[i,c] | OUTPUT['zmelt_ave'].mask[i,c]
+                elif (MODEL == 'RACMO'):
+                    # read and interpolate daily RACMO outputs
+                    for key,var in zip(KEYS,VARIABLES):
+                        OUT = SMBcorr.interpolate_racmo_daily(base_dir, EPSG,
+                            RACMO_MODEL, tdec, D11.x[i,c], D11.y[i,c],
+                            VARIABLE=var, **KWARGS)
+                        # set attributes to output for iteration
+                        OUTPUT[key].data[i,c] = np.copy(OUT.data)
+                        OUTPUT[key].mask[i,c] = np.copy(OUT.mask)
+                        OUTPUT[key].interpolation[i,c] = np.copy(OUT.interpolation)
+                elif (MODEL == 'MERRA2-hybrid'):
+                    # read and interpolate 5-day MERRA2-Hybrid outputs
+                    for key,var in zip(KEYS,VARIABLES):
+                        OUT = SMBcorr.interpolate_merra_hybrid(DIRECTORY, EPSG,
+                            MERRA2_REGION, tdec, D11.x[i,c], D11.y[i,c],
+                            VARIABLE=var, **KWARGS)
+                        # set attributes to output for iteration
+                        OUTPUT[key].data[i,c] = np.copy(OUT.data)
+                        OUTPUT[key].mask[i,c] = np.copy(OUT.mask)
+                        OUTPUT[key].interpolation[i,c] = np.copy(OUT.interpolation)
 
         # append input HDF5 file with new firn model outputs
         fileID = h5py.File(os.path.expanduser(input_file),'a')
+        logging.info(input_file)
         # fileID.create_group(model_version) if model_version not in fileID.keys() else None
         h5 = {}
         for key in KEYS:
-            print(f'append_SMB_averages_ATl11.py: writing{key}')
+            logging.info(f'{sys.argv[0]}: writing{key}')
             # verify mask values
             OUTPUT[key].mask |= (OUTPUT[key].data == OUTPUT[key].fill_value) | \
                     np.isnan(OUTPUT[key].data)
@@ -350,9 +381,8 @@ def append_SMB_averages_ATL11(input_file,base_dir,REGION,MODEL,RANGE=[2000,2019]
         # close the output HDF5 file
         fileID.close()
 
-# Main program that calls append_SMB_averages_ATL11()
-def main():
-    # Read the system arguments listed after the program
+# PURPOSE: create arguments parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Interpolates mean estimates of model firn
             variable to the coordinates of an ATL11 file
@@ -369,7 +399,7 @@ def main():
         help='Working data directory')
     # region of firn model
     parser.add_argument('--region','-R',
-        metavar='REGION', type=str, nargs='+',
+        metavar='REGION', type=str,
         default=['GL'], choices=('AA','GL'),
         help='Region of model to interpolate')
     # surface mass balance product
@@ -385,7 +415,23 @@ def main():
     parser.add_argument('--group_depth','-g',
         type=int,
         help='loop over groups in file to sepecified depth, write output to subgroups')
+    # verbosity settings
+    # verbose will output information about each output file
+    parser.add_argument('--verbose','-V',
+        default=False, action='store_true',
+        help='Output information about each created file')
+    # return the parser
+    return parser
+
+# Main program that calls append_SMB_averages_ATL11()
+def main():
+    # Read the system arguments listed after the program
+    parser = arguments()
     args = parser.parse_args()
+
+    # create logger for verbosity level
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
 
     # run program with parameters
     for f in args.infile:

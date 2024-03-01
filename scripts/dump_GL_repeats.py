@@ -8,12 +8,33 @@ Created on Thu Oct 24 09:25:40 2019
 
 import glob
 import matplotlib.pyplot as plt
-import ATL11
+import warnings
 #from PointDatabase import mapData, point_data
-import pointCollection as pc
 import numpy as np
-import h5py
+import logging
 import time
+
+# attempt imports
+try:
+    import h5py
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
+try:
+    import ATL11
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("ATL11 not available", ImportWarning)
+try:
+    import pointCollection as pc
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pointCollection not available", ImportWarning)
+# ignore warnings
+warnings.filterwarnings("ignore")
+
+# create logger for verbosity level
+logging.basicConfig(level=logging.INFO)
 
 cycles=[3, 4, 5, 6, 7]
 n_skip=4
@@ -27,7 +48,7 @@ if True:
     xydh=[None]* (3*len(files))
     for count, file in enumerate(files):
         if np.mod(count, 50)==0:
-            print(f'{count} out of {len(files)}, dt={time.time()-t0}')
+            logging.info(f'{count} out of {len(files)}, dt={time.time()-t0}')
             t0=time.time()
         for pair in [1, 2, 3]:
             filePair=(file, pair)
@@ -35,9 +56,9 @@ if True:
 
                 D11 = pc.ATL11.data().from_h5(file, pair=pair)
 
-            except Exception as e:
-                #print(file)
-                #print(e)
+            except Exception as exc:
+                #logging.info(file)
+                #logging.info(e)
                 continue
 
 
@@ -53,7 +74,7 @@ if True:
                 data_count += 1
 
             #except:
-            #    print("problem with "+file)
+            #    logging.info("problem with "+file)
 
     D=pc.data(columns=D11.shape[1]).from_list(xydh)
 
@@ -84,9 +105,9 @@ if False:
     fig.tight_layout()
     fig.colorbar(hl, ax=hax, location='bottom', shrink=0.25)
 if False:
-    plt.figure(1); xy0=plt.ginput()[0]; 
+    plt.figure(1); xy0=plt.ginput()[0];
     ATL11_file=files[xydh.file_ind[np.argmin(np.abs(xydh.x+1j*xydh.y - (xy0[0]+1j*xy0[1])))].astype(int)]
-    plt.figure(); 
+    plt.figure();
     #ATL11_multi_plot(ATL11_file, hemisphere=1)
-    
-    
+
+

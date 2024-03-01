@@ -1,8 +1,12 @@
+import SMBcorr.spatial
 import SMBcorr.time
 import SMBcorr.utilities
+import SMBcorr.version
 from SMBcorr.regress_model import regress_model
-from SMBcorr.scale_areas import scale_areas
-from SMBcorr.assign_firn_variable import assign_firn_variable
+from SMBcorr.constants import (
+    constants,
+    _ellipsoids
+)
 # MAR
 from SMBcorr.mar_smb_cumulative import mar_smb_cumulative
 from SMBcorr.mar_smb_mean import mar_smb_mean
@@ -13,6 +17,7 @@ from SMBcorr.mar_interp_daily import interpolate_mar_daily
 from SMBcorr.mar_interp_seasonal import interpolate_mar_seasonal
 from SMBcorr.mar_interp_mean import interpolate_mar_mean
 # MERRA2 and MERRA2-hybrid
+from SMBcorr.merra_smb_mean import merra_smb_mean
 from SMBcorr.merra_smb_cumulative import merra_smb_cumulative
 from SMBcorr.merra_hybrid_cumulative import merra_hybrid_cumulative
 from SMBcorr.merra_hybrid_extrap import extrapolate_merra_hybrid
@@ -31,3 +36,5 @@ from SMBcorr.racmo_interp_firn_height import interpolate_racmo_firn
 from SMBcorr.racmo_interp_mean import interpolate_racmo_mean
 from SMBcorr.get_h5_structure import get_h5_structure
 from SMBcorr.append_gsfc_zmelt import interp_gsfc_zmelt
+# get version number
+__version__ = SMBcorr.version.version
