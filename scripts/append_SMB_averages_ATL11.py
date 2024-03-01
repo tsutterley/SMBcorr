@@ -42,6 +42,7 @@ UPDATE HISTORY:
 import sys
 import os
 import re
+import sys
 import logging
 import SMBcorr
 import argparse
