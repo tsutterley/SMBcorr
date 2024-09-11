@@ -1,1 +1,8 @@
 graft SMBcorr/data
+prune .github*
+prune doc*
+prune notebooks*
+prune run*
+prune test*
+exclude *.cfg
+exclude *.yml

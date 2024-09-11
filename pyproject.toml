@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SMBcorr"
+description = "Python-based tools for correcting altimetry data for surface mass balance and firn processes"
+keywords = [
+    "Surface Mass Balance",
+    "SMB",
+    "Firn",
+    "Firn height",
+    "FAC",
+    "ICESat",
+    "ICESat-2",
+    "NASA Operation IceBridge"
+]
+authors = [
+    {name = "Tyler Sutterley"},
+    {email = "tsutterl@uw.edu"}
+]
+maintainers = [
+    {name = "SMBcorr contributors"}
+]
+license = {file = "LICENSE"}
+readme = "README.rst"
+
+requires-python = "~=3.6"
+dependencies = [
+    "lxml",
+    "netCDF4",
+    "numpy",
+    "pyproj",
+    "python-dateutil",
+    "scikit-learn",
+    "scipy>=1.10.1",
+    "setuptools_scm",
+    "timescale>=0.0.3",
+    "pointCollection @ git+https://github.com/SmithB/pointCollection.git"
+]
+
+dynamic = ["version"]
+
+classifiers=[
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Homepage = "https://smbcorr.readthedocs.io"
+Documentation = "https://smbcorr.readthedocs.io"
+Repository = "https://github.com/tsutterley/SMBcorr"
+Issues = "https://github.com/tsutterley/SMBcorr/issues"
+
+[project.optional-dependencies]
+doc = ["docutils", "fontconfig", "freetype", "graphviz", "numpydoc", "sphinx", "sphinx-argparse>=0.4", "sphinx_rtd_theme"]
+all = ["matplotlib", "notebook"]
+dev = ["flake8", "pytest>=4.6", "pytest-cov", "oct2py", "boto3"]
+
+[tool.setuptools.packages.find]
+exclude = ["run*", "test*"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+norecursedirs = ".git"
+python_files = [
+    "test*.py"
+]
+testpaths = [
+    "test"
+]
+
+[tool.coverage.run]
+branch = true
+source = [
+    "SMBcorr",
+    "test",
+]
+omit = [
+    "setup.py",
+    "conf.py",
+    "scripts/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2

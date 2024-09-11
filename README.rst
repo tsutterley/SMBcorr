@@ -30,10 +30,14 @@ Dependencies
 References
 ##########
 
-     T. C. Sutterley, I. Velicogna, X. Fettweis, E. Rignot, B. No\ |euml|\ l, and M. van den Broeke,
-     "Evaluation of Reconstructions of Snow/Ice Melt in Greenland by Regional Atmospheric
-     Climate Models Using Laser Altimetry Data", *Geophysical Research Letters*, 45(16),
-     8324-8333, (2018). `doi: 10.1029/2018GL078645 <https://doi.org/10.1029/2018GL078645>`_
+   B. E. Smith, B. Medley, X. Fettweis, T. Sutterley, P. Alexander, D. Porter, and M. Tedesco,
+   "Evaluating Greenland surface-mass-balance and firn-densification data using ICESat-2 altimetry",
+   *The Cryosphere*, 17(2), 789-808, (2023). `doi: 10.5194/tc-17-789-2023 <https://doi.org/10.5194/tc-17-789-2023>`_
+
+   T. C. Sutterley, I. Velicogna, X. Fettweis, E. Rignot, B. No\ |euml|\ l, and M. van den Broeke,
+   "Evaluation of Reconstructions of Snow/Ice Melt in Greenland by Regional Atmospheric
+   Climate Models Using Laser Altimetry Data", *Geophysical Research Letters*, 45(16),
+   8324-8333, (2018). `doi: 10.1029/2018GL078645 <https://doi.org/10.1029/2018GL078645>`_
 
 Download
 ########
