@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_extrap.py
-Written by Tyler Sutterley (02/2023)
+Written by Tyler Sutterley (09/2024)
 Interpolates and extrapolates MERRA-2 hybrid variables to times and coordinates
 
 MERRA-2 Hybrid firn model outputs provided by Brooke Medley at GSFC
@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 09/2024: return masked array if date is outside of model range
     Updated 02/2023: don't recompute min and max time cutoffs for cases
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 05/2021: set bounds error to false when reducing temporal range
@@ -192,6 +193,15 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         # read netCDF4 dataset
         fileID = netCDF4.Dataset(os.path.join(base_dir,hybrid_file), 'r')
 
+    # invalid data value
+    fv = np.float64(fileID.variables[VARIABLE]._FillValue)
+    # output interpolated arrays of variable
+    npts = len(tdec)
+    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float64)
+    extrap_data.mask = np.ones((npts),dtype=bool)
+    # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
+    extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
+
     # Get data from each netCDF variable and remove singleton dimensions
     fd = {}
     # time is year decimal at time step 5 days
@@ -205,7 +215,8 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         fd['time'] = fileID.variables['time'][:].copy()
         # read full dataset and remove singleton dimensions
         fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
-    else:
+    elif (np.max(tdec) < np.max(fileID.variables['time'][:]) or
+        (np.min(tdec) > np.min(fileID.variables['time'][:]))):
         # reduce grids to time period of input buffered by time steps
         tmin = np.min(tdec) - 2.0*time_step
         tmax = np.max(tdec) + 2.0*time_step
@@ -219,8 +230,10 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
         fd['time'] = fileID.variables['time'][imin:imax+1].copy()
         # read reduced dataset and remove singleton dimensions
         fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][imin:imax+1,:,:])
-    # invalid data value
-    fv = np.float64(fileID.variables[VARIABLE]._FillValue)
+    else:
+        # return as invalid
+        extrap_data.data[extrap_data.mask] = extrap_data.fill_value
+        return extrap_data
     # input shape of MERRA-2 Hybrid firn data
     nt,nx,ny = np.shape(fd[VARIABLE])
     # extract x and y coordinate arrays from grids if applicable
@@ -279,13 +292,6 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     # can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[ii,jj,None],yg[ii,jj,None]),axis=1)
     tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
-
-    # output interpolated arrays of variable
-    npts = len(tdec)
-    extrap_data = np.ma.zeros((npts),fill_value=fv,dtype=np.float64)
-    extrap_data.mask = np.ones((npts),dtype=bool)
-    # type designating algorithm used (1:interpolate, 2:backward, 3:forward)
-    extrap_data.interpolation = np.zeros((npts),dtype=np.uint8)
 
     # time cutoff without close time interpolation
     time_cutoff = (fd['time'].min(), fd['time'].max())

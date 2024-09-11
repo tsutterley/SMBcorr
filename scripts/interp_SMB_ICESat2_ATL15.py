@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_SMB_ICESat2_ATL15.py
-Written by Tyler Sutterley (02/2023)
+Written by Tyler Sutterley (09/2024)
 Interpolates daily firn model estimates to the times and locations of
     ICESat-2 ATL15 gridded land ice height change data
 
@@ -31,6 +31,7 @@ PROGRAM DEPENDENCIES:
     merra_hybrid_interp.py: interpolates GSFC MERRA-2 hybrid products
 
 UPDATE HISTORY:
+    Updated 09/2024: use hemisphere flag to set model options
     Written 02/2023
 """
 from __future__ import print_function
@@ -63,39 +64,39 @@ warnings.filterwarnings("ignore")
 # available models
 models = dict(AA={}, GL={})
 # MAR
-models['GL']['MAR'] = []
-models['GL']['MAR'].append('MARv3.9-ERA')
-models['GL']['MAR'].append('MARv3.10-ERA')
-models['GL']['MAR'].append('MARv3.11-NCEP')
-models['GL']['MAR'].append('MARv3.11-ERA')
-models['GL']['MAR'].append('MARv3.11.2-ERA-6km')
-models['GL']['MAR'].append('MARv3.11.2-ERA-7.5km')
-models['GL']['MAR'].append('MARv3.11.2-ERA-10km')
-models['GL']['MAR'].append('MARv3.11.2-ERA-15km')
-models['GL']['MAR'].append('MARv3.11.2-ERA-20km')
-models['GL']['MAR'].append('MARv3.11.2-NCEP-20km')
-models['GL']['MAR'].append('MARv3.11.5-ERA-6km')
-models['GL']['MAR'].append('MARv3.11.5-ERA-10km')
-models['GL']['MAR'].append('MARv3.11.5-ERA-15km')
-models['GL']['MAR'].append('MARv3.11.5-ERA-20km')
+models['N']['MAR'] = []
+models['N']['MAR'].append('MARv3.9-ERA')
+models['N']['MAR'].append('MARv3.10-ERA')
+models['N']['MAR'].append('MARv3.11-NCEP')
+models['N']['MAR'].append('MARv3.11-ERA')
+models['N']['MAR'].append('MARv3.11.2-ERA-6km')
+models['N']['MAR'].append('MARv3.11.2-ERA-7.5km')
+models['N']['MAR'].append('MARv3.11.2-ERA-10km')
+models['N']['MAR'].append('MARv3.11.2-ERA-15km')
+models['N']['MAR'].append('MARv3.11.2-ERA-20km')
+models['N']['MAR'].append('MARv3.11.2-NCEP-20km')
+models['N']['MAR'].append('MARv3.11.5-ERA-6km')
+models['N']['MAR'].append('MARv3.11.5-ERA-10km')
+models['N']['MAR'].append('MARv3.11.5-ERA-15km')
+models['N']['MAR'].append('MARv3.11.5-ERA-20km')
 # RACMO
-models['GL']['RACMO'] = []
-models['GL']['RACMO'].append('RACMO2.3-XGRN11')
-models['GL']['RACMO'].append('RACMO2.3p2-XGRN11')
-models['GL']['RACMO'].append('RACMO2.3p2-FGRN055')
+models['N']['RACMO'] = []
+models['N']['RACMO'].append('RACMO2.3-XGRN11')
+models['N']['RACMO'].append('RACMO2.3p2-XGRN11')
+models['N']['RACMO'].append('RACMO2.3p2-FGRN055')
 # MERRA2-hybrid
-models['GL']['MERRA2-hybrid'] = []
-models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v0')
-models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
-models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
-models['GL']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
-models['AA']['MERRA2-hybrid'] = []
-models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v0')
-models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1')
-models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
-models['AA']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
+models['N']['MERRA2-hybrid'] = []
+models['N']['MERRA2-hybrid'].append('GSFC-fdm-v0')
+models['N']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+models['N']['MERRA2-hybrid'].append('GSFC-fdm-v1.0')
+models['N']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+models['N']['MERRA2-hybrid'].append('GSFC-fdm-v1.2')
+models['N']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
+models['S']['MERRA2-hybrid'] = []
+models['S']['MERRA2-hybrid'].append('GSFC-fdm-v0')
+models['S']['MERRA2-hybrid'].append('GSFC-fdm-v1')
+models['S']['MERRA2-hybrid'].append('GSFC-fdm-v1.1')
+models['S']['MERRA2-hybrid'].append('GSFC-fdm-v1.2.1')
 
 # PURPOSE: keep track of threads
 def info(args):
@@ -105,6 +106,15 @@ def info(args):
     if hasattr(os, 'getppid'):
         logging.info(f'parent process: {os.getppid():d}')
     logging.info(f'process id: {os.getpid():d}')
+
+# PURPOSE: set the hemisphere of interest based on the ATL14/15 region
+def set_hemisphere(REGION):
+    if REGION in ('AA','A1','A2','A3','A4'):
+        projection_flag = 'S'
+    else:
+        projection_flag = 'N'
+    # return the hemisphere flag
+    return projection_flag
 
 # PURPOSE: read a variable group from ICESat-2 ATL15
 def read_ATL15(infile, group='delta_h'):
@@ -153,9 +163,11 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
     proj4_params = crs1.to_proj4()
     # epoch of delta heights
     EPOCH = 2020.0
+    # set the hemisphere of interest
+    HEM = set_hemisphere(RGN)
 
     # determine main model group from region and model_version
-    MODEL, = [key for key,val in models[RGN].items() if model_version in val]
+    MODEL, = [key for key,val in models[HEM].items() if model_version in val]
 
     # keyword arguments for all models
     KWARGS = dict(SIGMA=1.5, FILL_VALUE=fill_value)
@@ -163,42 +175,42 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
     if (MODEL == 'MAR'):
         match_object=re.match(r'(MARv\d+\.\d+(.\d+)?)',model_version)
         MAR_VERSION=match_object.group(0)
-        MAR_REGION=dict(GL='Greenland',AA='Antarctic')[RGN]
+        MAR_REGION=dict(GL='Greenland',AA='Antarctic')[HEM]
         # model subdirectories
         SUBDIRECTORY=dict(AA={}, GL={})
-        SUBDIRECTORY['GL']['MARv3.9-ERA']=['ERA_1958-2018_10km','daily_10km']
-        SUBDIRECTORY['GL']['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
-        SUBDIRECTORY['GL']['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
-        SUBDIRECTORY['GL']['MARv3.11-ERA']=['ERA_1958-2019-15km','daily_15km']
-        SUBDIRECTORY['GL']['MARv3.11.2-ERA-6km']=['6km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.2-ERA-7.5km']=['7.5km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.2-ERA-10km']=['10km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.2-ERA-15km']=['15km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.2-ERA-20km']=['20km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
-        SUBDIRECTORY['GL']['MARv3.11.5-ERA-6km']=['6km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.5-ERA-10km']=['10km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.5-ERA-15km']=['15km_ERA5']
-        SUBDIRECTORY['GL']['MARv3.11.5-ERA-20km']=['20km_ERA5']
-        MAR_MODEL=SUBDIRECTORY[RGN][model_version]
+        SUBDIRECTORY['N']['MARv3.9-ERA']=['ERA_1958-2018_10km','daily_10km']
+        SUBDIRECTORY['N']['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
+        SUBDIRECTORY['N']['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
+        SUBDIRECTORY['N']['MARv3.11-ERA']=['ERA_1958-2019-15km','daily_15km']
+        SUBDIRECTORY['N']['MARv3.11.2-ERA-6km']=['6km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.2-ERA-7.5km']=['7.5km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.2-ERA-10km']=['10km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.2-ERA-15km']=['15km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.2-ERA-20km']=['20km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.2-NCEP-20km']=['20km_NCEP1']
+        SUBDIRECTORY['N']['MARv3.11.5-ERA-6km']=['6km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.5-ERA-10km']=['10km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.5-ERA-15km']=['15km_ERA5']
+        SUBDIRECTORY['N']['MARv3.11.5-ERA-20km']=['20km_ERA5']
+        MAR_MODEL=SUBDIRECTORY[HEM][model_version]
         DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
         # keyword arguments for variable coordinates
         MAR_KWARGS=dict(AA={}, GL={})
-        MAR_KWARGS['GL']['MARv3.9-ERA'] = dict(XNAME='X10_153',YNAME='Y21_288')
-        MAR_KWARGS['GL']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
-        MAR_KWARGS['GL']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
-        MAR_KWARGS['GL']['MARv3.11-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
-        MAR_KWARGS['GL']['MARv3.11.2-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
-        MAR_KWARGS['GL']['MARv3.11.2-ERA-7.5km'] = dict(XNAME='X12_203',YNAME='Y20_377')
-        MAR_KWARGS['GL']['MARv3.11.2-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
-        MAR_KWARGS['GL']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
-        MAR_KWARGS['GL']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
-        MAR_KWARGS['GL']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
-        MAR_KWARGS['GL']['MARv3.11.5-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
-        MAR_KWARGS['GL']['MARv3.11.5-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
-        MAR_KWARGS['GL']['MARv3.11.5-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
-        MAR_KWARGS['GL']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
-        KWARGS.update(MAR_KWARGS[RGN][model_version])
+        MAR_KWARGS['N']['MARv3.9-ERA'] = dict(XNAME='X10_153',YNAME='Y21_288')
+        MAR_KWARGS['N']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
+        MAR_KWARGS['N']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
+        MAR_KWARGS['N']['MARv3.11-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
+        MAR_KWARGS['N']['MARv3.11.2-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
+        MAR_KWARGS['N']['MARv3.11.2-ERA-7.5km'] = dict(XNAME='X12_203',YNAME='Y20_377')
+        MAR_KWARGS['N']['MARv3.11.2-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
+        MAR_KWARGS['N']['MARv3.11.2-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
+        MAR_KWARGS['N']['MARv3.11.2-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+        MAR_KWARGS['N']['MARv3.11.2-NCEP-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+        MAR_KWARGS['N']['MARv3.11.5-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
+        MAR_KWARGS['N']['MARv3.11.5-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
+        MAR_KWARGS['N']['MARv3.11.5-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
+        MAR_KWARGS['N']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+        KWARGS.update(MAR_KWARGS[HEM][model_version])
         # netCDF4 variable names for direct fields
         VARIABLES = ['SMB','ZN6','ZN4','ZN5']
         # output variable keys for both direct and derived fields
@@ -247,7 +259,7 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
         # MERRA-2 hybrid directory
         DIRECTORY=os.path.join(base_dir,'MERRA2_hybrid',MERRA2_VERSION)
         # MERRA-2 region name from ATL15 region
-        MERRA2_REGION = dict(AA='ais',GL='gris')[RGN]
+        MERRA2_REGION = dict(AA='ais',GL='gris')[HEM]
         # keyword arguments for MERRA-2 interpolation programs
         if MERRA2_VERSION in ('v0','v1','v1.0'):
             KWARGS['VERSION'] = merra2_regex.match(model_version).group(2)

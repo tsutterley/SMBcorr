@@ -19,7 +19,7 @@ PYTHON DEPENDENCIES:
         https://github.com/yaml/pyyaml
 
 PROGRAM DEPENDENCIES:
-    constants.py: calculate reference parameters for common ellipsoids
+    datum.py: calculate reference parameters for common ellipsoids
 
 UPDATE HISTORY:
     Updated 08/2023: remove possible crs variables from output fields list
@@ -76,7 +76,7 @@ import pathlib
 import datetime
 import numpy as np
 import SMBcorr.time
-from SMBcorr.constants import constants
+from SMBcorr.datum import datum
 import SMBcorr.version
 # attempt imports
 try:
@@ -1257,7 +1257,7 @@ def wrap_longitudes(lon: float | np.ndarray):
     return phi*180.0/np.pi
 
 # get WGS84 parameters
-_wgs84 = constants(ellipsoid='WGS84', units='MKS')
+_wgs84 = datum(ellipsoid='WGS84', units='MKS')
 
 def to_cartesian(
         lon: np.ndarray,
