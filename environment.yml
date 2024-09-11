@@ -2,6 +2,7 @@ name: SMBcorr
 channels:
   - conda-forge
 dependencies:
+  - gdal
   - lxml
   - notebook
   - numpy
