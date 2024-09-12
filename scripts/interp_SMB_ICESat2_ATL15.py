@@ -62,7 +62,7 @@ except (AttributeError, ImportError, ModuleNotFoundError) as exc:
 warnings.filterwarnings("ignore")
 
 # available models
-models = dict(AA={}, GL={})
+models = dict(N={}, S={})
 # MAR
 models['N']['MAR'] = []
 models['N']['MAR'].append('MARv3.9-ERA')

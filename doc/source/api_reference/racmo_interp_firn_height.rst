@@ -12,5 +12,3 @@ General Methods
 ===============
 
 .. autofunction:: SMBcorr.interpolate_racmo_firn
-
-.. autofunction:: SMBcorr.racmo_interp_firn_height.find_valid_triangulation

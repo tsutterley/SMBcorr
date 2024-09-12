@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_downscaled_mean.py
-Written by Tyler Sutterley (10/2022)
+Written by Tyler Sutterley (09/2024)
 Calculates the temporal mean of downscaled RACMO
 surface mass balance products
 
@@ -28,6 +28,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 10/2022: added version 4.0 (RACMO2.3p2 for 1958-2022 from FGRN055)
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 02/2021: using argparse to set parameters
@@ -50,25 +51,11 @@ import warnings
 import numpy as np
 from datetime import date
 import SMBcorr.time
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    from sklearn.neighbors import KDTree, BallTree
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("scikit-learn not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
+pyproj = SMBcorr.utilities.import_dependency('pyproj')
 
 # data product longnames
 longname = {}

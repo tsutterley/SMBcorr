@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 gemb_smb_cumulative.py
-Written by Tyler Sutterley (03/2023)
+Written by Tyler Sutterley (09/2024)
 Calculates cumulative anomalies of GEMB surface mass balance products
 
 CALLING SEQUENCE:
@@ -21,6 +21,7 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 03/2023: regular expression pattern can find if periphery
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Written 10/2022
@@ -32,18 +33,12 @@ import re
 import time
 import logging
 import argparse
-import warnings
 import numpy as np
 import SMBcorr.version
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
 
 # PURPOSE: calculate cumulative anomalies in GEMB
 # surface mass balance variables

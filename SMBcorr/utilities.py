@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (09/2024)
 Download and management utilities for syncing time and auxiliary files
 
 PYTHON DEPENDENCIES:
@@ -9,6 +9,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 09/2024: add wrapper to importlib for optional dependencies
     Updated 06/2022: add NASA Common Metadata Repository (CMR) queries
         added function to build GES DISC subsetting API requests
     Updated 04/2022: updated docstrings to numpy documentation format
@@ -41,6 +42,7 @@ import socket
 import inspect
 import hashlib
 import logging
+import importlib
 import posixpath
 import lxml.etree
 import calendar, time
@@ -74,6 +76,47 @@ def get_data_path(relpath):
         return os.path.join(filepath,*relpath)
     elif isinstance(relpath,str):
         return os.path.join(filepath,relpath)
+
+def import_dependency(
+        name: str,
+        extra: str = "",
+        raise_exception: bool = False
+    ):
+    """
+    Import an optional dependency
+
+    Adapted from ``pandas.compat._optional::import_optional_dependency``
+
+    Parameters
+    ----------
+    name: str
+        Module name
+    extra: str, default ""
+        Additional text to include in the ``ImportError`` message
+    raise_exception: bool, default False
+        Raise an ``ImportError`` if the module is not found
+
+    Returns
+    -------
+    module: obj
+        Imported module
+    """
+    # check if the module name is a string
+    msg = f"Invalid module name: '{name}'; must be a string"
+    assert isinstance(name, str), msg
+    # default error if module cannot be imported
+    err = f"Missing optional dependency '{name}'. {extra}"
+    module = type('module', (), {})
+    # try to import the module
+    try:
+        module = importlib.import_module(name)
+    except (ImportError, ModuleNotFoundError) as exc:
+        if raise_exception:
+            raise ImportError(err) from exc
+        else:
+            logging.debug(err)
+    # return the module
+    return module
 
 # PURPOSE: get the hash value of a file
 def get_hash(local, algorithm='MD5'):

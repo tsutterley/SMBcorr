@@ -12,5 +12,3 @@ General Methods
 ===============
 
 .. autofunction:: SMBcorr.interpolate_racmo_downscaled
-
-.. autofunction:: SMBcorr.racmo_interp_downscaled.find_valid_triangulation

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 racmo_integrate_firn_height.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (09/2024)
 Integrate RACMO firn heights for each Promice ice class
 
 CALLING SEQUENCE:
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 10/2021: using argparse to set command line parameters
     Written 10/2019
@@ -43,15 +44,10 @@ import warnings
 import numpy as np
 import scipy.interpolate
 from SMBcorr.regress_model import regress_model
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
 
 # PURPOSE: read and integrate RACMO2.3 firn corrections
 def racmo_integrate_firn_height(base_dir, MODEL, VARIABLE='zs', OUTPUT=True):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_daily.py
-Written by Tyler Sutterley (02/2023)
+Written by Tyler Sutterley (09/2024)
 Interpolates and extrapolates daily MAR products to times and coordinates
 
 Uses fast nearest-neighbor search algorithms
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 02/2023: don't recompute min and max time cutoffs for cases
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
@@ -73,25 +74,12 @@ import scipy.ndimage
 import scipy.interpolate
 from SMBcorr.regress_model import regress_model
 import SMBcorr.time
+import SMBcorr.spatial
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    from sklearn.neighbors import KDTree, BallTree
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("scikit-learn not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
+pyproj = SMBcorr.utilities.import_dependency('pyproj')
 
 # PURPOSE: read and interpolate daily MAR outputs
 def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
@@ -285,7 +273,7 @@ def extrapolate_mar_daily(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     # construct search tree from original points
     # can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[i,j,None],yg[i,j,None]),axis=1)
-    tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
+    tree = SMBcorr.spatial.build_tree(xy1, SEARCH=SEARCH)
 
     # output interpolated arrays of output variable
     npts = len(tdec)

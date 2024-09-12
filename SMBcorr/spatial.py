@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 spatial.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (09/2024)
 
 Utilities for reading, writing and operating on spatial data
 
@@ -22,6 +22,9 @@ PROGRAM DEPENDENCIES:
     datum.py: calculate reference parameters for common ellipsoids
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
+        add function to build search trees using scikit-learn
+        add function to find a valid Delaunay triangulation with scipy
     Updated 08/2023: remove possible crs variables from output fields list
         place PyYAML behind try/except statement to reduce build size
     Updated 05/2023: use datetime parser within SMBcorr.time module
@@ -75,26 +78,22 @@ import logging
 import pathlib
 import datetime
 import numpy as np
+import scipy.spatial
 import SMBcorr.time
 from SMBcorr.datum import datum
+import SMBcorr.utilities
 import SMBcorr.version
+
 # attempt imports
-try:
-    import osgeo.gdal, osgeo.osr, osgeo.gdalconst
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("GDAL not available")
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("h5py not available")
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("netCDF4 not available")
-try:
-    import yaml
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("PyYAML not available")
+h5py = SMBcorr.utilities.import_dependency('h5py')
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
+osgeo = SMBcorr.utilities.import_dependency('osgeo')
+osgeo.gdal = SMBcorr.utilities.import_dependency('osgeo.gdal')
+osgeo.osr = SMBcorr.utilities.import_dependency('osgeo.osr')
+osgeo.gdalconst = SMBcorr.utilities.import_dependency('osgeo.gdalconst')
+sklearn = SMBcorr.utilities.import_dependency('sklearn')
+sklearn.neighbors = SMBcorr.utilities.import_dependency('sklearn.neighbors')
+yaml = SMBcorr.utilities.import_dependency('yaml', extra='PyYAML')
 
 def case_insensitive_filename(filename: str | pathlib.Path):
     """
@@ -1666,3 +1665,87 @@ def scale_areas(
     # area scaling
     scale = np.where(np.isclose(theta, np.pi/2.0), 1.0/(kp**2), 1.0/(k**2))
     return scale
+
+def build_tree(xy, SEARCH='BallTree'):
+    """
+    Create a BallTree or KDTree from the input coordinates
+
+    Parameters
+    ----------
+    xy: numpy.ndarray
+        input coordinates to create the search tree
+    SEARCH: str, default 'BallTree'
+        nearest-neighbor search algorithm
+
+            - 'BallTree'
+            - 'KDTree'
+
+    Returns
+    -------
+    tree: BallTree or KDTree
+        search tree for nearest-neighbor queries
+    """
+    if (SEARCH == 'BallTree'):
+        tree = sklearn.neighbors.BallTree(xy, leaf_size=40)
+    elif (SEARCH == 'KDTree'):
+        tree = sklearn.neighbors.KDTree(xy, leaf_size=40)
+    # return the search tree
+    return tree
+
+# PURPOSE: find a valid Delaunay triangulation for coordinates x0 and y0
+# http://www.qhull.org/html/qhull.htm#options
+# Attempt 1: standard qhull options Qt Qbb Qc Qz
+# Attempt 2: rescale and center the inputs with option QbB
+# Attempt 3: joggle the inputs to find a triangulation with option QJ
+# if no passing triangulations: exit with empty list
+def find_valid_triangulation(x0, y0, max_points=1e6):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    max_points: int or float, default 1e6
+        Maximum number of coordinates to attempt to triangulate
+    """
+    # don't attempt triangulation if there are a large number of points
+    if (len(x0) > max_points):
+        # if too many points: set triangle as an empty list
+        logging.info('Too many points for triangulation')
+        return (None,[])
+
+    # Attempt 1: try with standard options Qt Qbb Qc Qz
+    # Qt: triangulated output, all facets will be simplicial
+    # Qbb: scale last coordinate to [0,m] for Delaunay triangulations
+    # Qc: keep coplanar points with nearest facet
+    # Qz: add point-at-infinity to Delaunay triangulation
+
+    # Attempt 2 in case of qhull error from Attempt 1 try Qt Qc QbB
+    # Qt: triangulated output, all facets will be simplicial
+    # Qc: keep coplanar points with nearest facet
+    # QbB: scale input to unit cube centered at the origin
+
+    # Attempt 3 in case of qhull error from Attempt 2 try QJ QbB
+    # QJ: joggle input instead of merging facets
+    # QbB: scale input to unit cube centered at the origin
+
+    # try each set of qhull_options
+    points = np.concatenate((x0[:,None],y0[:,None]),axis=1)
+    for i,opt in enumerate(['Qt Qbb Qc Qz','Qt Qc QbB','QJ QbB']):
+        logging.info(f'qhull option: {opt}')
+        try:
+            triangle = scipy.spatial.Delaunay(points.data, qhull_options=opt)
+        except scipy.spatial.qhull.QhullError:
+            pass
+        else:
+            return (i+1,triangle)
+
+    # if still errors: set triangle as an empty list
+    return (None,[])

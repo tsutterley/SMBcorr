@@ -1,10 +1,13 @@
-import h5py
+import SMBcorr.utilities
+
+# attempt imports
+h5py = SMBcorr.utilities.import_dependency('h5py')
 
 def get_h5_structure(h5_file, max_depth):
     '''
     get the subdirectory structure of file to specified depth
     '''
-    
+
     sub_list=[]
     last_depth=0
     with h5py.File(h5_file,'r') as h5f:

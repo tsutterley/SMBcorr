@@ -13,17 +13,11 @@ To use this repository, please fork into your own account and then clone onto yo
 
     git clone https://github.com/tsutterley/SMBcorr.git
 
-Can then install using ``setuptools``:
+Can then install using ``pip``:
 
 .. code-block:: bash
 
-    python3 setup.py install
-
-or ``pip``
-
-.. code-block:: bash
-
-    python3 -m pip install --user .
+    python3 -m pip install -e .
 
 Alternatively can install the ``SMBcorr`` utilities directly from GitHub with ``pip``:
 

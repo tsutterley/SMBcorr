@@ -85,3 +85,7 @@ General Methods
 .. autofunction:: SMBcorr.spatial._zhu_closed_form
 
 .. autofunction:: SMBcorr.spatial.scale_areas
+
+.. autofunction:: SMBcorr.spatial.build_tree
+
+.. autofunction:: SMBcorr.spatial.find_valid_triangulation
