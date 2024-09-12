@@ -1,25 +1,27 @@
-import SMBcorr
 import scipy.ndimage as snd
 import scipy.interpolate as si
-import netCDF4 as nc4
 import numpy as np
-import pdb
+import SMBcorr.utilities
 
-def convert_delta_time(delta_time, gps_epoch=1198800018.0):                                                                                                                     
-    # calculate gps time from delta_time                                                                                                                                       
-    gps_seconds = gps_epoch + delta_time                                                                                                                                       
+# attempt imports
+nc4 = SMBcorr.utilities.import_dependency('netCDF4')
+pdb = SMBcorr.utilities.import_dependency('pdb')
+
+def convert_delta_time(delta_time, gps_epoch=1198800018.0):
+    # calculate gps time from delta_time
+    gps_seconds = gps_epoch + delta_time
     time_leaps = SMBcorr.time.count_leap_seconds(gps_seconds)
 
-    # calculate julian time                                                                                                                                                    
-    julian = 2400000.5 + SMBcorr.time.convert_delta_time(gps_seconds - time_leaps,                                                                                             
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)                                                                                                  
-    # convert to calendar date                                                                                                                                                 
-    Y,M,D,h,m,s = SMBcorr.time.convert_julian(julian,FORMAT='tuple')                                                                                                            
-    # calculate year-decimal time                                                                                                                                              
-    decimal = SMBcorr.time.convert_calendar_decimal(Y,M,day=D,                                                                                                                 
-        hour=h,minute=m,second=s)                                                                                                                                               
-    # return both the Julian and year-decimal formatted dates                                                                                                                  
-    return dict(julian=julian, decimal=decimal)                                                                                                                                 
+    # calculate julian time
+    julian = 2400000.5 + SMBcorr.time.convert_delta_time(gps_seconds - time_leaps,
+        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
+    # convert to calendar date
+    Y,M,D,h,m,s = SMBcorr.time.convert_julian(julian,FORMAT='tuple')
+    # calculate year-decimal time
+    decimal = SMBcorr.time.convert_calendar_decimal(Y,M,day=D,
+        hour=h,minute=m,second=s)
+    # return both the Julian and year-decimal formatted dates
+    return dict(julian=julian, decimal=decimal)
 def make_zmelt_cumulative(nc_file):
     with nc4.Dataset(nc_file, 'r') as ds1:
         xx=np.array(ds1['x'])

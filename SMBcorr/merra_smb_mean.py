@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_smb_mean.py
-Written by Tyler Sutterley (09/2023)
+Written by Tyler Sutterley (09/2024)
 Reads monthly MERRA-2 datafiles to calculate multi-annual means
     of derived surface mass balance products
 
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 09/2023: using updated spatial functions
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 10/2021: using python logging for handling verbose output
@@ -68,15 +69,10 @@ import warnings
 import numpy as np
 import SMBcorr.time
 import SMBcorr.spatial
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
 
 # PURPOSE: read variables from MERRA-2 tavgM_2d_int and tavgM_2d_glc files
 def read_merra_variables(merra_flux_file, merra_ice_surface_file):

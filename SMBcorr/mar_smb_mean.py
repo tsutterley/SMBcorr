@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_smb_mean.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (09/2024)
 Calculates the temporal mean of MAR surface mass balance products
 
 COMMAND LINE OPTIONS:
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 02/2021: using argparse to set parameters
         using utilities from time module for conversions
@@ -44,15 +45,10 @@ import argparse
 import warnings
 import numpy as np
 import SMBcorr.time
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
 
 # data product longnames
 longname = {}

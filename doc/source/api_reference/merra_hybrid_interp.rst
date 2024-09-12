@@ -14,5 +14,3 @@ General Methods
 .. autofunction:: SMBcorr.interpolate_merra_hybrid
 
 .. autofunction:: SMBcorr.merra_hybrid_interp.set_projection
-
-.. autofunction:: SMBcorr.merra_hybrid_interp.find_valid_triangulation

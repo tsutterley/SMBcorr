@@ -14,8 +14,6 @@ General Methods
 
 .. autofunction:: SMBcorr.interpolate_mar_seasonal
 
-.. autofunction:: SMBcorr.mar_interp_seasonal.find_valid_triangulation
-
 Directories
 ###########
 

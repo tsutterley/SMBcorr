@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 merra_hybrid_cumulative.py
-Written by Tyler Sutterley (02/2023)
+Written by Tyler Sutterley (09/2024)
 Reads MERRA-2 hybrid datafiles to calculate cumulative anomalies in
     derived surface mass balance products
 MERRA-2 Hybrid model outputs provided by Brooke Medley at GSFC
@@ -33,6 +33,7 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 02/2023: new doi for Medley (2022) Cryosphere paper
     Updated 10/2022: add Greenland and Antarctic versions v1.2.1
     Updated 05/2022: use argparse descriptions within sphinx documentation
@@ -58,15 +59,10 @@ import logging
 import argparse
 import warnings
 import numpy as np
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
 
 # PURPOSE: calculate cumulative anomalies in MERRA-2 hybrid
 # surface mass balance variables

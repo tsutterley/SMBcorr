@@ -12,5 +12,3 @@ General Methods
 ===============
 
 .. autofunction:: SMBcorr.interpolate_racmo_mean
-
-.. autofunction:: SMBcorr.racmo_interp_mean.find_valid_triangulation

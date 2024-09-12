@@ -13,8 +13,6 @@ General Methods
 
 .. autofunction:: SMBcorr.interpolate_mar_mean
 
-.. autofunction:: SMBcorr.mar_interp_mean.find_valid_triangulation
-
 Directories
 ###########
 

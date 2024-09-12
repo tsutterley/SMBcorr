@@ -12,5 +12,3 @@ General Methods
 ===============
 
 .. autofunction:: SMBcorr.interpolate_racmo_daily
-
-.. autofunction:: SMBcorr.racmo_interp_daily.find_valid_triangulation

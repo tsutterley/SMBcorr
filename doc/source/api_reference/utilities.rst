@@ -18,6 +18,8 @@ General Methods
 
 .. autofunction:: SMBcorr.utilities.get_data_path
 
+.. autofunction:: SMBcorr.utilities.import_dependency
+
 .. autofunction:: SMBcorr.utilities.get_hash
 
 .. autofunction:: SMBcorr.utilities.url_split

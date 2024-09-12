@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mar_extrap_seasonal.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (09/2024)
 Interpolates seasonal MAR products to times and coordinates
 Seasonal files are climatology files for each day of the year
 
@@ -48,6 +48,7 @@ PYTHON DEPENDENCIES:
         https://github.com/scikit-learn/scikit-learn
 
 UPDATE HISTORY:
+    Updated 09/2024: use wrapper to importlib for optional dependencies
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 01/2021: using conversion protocols following pyproj-2 updates
         https://pyproj4.github.io/pyproj/stable/gotchas.html
@@ -58,30 +59,16 @@ from __future__ import print_function
 import sys
 import os
 import re
-import warnings
 import numpy as np
 import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
+import SMBcorr.spatial
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    from sklearn.neighbors import KDTree, BallTree
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("scikit-learn not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
+pyproj = SMBcorr.utilities.import_dependency('pyproj')
 
 # PURPOSE: read and interpolate a seasonal field of MAR outputs
 def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
@@ -240,7 +227,7 @@ def extrapolate_mar_seasonal(DIRECTORY, EPSG, VERSION, tdec, X, Y,
     # construct search tree from original points
     # can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[i,j,None],yg[i,j,None]),axis=1)
-    tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
+    tree = SMBcorr.spatial.build_tree(xy1, SEARCH=SEARCH)
 
     # calculate the modulus of the time in year-decimal
     tmod = tdec % 1

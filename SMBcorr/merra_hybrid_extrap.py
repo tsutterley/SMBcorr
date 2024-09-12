@@ -50,7 +50,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
-    Updated 09/2024: return masked array if date is outside of model range
+    Updated 09/2024: use wrapper to importlib for optional dependencies
+        return masked array if date is outside of model range
     Updated 02/2023: don't recompute min and max time cutoffs for cases
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 05/2021: set bounds error to false when reducing temporal range
@@ -70,30 +71,16 @@ import os
 import re
 import gzip
 import uuid
-import warnings
 import numpy as np
 import scipy.ndimage
 import scipy.interpolate
 from SMBcorr.regress_model import regress_model
+import SMBcorr.spatial
+import SMBcorr.utilities
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    from sklearn.neighbors import KDTree, BallTree
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("scikit-learn not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
+pyproj = SMBcorr.utilities.import_dependency('pyproj')
 
 # PURPOSE: set the projection parameters based on the region name
 def set_projection(region):
@@ -291,7 +278,7 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     # construct search tree from original points
     # can use either BallTree or KDTree algorithms
     xy1 = np.concatenate((xg[ii,jj,None],yg[ii,jj,None]),axis=1)
-    tree = BallTree(xy1) if (SEARCH == 'BallTree') else KDTree(xy1)
+    tree = SMBcorr.spatial.build_tree(xy1, SEARCH=SEARCH)
 
     # time cutoff without close time interpolation
     time_cutoff = (fd['time'].min(), fd['time'].max())

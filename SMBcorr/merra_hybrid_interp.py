@@ -44,7 +44,8 @@ PROGRAM DEPENDENCIES:
     regress_model.py: models a time series using least-squares regression
 
 UPDATE HISTORY:
-    Updated 09/2024: return masked array if date is outside of model range
+    Updated 09/2024: use wrapper to importlib for optional dependencies
+        return masked array if date is outside of model range
     Updated 02/2023: close in time extrapolations with regular grid interpolator
     Updated 08/2022: updated docstrings to numpy documentation format
     Updated 11/2021: don't attempt triangulation if large number of points
@@ -66,31 +67,17 @@ import os
 import re
 import gzip
 import uuid
-import warnings
 import numpy as np
 import scipy.spatial
 import scipy.ndimage
 import scipy.interpolate
+import SMBcorr.spatial
+import SMBcorr.utilities
 from SMBcorr.regress_model import regress_model
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    from sklearn.neighbors import KDTree, BallTree
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("scikit-learn not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
+netCDF4 = SMBcorr.utilities.import_dependency('netCDF4')
+pyproj = SMBcorr.utilities.import_dependency('pyproj')
 
 # PURPOSE: set the projection parameters based on the region name
 def set_projection(region):
@@ -111,64 +98,6 @@ def set_projection(region):
     elif (region == 'gris'):
         projection_flag = 'EPSG:3413'
     return projection_flag
-
-# PURPOSE: find a valid Delaunay triangulation for coordinates x0 and y0
-# http://www.qhull.org/html/qhull.htm#options
-# Attempt 1: standard qhull options Qt Qbb Qc Qz
-# Attempt 2: rescale and center the inputs with option QbB
-# Attempt 3: joggle the inputs to find a triangulation with option QJ
-# if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0, y0, max_points=1e6):
-    """
-    Attempt to find a valid Delaunay triangulation for coordinates
-
-    - Attempt 1: ``Qt Qbb Qc Qz``
-    - Attempt 2: ``Qt Qc QbB``
-    - Attempt 3: ``QJ QbB``
-
-    Parameters
-    ----------
-    x0: float
-        x-coordinates
-    y0: float
-        y-coordinates
-    max_points: int or float, default 1e6
-        Maximum number of coordinates to attempt to triangulate
-    """
-    # don't attempt triangulation if there are a large number of points
-    if (len(x0) > max_points):
-        # if too many points: set triangle as an empty list
-        triangle = []
-        return (None,triangle)
-
-    # Attempt 1: try with standard options Qt Qbb Qc Qz
-    # Qt: triangulated output, all facets will be simplicial
-    # Qbb: scale last coordinate to [0,m] for Delaunay triangulations
-    # Qc: keep coplanar points with nearest facet
-    # Qz: add point-at-infinity to Delaunay triangulation
-
-    # Attempt 2 in case of qhull error from Attempt 1 try Qt Qc QbB
-    # Qt: triangulated output, all facets will be simplicial
-    # Qc: keep coplanar points with nearest facet
-    # QbB: scale input to unit cube centered at the origin
-
-    # Attempt 3 in case of qhull error from Attempt 2 try QJ QbB
-    # QJ: joggle input instead of merging facets
-    # QbB: scale input to unit cube centered at the origin
-
-    # try each set of qhull_options
-    points = np.concatenate((x0[:,None],y0[:,None]),axis=1)
-    for i,opt in enumerate(['Qt Qbb Qc Qz','Qt Qc QbB','QJ QbB']):
-        try:
-            triangle = scipy.spatial.Delaunay(points.data, qhull_options=opt)
-        except scipy.spatial.qhull.QhullError:
-            pass
-        else:
-            return (i+1,triangle)
-
-    # if still errors: set triangle as an empty list
-    triangle = []
-    return (None,triangle)
 
 # PURPOSE: read and interpolate MERRA-2 hybrid firn corrections
 def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
@@ -338,7 +267,7 @@ def interpolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     ix,iy = transformer.transform(X, Y)
 
     # check that input points are within convex hull of smoothed model points
-    v,triangle = find_valid_triangulation(xg[ii,jj],yg[ii,jj])
+    v,triangle = SMBcorr.spatial.find_valid_triangulation(xg[ii,jj],yg[ii,jj])
     # check if there is a valid triangulation
     if v:
         # check where points are within the complex hull of the triangulation
