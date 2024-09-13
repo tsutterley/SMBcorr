@@ -62,7 +62,7 @@ def assign_firn_variable(data, firn_correction, firn_dir, hemisphere,\
 
         # use the mask values to set the ouput to NaN if the model is invalid
         if infer_FAC:
-            data.h_firn[SMB_data['FAC'].mask]=np.NaN
-        data.h_firn[SMB_data['SMB_a'].mask]=np.NaN
+            data.h_firn[SMB_data['FAC'].mask]=np.nan
+        data.h_firn[SMB_data['SMB_a'].mask]=np.nan
     if subset_valid:
         data.index(np.isfinite(data.h_firn))
