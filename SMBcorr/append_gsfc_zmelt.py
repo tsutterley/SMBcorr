@@ -31,7 +31,7 @@ def make_zmelt_cumulative(nc_file):
         first_t_slice=np.min(t_slices)
         me=np.array(ds1['Me'][first_t_slice:,:,:])
 
-    me[me<-1000]=np.NaN
+    me[me<-1000]=np.nan
     tt=tt[first_t_slice:]
 
     me_c=np.cumsum(me, axis=0)*(tt[1]-tt[0])
@@ -43,7 +43,7 @@ def make_zmelt_cumulative(nc_file):
     # make a mask variable, use it to correct for edge effects
     mask=np.isfinite(me_c)
     mask_s=snd.gaussian_filter(mask.astype(np.float64), sigma=[0, 1, 1])
-    mask_s[mask_s==0]=np.NaN
+    mask_s[mask_s==0]=np.nan
     me_cs=me_cs/mask_s
 
     # write the finite portions of the unsmoothed grid on top of the smoothed grid
@@ -58,12 +58,12 @@ def make_zmelt_cumulative(nc_file):
 def interp_gsfc_zmelt(D, nc_file):
     meci, mai, t_vals = make_zmelt_cumulative(nc_file)
     for key in D:
-        zm = np.zeros((D[key].x.size, 2))+np.NaN
+        zm = np.zeros((D[key].x.size, 2))+np.nan
         for col, field in enumerate(['t0', 't1']):
             tt = convert_delta_time(getattr(D[key], field))['decimal']
             good = (tt >= np.min(t_vals)) & (tt <= np.max(t_vals))
             zm[:, col][good] = meci.__call__((tt[good], D[key].x[good], D[key].y[good]))
         D[key].assign({'z_melt':zm[:,1]-zm[:,0]})
         mask_i = mai.__call__((D[key].x, D[key].y))
-        D[key].z_melt[mask_i<0.1]=np.NaN
+        D[key].z_melt[mask_i<0.1]=np.nan
 
