@@ -32,6 +32,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 09/2024: use hemisphere flag to set model options
+        fixes model parameters to use the hemisphere flags
     Written 02/2023
 """
 from __future__ import print_function
@@ -175,9 +176,9 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
     if (MODEL == 'MAR'):
         match_object=re.match(r'(MARv\d+\.\d+(.\d+)?)',model_version)
         MAR_VERSION=match_object.group(0)
-        MAR_REGION=dict(GL='Greenland',AA='Antarctic')[HEM]
+        MAR_REGION=dict(N='Greenland',S='Antarctic')[HEM]
         # model subdirectories
-        SUBDIRECTORY=dict(AA={}, GL={})
+        SUBDIRECTORY=dict(S={}, N={})
         SUBDIRECTORY['N']['MARv3.9-ERA']=['ERA_1958-2018_10km','daily_10km']
         SUBDIRECTORY['N']['MARv3.10-ERA']=['ERA_1958-2019-15km','daily_15km']
         SUBDIRECTORY['N']['MARv3.11-NCEP']=['NCEP1_1948-2020_20km','daily_20km']
@@ -195,7 +196,7 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
         MAR_MODEL=SUBDIRECTORY[HEM][model_version]
         DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
         # keyword arguments for variable coordinates
-        MAR_KWARGS=dict(AA={}, GL={})
+        MAR_KWARGS=dict(S={}, N={})
         MAR_KWARGS['N']['MARv3.9-ERA'] = dict(XNAME='X10_153',YNAME='Y21_288')
         MAR_KWARGS['N']['MARv3.10-ERA'] = dict(XNAME='X10_105',YNAME='Y21_199')
         MAR_KWARGS['N']['MARv3.11-NCEP'] = dict(XNAME='X12_84',YNAME='Y21_155')
@@ -259,7 +260,7 @@ def interp_SMB_ICESat2(base_dir, input_file, model_version,
         # MERRA-2 hybrid directory
         DIRECTORY=os.path.join(base_dir,'MERRA2_hybrid',MERRA2_VERSION)
         # MERRA-2 region name from ATL15 region
-        MERRA2_REGION = dict(AA='ais',GL='gris')[HEM]
+        MERRA2_REGION = dict(S='ais', N='gris')[HEM]
         # keyword arguments for MERRA-2 interpolation programs
         if MERRA2_VERSION in ('v0','v1','v1.0'):
             KWARGS['VERSION'] = merra2_regex.match(model_version).group(2)
