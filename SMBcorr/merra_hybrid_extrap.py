@@ -195,26 +195,28 @@ def extrapolate_merra_hybrid(base_dir, EPSG, REGION, tdec, X, Y,
     time_step = 5.0/365.25
     # data at first time step for calculating anomalies
     z0 = fileID.variables[VARIABLE][0,:,:].copy()
+    # temporary variable for reading time
+    tmod = fileID.variables['time'][:].copy()
     # if extrapolating data: read the full dataset
     # if simply interpolating with fill values: reduce to a subset
     if EXTRAPOLATE:
-        # read time variables
-        fd['time'] = fileID.variables['time'][:].copy()
+        # copy time variables
+        fd['time'] = tmod.copy()
         # read full dataset and remove singleton dimensions
         fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][:].copy())
-    elif (np.max(tdec) < np.max(fileID.variables['time'][:]) or
-        (np.min(tdec) > np.min(fileID.variables['time'][:]))):
+    elif ((np.max(tdec) + 2.0*time_step) < np.max(tmod) and
+        ((np.min(tdec) - 2.0*time_step) > np.min(tmod))):
         # reduce grids to time period of input buffered by time steps
         tmin = np.min(tdec) - 2.0*time_step
         tmax = np.max(tdec) + 2.0*time_step
         # find indices to times
         nt, = fileID.variables['time'].shape
-        f = scipy.interpolate.interp1d(fileID.variables['time'][:],
+        f = scipy.interpolate.interp1d(tmod,
             np.arange(nt), kind='nearest', bounds_error=False,
             fill_value=(0,nt))
         imin,imax = f((tmin,tmax)).astype(np.int64)
-        # read reduced time variables
-        fd['time'] = fileID.variables['time'][imin:imax+1].copy()
+        # reduce time variables
+        fd['time'] = tmod[imin:imax+1].copy()
         # read reduced dataset and remove singleton dimensions
         fd[VARIABLE] = np.squeeze(fileID.variables[VARIABLE][imin:imax+1,:,:])
     else:
