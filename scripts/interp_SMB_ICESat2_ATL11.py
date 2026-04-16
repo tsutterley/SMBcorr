@@ -84,6 +84,8 @@ models['GL']['MAR'].append('MARv3.11.5-ERA-6km')
 models['GL']['MAR'].append('MARv3.11.5-ERA-10km')
 models['GL']['MAR'].append('MARv3.11.5-ERA-15km')
 models['GL']['MAR'].append('MARv3.11.5-ERA-20km')
+models['GL']['MAR'].append('MARv3.14-ERA-1km')
+models['GL']['MAR'].append('MARv3.14-ERA-10km')
 # RACMO
 models['GL']['RACMO'] = []
 models['GL']['RACMO'].append('RACMO2.3-XGRN11')
@@ -175,6 +177,8 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
         SUBDIRECTORY['GL']['MARv3.11.5-ERA-10km']=['10km_ERA5']
         SUBDIRECTORY['GL']['MARv3.11.5-ERA-15km']=['15km_ERA5']
         SUBDIRECTORY['GL']['MARv3.11.5-ERA-20km']=['20km_ERA5']
+        SUBDIRECTORY['GL']['MARv3.14-ERA-1km']=['ERA5-1km-monthly']
+        SUBDIRECTORY['GL']['MARv3.14-ERA-10km']=['ERA5-10km-daily']
         MAR_MODEL=SUBDIRECTORY[REGION][model_version]
         DIRECTORY=os.path.join(base_dir,'MAR',MAR_VERSION,MAR_REGION,*MAR_MODEL)
         # keyword arguments for variable coordinates
@@ -192,7 +196,8 @@ def interp_SMB_ICESat2(base_dir, FILE, model_version, CROSSOVERS=False,
         MAR_KWARGS['GL']['MARv3.11.5-ERA-6km'] = dict(XNAME='X12_251',YNAME='Y20_465')
         MAR_KWARGS['GL']['MARv3.11.5-ERA-10km'] = dict(XNAME='X10_153',YNAME='Y21_288')
         MAR_KWARGS['GL']['MARv3.11.5-ERA-15km'] = dict(XNAME='X10_105',YNAME='Y21_199')
-        MAR_KWARGS['GL']['MARv3.11.5-ERA-20km'] = dict(XNAME='X12_84',YNAME='Y21_155')
+        MAR_KWARGS['GL']['MARv3.14-ERA-1km'] = dict(XNAME='x',YNAME='y')
+        MAR_KWARGS['GL']['MARv3.14-ERA-10km'] = dict(XNAME='x',YNAME='y')
         KWARGS.update(MAR_KWARGS[REGION][model_version])
         # netCDF4 variable names for direct fields
         VARIABLES = ['SMB','ZN6','ZN4','ZN5']

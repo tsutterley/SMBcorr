@@ -1,0 +1,89 @@
+{
+    "GSFC-fdm-v0": {
+        "ais": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v0/gsfc_FAC_ais.nc",
+            "variables": [
+                "FAC"
+            ]
+        },
+        "gris": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v0/gsfc_FAC_gris.nc",
+            "variables": [
+                "FAC"
+            ]
+        }
+    },
+    "GSFC-fdm-v1": {
+        "ais": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v1/gsfc_fdm_v1_ais.nc",
+            "variables": [
+                "FAC",
+                "cum_smb_anomaly",
+                "height"
+            ]
+        },
+        "gris": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v1/gsfc_fdm_v1_gris.nc",
+            "variables": [
+                "FAC",
+                "cum_smb_anomaly",
+                "height"
+            ]
+        }
+    },
+    "GSFC-fdm-v1.0": {
+        "gris": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v1.0/gsfc_fdm_v1_gris.nc",
+            "variables": [
+                "FAC",
+                "cum_smb_anomaly",
+                "height"
+            ]
+        }
+    },
+    "GSFC-fdm-v1.1": {
+        "ais": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v1.1/gsfc_fdm_v1_1_ais.nc",
+            "variables": [
+                "FAC",
+                "SMB_a",
+                "h_a"
+            ]
+        },
+        "gris": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v1.1/gsfc_fdm_v1_1_gris.nc",
+            "variables": [
+                "FAC",
+                "SMB_a",
+                "h_a"
+            ]
+        }
+    },
+    "GSFC-fdm-v1.2.1": {
+        "ais": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v1.2.1/gsfc_fdm_v1_2_1_ais.nc",
+            "variables": [
+                "FAC",
+                "SMB_a",
+                "h_a"
+            ]
+        },
+        "gris": {
+            "format": "GSFC-fdm",
+            "model_file": "GSFC-fdm/v1.2.1/gsfc_fdm_v1_2_1_gris.nc",
+            "variables": [
+                "FAC",
+                "SMB_a",
+                "h_a"
+            ]
+        }
+    }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-u"""
+"""
 utilities.py
 Written by Tyler Sutterley (09/2024)
 Download and management utilities for syncing time and auxiliary files
@@ -9,6 +9,11 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 04/2026: added string check to determine if is a valid URL
+        added function to check if a dependency is available
+        added detection functions for checking if files are compressed
+        allow additional keyword arguments to http functions
+        added get_cache_path function for application cache directories
     Updated 09/2024: add wrapper to importlib for optional dependencies
     Updated 06/2022: add NASA Common Metadata Repository (CMR) queries
         added function to build GES DISC subsetting API requests
@@ -26,6 +31,7 @@ UPDATE HISTORY:
     Updated 09/2020: copy from http and https to bytesIO object in chunks
     Written 08/2020
 """
+
 from __future__ import print_function, division
 
 import sys
@@ -42,11 +48,14 @@ import socket
 import inspect
 import hashlib
 import logging
+import pathlib
 import importlib
 import posixpath
 import lxml.etree
+import platformdirs
 import calendar, time
 import dateutil.parser
+
 if sys.version_info[0] == 2:
     from cookielib import CookieJar
     from urllib import urlencode
@@ -58,30 +67,57 @@ else:
     import urllib.request as urllib2
     import urllib.parse as urlparse
 
+
 # PURPOSE: get absolute path within a package from a relative path
-def get_data_path(relpath):
+def get_data_path(relpath: list | str | pathlib.Path):
     """
     Get the absolute path within a package from a relative path
 
     Parameters
     ----------
-    relpath: str,
-        relative path
+    relpath: list, str or pathlib.Path
+        Relative path
     """
     # current file path
     filename = inspect.getframeinfo(inspect.currentframe()).filename
-    filepath = os.path.dirname(os.path.abspath(filename))
-    if isinstance(relpath,list):
+    filepath = pathlib.Path(filename).absolute().parent
+    if isinstance(relpath, list):
         # use *splat operator to extract from list
-        return os.path.join(filepath,*relpath)
-    elif isinstance(relpath,str):
-        return os.path.join(filepath,relpath)
+        return filepath.joinpath(*relpath)
+    elif isinstance(relpath, (str, pathlib.Path)):
+        return filepath.joinpath(relpath)
+
+
+# PURPOSE: get the path to the user cache directory
+def get_cache_path(
+    relpath: list | str | pathlib.Path | None = None,
+    appname="smbcorr",
+):
+    """
+    Get the path to the user cache directory for an application
+
+    Parameters
+    ----------
+    relpath: list, str, pathlib.Path or None
+        Relative path
+    appname: str, default 'smbcorr'
+        Application name
+    """
+    # get platform-specific cache directory
+    filepath = platformdirs.user_cache_path(appname=appname, ensure_exists=True)
+    if isinstance(relpath, list):
+        # use *splat operator to extract from list
+        filepath = filepath.joinpath(*relpath)
+    elif isinstance(relpath, (str, pathlib.Path)):
+        filepath = filepath.joinpath(relpath)
+    return pathlib.Path(filepath)
+
 
 def import_dependency(
-        name: str,
-        extra: str = "",
-        raise_exception: bool = False
-    ):
+    name: str,
+    extra: str = "",
+    raise_exception: bool = False,
+):
     """
     Import an optional dependency
 
@@ -106,7 +142,7 @@ def import_dependency(
     assert isinstance(name, str), msg
     # default error if module cannot be imported
     err = f"Missing optional dependency '{name}'. {extra}"
-    module = type('module', (), {})
+    module = type("module", (), {})
     # try to import the module
     try:
         module = importlib.import_module(name)
@@ -118,38 +154,130 @@ def import_dependency(
     # return the module
     return module
 
+
+def dependency_available(
+    name: str,
+    minversion: str | None = None,
+):
+    """
+    Checks whether a module is installed without importing it
+
+    Adapted from ``xarray.namedarray.utils.module_available``
+
+    Parameters
+    ----------
+    name: str
+        Module name
+    minversion : str, optional
+        Minimum version of the module
+
+    Returns
+    -------
+    available : bool
+        Whether the module is installed
+    """
+    # check if module is available
+    if importlib.util.find_spec(name) is None:
+        return False
+    # check if the version is greater than the minimum required
+    if minversion is not None:
+        version = importlib.metadata.version(name)
+        return version >= minversion
+    # return if both checks are passed
+    return True
+
+
+def is_valid_url(url: str) -> bool:
+    """
+    Checks if a string is a valid URL
+
+    Parameters
+    ----------
+    url: str
+        URL to check
+    """
+    try:
+        result = urlparse(str(url))
+        return all([result.scheme, result.netloc])
+    except AttributeError:
+        return False
+
+
+def detect_compression(filename: str | pathlib.Path) -> bool:
+    """
+    Detect if file is compressed based on file extension
+
+    Parameters
+    ----------
+    filename: str or pathlib.Path
+        Model file
+
+    Returns
+    -------
+    compressed: bool
+        Input file is ``gzip`` compressed
+    """
+    filename = pathlib.Path(filename).resolve()
+    return bool(re.search(r"\.gz$", filename.name, re.IGNORECASE))
+
+
+def compressuser(filename: str | pathlib.Path):
+    """
+    Tilde-compress a file to be relative to the home directory
+
+    Parameters
+    ----------
+    filename: str or pathlib.Path
+        Input filename to tilde-compress
+    """
+    # attempt to compress filename relative to home directory
+    filename = pathlib.Path(filename).expanduser().absolute()
+    try:
+        relative_to = filename.relative_to(pathlib.Path().home())
+    except (ValueError, AttributeError) as exc:
+        return filename
+    else:
+        return pathlib.Path("~").joinpath(relative_to)
+
+
 # PURPOSE: get the hash value of a file
-def get_hash(local, algorithm='MD5'):
+def get_hash(
+    local: str | io.IOBase | pathlib.Path,
+    algorithm: str = "md5",
+):
     """
     Get the hash value from a local file or ``BytesIO`` object
 
     Parameters
     ----------
-    local: obj or str
-        BytesIO object or path to file
-    algorithm: str, default 'MD5'
-        hashing algorithm for checksum validation
-
-            - ``'MD5'``: Message Digest
-            - ``'sha1'``: Secure Hash Algorithm
+    local: obj, str or pathlib.Path
+        ``BytesIO`` object or path to file
+    algorithm: str, default 'md5'
+        Hashing algorithm for checksum validation
     """
     # check if open file object or if local file exists
     if isinstance(local, io.IOBase):
-        if (algorithm == 'MD5'):
-            return hashlib.md5(local.getvalue()).hexdigest()
-        elif (algorithm == 'sha1'):
-            return hashlib.sha1(local.getvalue()).hexdigest()
-    elif os.access(os.path.expanduser(local),os.F_OK):
+        # generate checksum hash for a given type
+        if algorithm in hashlib.algorithms_available:
+            return hashlib.new(algorithm, local.getvalue()).hexdigest()
+        else:
+            raise ValueError(f"Invalid hashing algorithm: {algorithm}")
+    elif isinstance(local, (str, pathlib.Path)):
         # generate checksum hash for local file
+        local = pathlib.Path(local).expanduser()
+        # if file currently doesn't exist, return empty string
+        if not local.exists():
+            return ""
         # open the local_file in binary read mode
-        with open(os.path.expanduser(local), 'rb') as local_buffer:
+        with local.open(mode="rb") as local_buffer:
             # generate checksum hash for a given type
-            if (algorithm == 'MD5'):
-                return hashlib.md5(local_buffer.read()).hexdigest()
-            elif (algorithm == 'sha1'):
-                return hashlib.sha1(local_buffer.read()).hexdigest()
+            if algorithm in hashlib.algorithms_available:
+                return hashlib.new(algorithm, local_buffer.read()).hexdigest()
+            else:
+                raise ValueError(f"Invalid hashing algorithm: {algorithm}")
     else:
-        return ''
+        return ""
+
 
 # PURPOSE: recursively split a url path
 def url_split(s):
@@ -162,11 +290,12 @@ def url_split(s):
         url string
     """
     head, tail = posixpath.split(s)
-    if head in ('http:','https:','ftp:','s3:'):
-        return s,
-    elif head in ('', posixpath.sep):
-        return tail,
+    if head in ("http:", "https:", "ftp:", "s3:"):
+        return (s,)
+    elif head in ("", posixpath.sep):
+        return (tail,)
     return url_split(head) + (tail,)
+
 
 # PURPOSE: convert file lines to arguments
 def convert_arg_line_to_args(arg_line):
@@ -176,16 +305,17 @@ def convert_arg_line_to_args(arg_line):
     Parameters
     ----------
     arg_line: str
-        line string containing a single argument and/or comments
+        Line string containing a single argument and/or comments
     """
     # remove commented lines and after argument comments
-    for arg in re.sub(r'\#(.*?)$',r'',arg_line).split():
+    for arg in re.sub(r"\#(.*?)$", r"", arg_line).split():
         if not arg.strip():
             continue
         yield arg
 
+
 # PURPOSE: returns the Unix timestamp value for a formatted date string
-def get_unix_time(time_string, format='%Y-%m-%d %H:%M:%S'):
+def get_unix_time(time_string, format="%Y-%m-%d %H:%M:%S"):
     """
     Get the Unix timestamp value for a formatted date string
 
@@ -210,6 +340,7 @@ def get_unix_time(time_string, format='%Y-%m-%d %H:%M:%S'):
     else:
         return parsed_time.timestamp()
 
+
 # PURPOSE: output a time string in isoformat
 def isoformat(time_string):
     """
@@ -228,6 +359,7 @@ def isoformat(time_string):
     else:
         return parsed_time.isoformat()
 
+
 # PURPOSE: rounds a number to an even number less than or equal to original
 def even(value):
     """
@@ -238,7 +370,8 @@ def even(value):
     value: float
         number to be rounded
     """
-    return 2*int(value//2)
+    return 2 * int(value // 2)
+
 
 # PURPOSE: rounds a number upward to its nearest integer
 def ceil(value):
@@ -250,44 +383,56 @@ def ceil(value):
     value: float
         number to be rounded upward
     """
-    return -int(-value//1)
+    return -int(-value // 1)
+
 
 # PURPOSE: make a copy of a file with all system information
-def copy(source, destination, move=False, **kwargs):
+def copy(
+    source: str | pathlib.Path,
+    destination: str | pathlib.Path,
+    move: bool = False,
+    **kwargs,
+):
     """
     Copy or move a file with all system information
 
     Parameters
     ----------
     source: str
-        source file
+        Source file
     destination: str
-        copied destination file
+        Copied destination file
     move: bool, default False
-        remove the source file
+        Remove the source file
     """
-    source = os.path.abspath(os.path.expanduser(source))
-    destination = os.path.abspath(os.path.expanduser(destination))
+    source = pathlib.Path(source).expanduser().absolute()
+    destination = pathlib.Path(destination).expanduser().absolute()
     # log source and destination
-    logging.info('{0} -->\n\t{1}'.format(source,destination))
+    logging.info(f"{str(source)} -->\n\t{str(destination)}")
     shutil.copyfile(source, destination)
     shutil.copystat(source, destination)
+    # remove the original file if moving
     if move:
-        os.remove(source)
+        source.unlink()
+
 
 # PURPOSE: check ftp connection
-def check_ftp_connection(HOST, username=None, password=None):
+def check_ftp_connection(
+    HOST: str,
+    username: str | None = None,
+    password: str | None = None,
+):
     """
-    Check internet connection with ftp host
+    Check internet connection with ``ftp`` host
 
     Parameters
     ----------
     HOST: str
-        remote ftp host
+        Remote ftp host
     username: str or NoneType
-        ftp username
+        ``ftp`` username
     password: str or NoneType
-        ftp password
+        ``ftp`` password
     """
     # attempt to connect to ftp host
     try:
@@ -295,61 +440,69 @@ def check_ftp_connection(HOST, username=None, password=None):
         f.login(username, password)
         f.voidcmd("NOOP")
     except IOError:
-        raise RuntimeError('Check internet connection')
+        raise RuntimeError("Check internet connection")
     except ftplib.error_perm:
-        raise RuntimeError('Check login credentials')
+        raise RuntimeError("Check login credentials")
     else:
         return True
 
+
 # PURPOSE: list a directory on a ftp host
-def ftp_list(HOST, username=None, password=None, timeout=None,
-    basename=False, pattern=None, sort=False):
+def ftp_list(
+    HOST: str | list,
+    username: str | None = None,
+    password: str | None = None,
+    timeout: int | None = None,
+    basename: bool = False,
+    pattern: str | None = None,
+    sort: bool = False,
+):
     """
-    List a directory on a ftp host
+    List a directory on a ``ftp`` host
 
     Parameters
     ----------
     HOST: str or list
-        remote ftp host path split as list
+        Remote ``ftp`` host path split as list
     username: str or NoneType
-        ftp username
+        ``ftp`` username
     password: str or NoneType
-        ftp password
+        ``ftp`` password
     timeout: int or NoneType, default None
-        timeout in seconds for blocking operations
+        Timeout in seconds for blocking operations
     basename: bool, default False
-        return the file or directory basename instead of the full path
+        Return the file or directory basename instead of the full path
     pattern: str or NoneType, default None
-        regular expression pattern for reducing list
+        Regular expression pattern for reducing list
     sort: bool, default False
-        sort output list
+        Sort output list
 
     Returns
     -------
     output: list
-        items in a directory
+        Items in a directory
     mtimes: list
-        last modification times for items in the directory
+        Last modification times for items in the directory
     """
     # verify inputs for remote ftp host
     if isinstance(HOST, str):
         HOST = url_split(HOST)
     # try to connect to ftp host
     try:
-        ftp = ftplib.FTP(HOST[0],timeout=timeout)
-    except (socket.gaierror,IOError):
-        raise RuntimeError('Unable to connect to {0}'.format(HOST[0]))
+        ftp = ftplib.FTP(HOST[0], timeout=timeout)
+    except (socket.gaierror, IOError):
+        raise RuntimeError(f"Unable to connect to {HOST[0]}")
     else:
-        ftp.login(username,password)
+        ftp.login(username, password)
         # list remote path
         output = ftp.nlst(posixpath.join(*HOST[1:]))
         # get last modified date of ftp files and convert into unix time
-        mtimes = [None]*len(output)
+        mtimes = [None] * len(output)
         # iterate over each file in the list and get the modification time
-        for i,f in enumerate(output):
+        for i, f in enumerate(output):
             try:
                 # try sending modification time command
-                mdtm = ftp.sendcmd('MDTM {0}'.format(f))
+                mdtm = ftp.sendcmd(f"MDTM {f}")
             except ftplib.error_perm:
                 # directories will return with an error
                 pass
@@ -361,13 +514,13 @@ def ftp_list(HOST, username=None, password=None, timeout=None,
             output = [posixpath.basename(i) for i in output]
         # reduce using regular expression pattern
         if pattern:
-            i = [i for i,f in enumerate(output) if re.search(pattern,f)]
+            i = [i for i, f in enumerate(output) if re.search(pattern, f)]
             # reduce list of listed items and last modified times
             output = [output[indice] for indice in i]
             mtimes = [mtimes[indice] for indice in i]
         # sort the list
         if sort:
-            i = [i for i,j in sorted(enumerate(output), key=lambda i: i[1])]
+            i = [i for i, j in sorted(enumerate(output), key=lambda i: i[1])]
             # sort list of listed items and last modified times
             output = [output[indice] for indice in i]
             mtimes = [mtimes[indice] for indice in i]
@@ -376,40 +529,50 @@ def ftp_list(HOST, username=None, password=None, timeout=None,
         # return the list of items and last modified times
         return (output, mtimes)
 
+
 # PURPOSE: download a file from a ftp host
-def from_ftp(HOST, username=None, password=None, timeout=None,
-    local=None, hash='', chunk=8192, verbose=False, fid=sys.stdout,
-    mode=0o775):
+def from_ftp(
+    HOST: str | list,
+    username: str | None = None,
+    password: str | None = None,
+    timeout: int | None = None,
+    local: str | pathlib.Path | None = None,
+    hash: str = "",
+    chunk: int = 8192,
+    verbose: bool = False,
+    fid=sys.stdout,
+    mode: oct = 0o775,
+):
     """
-    Download a file from a ftp host
+    Download a file from a ``ftp`` host
 
     Parameters
     ----------
     HOST: str or list
-        remote ftp host path
+        Remote ``ftp`` host path
     username: str or NoneType
-        ftp username
+        ``ftp`` username
     password: str or NoneType
-        ftp password
+        ``ftp`` password
     timeout: int or NoneType, default None
-        timeout in seconds for blocking operations
-    local: str or NoneType, default None
-        path to local file
+        Timeout in seconds for blocking operations
+    local: str, pathlib.Path or NoneType, default None
+        Path to local file
     hash: str, default ''
         MD5 hash of local file
     chunk: int, default 8192
-        chunk size for transfer encoding
+        Chunk size for transfer encoding
     verbose: bool, default False
-        print file transfer information
+        Print file transfer information
     fid: obj, default sys.stdout
-        open file object to print if verbose
+        Open file object to print if verbose
     mode: oct, default 0o775
-        permissions mode of output local file
+        Permissions mode of output local file
 
     Returns
     -------
     remote_buffer: obj
-        BytesIO representation of file
+        ``BytesIO`` representation of file
     """
     # create logger
     loglevel = logging.INFO if verbose else logging.CRITICAL
@@ -421,67 +584,67 @@ def from_ftp(HOST, username=None, password=None, timeout=None,
     try:
         # try to connect to ftp host
         ftp = ftplib.FTP(HOST[0], timeout=timeout)
-    except (socket.gaierror,IOError):
-        raise RuntimeError('Unable to connect to {0}'.format(HOST[0]))
+    except (socket.gaierror, IOError):
+        raise RuntimeError(f"Unable to connect to {HOST[0]}")
     else:
-        ftp.login(username,password)
+        ftp.login(username, password)
         # remote path
         ftp_remote_path = posixpath.join(*HOST[1:])
         # copy remote file contents to bytesIO object
         remote_buffer = io.BytesIO()
-        ftp.retrbinary('RETR {0}'.format(ftp_remote_path),
-            remote_buffer.write, blocksize=chunk)
+        ftp.retrbinary(
+            f"RETR {ftp_remote_path}", remote_buffer.write, blocksize=chunk
+        )
         remote_buffer.seek(0)
         # save file basename with bytesIO object
         remote_buffer.filename = HOST[-1]
         # generate checksum hash for remote file
         remote_hash = hashlib.md5(remote_buffer.getvalue()).hexdigest()
         # get last modified date of remote file and convert into unix time
-        mdtm = ftp.sendcmd('MDTM {0}'.format(ftp_remote_path))
+        mdtm = ftp.sendcmd(f"MDTM {ftp_remote_path}")
         remote_mtime = get_unix_time(mdtm[4:], format="%Y%m%d%H%M%S")
         # compare checksums
         if local and (hash != remote_hash):
             # convert to absolute path
-            local = os.path.abspath(local)
+            local = pathlib.Path(local).expanduser().absolute()
             # create directory if non-existent
-            if not os.access(os.path.dirname(local), os.F_OK):
-                os.makedirs(os.path.dirname(local), mode)
+            local.parent.mkdir(mode=mode, parents=True, exist_ok=True)
             # print file information
-            args = (posixpath.join(*HOST),local)
-            logging.info('{0} -->\n\t{1}'.format(*args))
+            args = (posixpath.join(*HOST), str(local))
+            logging.info("{0} -->\n\t{1}".format(*args))
             # store bytes to file using chunked transfer encoding
             remote_buffer.seek(0)
-            with open(os.path.expanduser(local), 'wb') as f:
+            with local.open(mode="wb") as f:
                 shutil.copyfileobj(remote_buffer, f, chunk)
             # change the permissions mode
-            os.chmod(local,mode)
+            local.chmod(mode)
             # keep remote modification time of file and local access time
-            os.utime(local, (os.stat(local).st_atime, remote_mtime))
+            os.utime(local, (local.stat().st_atime, remote_mtime))
         # close the ftp connection
         ftp.close()
         # return the bytesIO object
         remote_buffer.seek(0)
         return remote_buffer
 
+
 def _create_default_ssl_context() -> ssl.SSLContext:
-    """Creates the default SSL context
-    """
+    """Creates the default ``SSL`` context"""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     _set_ssl_context_options(context)
     context.options |= ssl.OP_NO_COMPRESSION
     return context
 
+
 def _create_ssl_context_no_verify() -> ssl.SSLContext:
-    """Creates an SSL context for unverified connections
-    """
+    """Creates an ``SSL`` context for unverified connections"""
     context = _create_default_ssl_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     return context
 
+
 def _set_ssl_context_options(context: ssl.SSLContext) -> None:
-    """Sets the default options for the SSL context
-    """
+    """Sets the default options for the ``SSL`` context"""
     if sys.version_info >= (3, 10) or ssl.OPENSSL_VERSION_INFO >= (1, 1, 0, 7):
         context.minimum_version = ssl.TLSVersion.TLSv1_2
     else:
@@ -490,59 +653,80 @@ def _set_ssl_context_options(context: ssl.SSLContext) -> None:
         context.options |= ssl.OP_NO_TLSv1
         context.options |= ssl.OP_NO_TLSv1_1
 
+
 # default ssl context
 _default_ssl_context = _create_ssl_context_no_verify()
 
-# PURPOSE: check internet connection
-def check_connection(HOST, context=_default_ssl_context):
+
+# PURPOSE: check connection with http host
+def check_connection(
+    HOST: str,
+    context: ssl.SSLContext = _default_ssl_context,
+    timeout: int = 20,
+):
     """
-    Check internet connection with http host
+    Check internet connection with ``http`` host
 
     Parameters
     ----------
     HOST: str
-        remote http host
-    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
-        SSL context for ``urllib`` opener object
+        Remote ``http`` host
+    context: obj, default SMBcorr.utilities._default_ssl_context
+        ``SSL`` context for ``urllib`` opener object
+    timeout: int, default 20
+        Timeout in seconds for blocking operations
     """
     # attempt to connect to http host
     try:
-        urllib2.urlopen(HOST, timeout=20, context=context)
-    except urllib2.URLError:
-        raise RuntimeError('Check internet connection')
+        urllib2.urlopen(HOST, timeout=timeout, context=context)
+    except urllib2.HTTPError as exc:
+        logging.debug(exc.code)
+        raise
+    except urllib2.URLError as exc:
+        logging.debug(exc.reason)
+        exc.message = "Check internet connection"
+        raise
     else:
         return True
 
+
 # PURPOSE: list a directory on an Apache http Server
-def http_list(HOST, timeout=None, context=_default_ssl_context,
-    parser=lxml.etree.HTMLParser(), format='%Y-%m-%d %H:%M',
-    pattern='', sort=False):
+def http_list(
+    HOST: str | list,
+    timeout: int | None = None,
+    context: ssl.SSLContext = _default_ssl_context,
+    parser=lxml.etree.HTMLParser(),
+    format: str = "%Y-%m-%d %H:%M",
+    pattern: str = "",
+    sort: bool = False,
+    **kwargs,
+):
     """
-    List a directory on an Apache http Server
+    List a directory on an Apache ``http`` Server
 
     Parameters
     ----------
     HOST: str or list
-        remote http host path
+        Remote ``http`` host path
     timeout: int or NoneType, default None
-        timeout in seconds for blocking operations
-    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
-        SSL context for ``urllib`` opener object
+        Timeout in seconds for blocking operations
+    context: obj, default SMBcorr.utilities._default_ssl_context
+        ``SSL`` context for ``urllib`` opener object
     parser: obj, default lxml.etree.HTMLParser()
-        HTML parser for ``lxml``
+        ``HTML`` parser for ``lxml``
     format: str, default '%Y-%m-%d %H:%M'
-        format for input time string
+        Format for input time string
     pattern: str, default ''
-        regular expression pattern for reducing list
+        Regular expression pattern for reducing list
     sort: bool, default False
-        sort output list
+        Sort output list
 
     Returns
     -------
     colnames: list
-        column names in a directory
+        Column names in a directory
     collastmod: list
-        last modification times for items in the directory
+        Last modification times for items in the directory
     """
     # verify inputs for remote http host
     if isinstance(HOST, str):
@@ -550,66 +734,84 @@ def http_list(HOST, timeout=None, context=_default_ssl_context,
     # try listing from http
     try:
         # Create and submit request.
-        request = urllib2.Request(posixpath.join(*HOST))
+        request = urllib2.Request(posixpath.join(*HOST), **kwargs)
         response = urllib2.urlopen(request, timeout=timeout, context=context)
-    except (urllib2.HTTPError, urllib2.URLError):
-        raise Exception('List error from {0}'.format(posixpath.join(*HOST)))
+    except urllib2.HTTPError as exc:
+        logging.debug(exc.code)
+        raise
+    except urllib2.URLError as exc:
+        logging.debug(exc.reason)
+        exc.message = "Check internet connection"
+        raise
     else:
         # read and parse request for files (column names and modified times)
         tree = lxml.etree.parse(response, parser)
-        colnames = tree.xpath('//tr/td[not(@*)]//a/@href')
+        colnames = tree.xpath("//tr/td[not(@*)]//a/@href")
         # get the Unix timestamp value for a modification time
-        collastmod = [get_unix_time(i,format=format)
-            for i in tree.xpath('//tr/td[@align="right"][1]/text()')]
+        collastmod = [
+            get_unix_time(i, format=format)
+            for i in tree.xpath('//tr/td[@align="right"][1]/text()')
+        ]
         # reduce using regular expression pattern
         if pattern:
-            i = [i for i,f in enumerate(colnames) if re.search(pattern, f)]
+            i = [i for i, f in enumerate(colnames) if re.search(pattern, f)]
             # reduce list of column names and last modified times
             colnames = [colnames[indice] for indice in i]
             collastmod = [collastmod[indice] for indice in i]
         # sort the list
         if sort:
-            i = [i for i,j in sorted(enumerate(colnames), key=lambda i: i[1])]
+            i = [i for i, j in sorted(enumerate(colnames), key=lambda i: i[1])]
             # sort list of column names and last modified times
             colnames = [colnames[indice] for indice in i]
             collastmod = [collastmod[indice] for indice in i]
         # return the list of column names and last modified times
         return (colnames, collastmod)
 
+
 # PURPOSE: download a file from a http host
-def from_http(HOST, timeout=None, context=_default_ssl_context,
-    local=None, hash='', chunk=16384, verbose=False, fid=sys.stdout,
-    mode=0o775):
+def from_http(
+    HOST: str | list,
+    timeout: int | None = None,
+    context: ssl.SSLContext = _default_ssl_context,
+    local: str | pathlib.Path | None = None,
+    hash: str = "",
+    chunk: int = 16384,
+    headers: dict = {},
+    verbose: bool = False,
+    fid=sys.stdout,
+    mode: oct = 0o775,
+    **kwargs,
+):
     """
-    Download a file from a http host
+    Download a file from a ``http`` host
 
     Parameters
     ----------
     HOST: str or list
-        remote http host path split as list
+        Remote ``http`` host path split as list
     timeout: int or NoneType, default None
-        timeout in seconds for blocking operations
-    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
-        SSL context for ``urllib`` opener object
-    timeout: int or NoneType, default None
-        timeout in seconds for blocking operations
-    local: str or NoneType, default None
-        path to local file
+        Timeout in seconds for blocking operations
+    context: obj, default SMBcorr.utilities._default_ssl_context
+        ``SSL`` context for ``urllib`` opener object
+    local: str, pathlib.Path or NoneType, default None
+        Path to local file
     hash: str, default ''
-        MD5 hash of local file
+        ``MD5`` hash of local file
     chunk: int, default 16384
-        chunk size for transfer encoding
+        Chunk size for transfer encoding
+    headers: dict, default {}
+        Dictionary of headers to append from URL request
     verbose: bool, default False
-        print file transfer information
+        Print file transfer information
     fid: obj, default sys.stdout
-        open file object to print if verbose
+        Open file object to print if verbose
     mode: oct, default 0o775
-        permissions mode of output local file
+        Permissions mode of output local file
 
     Returns
     -------
     remote_buffer: obj
-        BytesIO representation of file
+        ``BytesIO`` representation of file
     """
     # create logger
     loglevel = logging.INFO if verbose else logging.CRITICAL
@@ -620,10 +822,15 @@ def from_http(HOST, timeout=None, context=_default_ssl_context,
     # try downloading from http
     try:
         # Create and submit request.
-        request = urllib2.Request(posixpath.join(*HOST))
+        request = urllib2.Request(posixpath.join(*HOST), **kwargs)
         response = urllib2.urlopen(request, timeout=timeout, context=context)
-    except:
-        raise Exception('Download error from {0}'.format(posixpath.join(*HOST)))
+    except urllib2.HTTPError as exc:
+        logging.debug(exc.code)
+        raise
+    except urllib2.URLError as exc:
+        logging.debug(exc.reason)
+        exc.message = "Check internet connection"
+        raise
     else:
         # copy remote file contents to bytesIO object
         remote_buffer = io.BytesIO()
@@ -631,32 +838,91 @@ def from_http(HOST, timeout=None, context=_default_ssl_context,
         remote_buffer.seek(0)
         # save file basename with bytesIO object
         remote_buffer.filename = HOST[-1]
+        # copy headers from response
+        headers.update({k.lower(): v for k, v in response.getheaders()})
         # generate checksum hash for remote file
         remote_hash = hashlib.md5(remote_buffer.getvalue()).hexdigest()
         # compare checksums
         if local and (hash != remote_hash):
             # convert to absolute path
-            local = os.path.abspath(local)
+            local = pathlib.Path(local).expanduser().absolute()
             # create directory if non-existent
-            if not os.access(os.path.dirname(local), os.F_OK):
-                os.makedirs(os.path.dirname(local), mode)
+            local.parent.mkdir(mode=mode, parents=True, exist_ok=True)
             # print file information
-            args = (posixpath.join(*HOST),local)
-            logging.info('{0} -->\n\t{1}'.format(*args))
+            args = (posixpath.join(*HOST), str(local))
+            logging.info("{0} -->\n\t{1}".format(*args))
             # store bytes to file using chunked transfer encoding
             remote_buffer.seek(0)
-            with open(os.path.expanduser(local), 'wb') as f:
+            with local.open(mode="wb") as f:
                 shutil.copyfileobj(remote_buffer, f, chunk)
             # change the permissions mode
-            os.chmod(local,mode)
+            local.chmod(mode)
         # return the bytesIO object
         remote_buffer.seek(0)
         return remote_buffer
 
+
+# PURPOSE: load a JSON response from a http host
+def from_json(
+    HOST: str | list,
+    timeout: int | None = None,
+    context: ssl.SSLContext = _default_ssl_context,
+    headers: dict = {},
+) -> dict:
+    """
+    Load a ``JSON`` response from a ``http`` host
+
+    Parameters
+    ----------
+    HOST: str or list
+        Remote ``http`` host path split as list
+    timeout: int or NoneType, default None
+        Timeout in seconds for blocking operations
+    context: obj, default SMBcorr.utilities._default_ssl_context
+        ``SSL`` context for ``urllib`` opener object
+    headers: dict, default {}
+        Dictionary of headers to append from URL request
+
+    Returns
+    -------
+    json_response: dict
+        ``JSON`` response
+    """
+    # verify inputs for remote http host
+    if isinstance(HOST, str):
+        HOST = url_split(HOST)
+    # try loading JSON from http
+    try:
+        # Create and submit request for JSON response
+        request = urllib2.Request(posixpath.join(*HOST))
+        request.add_header("Accept", "application/json")
+        response = urllib2.urlopen(request, timeout=timeout, context=context)
+    except urllib2.HTTPError as exc:
+        logging.debug(exc.code)
+        raise
+    except urllib2.URLError as exc:
+        logging.debug(exc.reason)
+        exc.message = "Check internet connection"
+        raise
+    else:
+        # copy headers from response
+        headers.update({k.lower(): v for k, v in response.getheaders()})
+        # load JSON response
+        json_response = json.loads(response.read())
+        return json_response
+
+
 # PURPOSE: "login" to NASA Earthdata with supplied credentials
-def build_opener(username, password, context=_default_ssl_context,
-    password_manager=False, get_ca_certs=False, redirect=False,
-    authorization_header=True, urs='https://urs.earthdata.nasa.gov'):
+def build_opener(
+    username,
+    password,
+    context=_default_ssl_context,
+    password_manager=False,
+    get_ca_certs=False,
+    redirect=False,
+    authorization_header=True,
+    urs="https://urs.earthdata.nasa.gov",
+):
     """
     Build ``urllib`` opener for NASA Earthdata with supplied credentials
 
@@ -704,8 +970,10 @@ def build_opener(username, password, context=_default_ssl_context,
     # Encode username/password for request authorization headers
     # add Authorization header to opener
     if authorization_header:
-        b64 = base64.b64encode('{0}:{1}'.format(username, password).encode())
-        opener.addheaders = [("Authorization","Basic {0}".format(b64.decode()))]
+        b64 = base64.b64encode("{0}:{1}".format(username, password).encode())
+        opener.addheaders = [
+            ("Authorization", "Basic {0}".format(b64.decode()))
+        ]
     # Now all calls to urllib2.urlopen use our opener.
     urllib2.install_opener(opener)
     # All calls to urllib2.urlopen will now use handler
@@ -713,11 +981,20 @@ def build_opener(username, password, context=_default_ssl_context,
     # HTTPPasswordMgrWithDefaultRealm will be confused.
     return opener
 
+
 # PURPOSE: list a directory on NASA GES DISC https server
-def gesdisc_list(HOST, username=None, password=None, build=False,
-    timeout=None, urs='urs.earthdata.nasa.gov',
-    parser=lxml.etree.HTMLParser(), format='%Y-%m-%d %H:%M',
-    pattern='', sort=False):
+def gesdisc_list(
+    HOST,
+    username=None,
+    password=None,
+    build=False,
+    timeout=None,
+    urs="urs.earthdata.nasa.gov",
+    parser=lxml.etree.HTMLParser(),
+    format="%Y-%m-%d %H:%M",
+    pattern="",
+    sort=False,
+):
     """
     List a directory on NASA GES DISC servers
 
@@ -753,46 +1030,54 @@ def gesdisc_list(HOST, username=None, password=None, build=False,
     """
     # use netrc credentials
     if build and not (username or password):
-        username,_,password = netrc.netrc().authenticators(urs)
+        username, _, password = netrc.netrc().authenticators(urs)
     # build urllib2 opener with credentials
     if build:
-        build_opener(username, password, password_manager=True,
-            authorization_header=False)
+        build_opener(
+            username,
+            password,
+            password_manager=True,
+            authorization_header=False,
+        )
     # verify inputs for remote https host
     if isinstance(HOST, str):
         HOST = url_split(HOST)
     # try listing from https
     try:
         # Create and submit request.
-        request=urllib2.Request(posixpath.join(*HOST))
-        response=urllib2.urlopen(request, timeout=timeout)
+        request = urllib2.Request(posixpath.join(*HOST))
+        response = urllib2.urlopen(request, timeout=timeout)
     except (urllib2.HTTPError, urllib2.URLError):
-        raise Exception('List error from {0}'.format(posixpath.join(*HOST)))
+        raise Exception("List error from {0}".format(posixpath.join(*HOST)))
     else:
         # read and parse request for files (column names and modified times)
-        tree = lxml.etree.parse(response,parser)
-        colnames = tree.xpath('//tr/td[not(@*)]//a/@href')
+        tree = lxml.etree.parse(response, parser)
+        colnames = tree.xpath("//tr/td[not(@*)]//a/@href")
         # get the Unix timestamp value for a modification time
-        lastmod = [get_unix_time(i,format=format)
-            for i in tree.xpath('//tr/td[@align="right"][1]/text()')]
+        lastmod = [
+            get_unix_time(i, format=format)
+            for i in tree.xpath('//tr/td[@align="right"][1]/text()')
+        ]
         # reduce using regular expression pattern
         if pattern:
-            i = [i for i,f in enumerate(colnames) if re.search(pattern,f)]
+            i = [i for i, f in enumerate(colnames) if re.search(pattern, f)]
             # reduce list of column names and last modified times
             colnames = [colnames[indice] for indice in i]
             lastmod = [lastmod[indice] for indice in i]
         # sort the list
         if sort:
-            i = [i for i,j in sorted(enumerate(colnames), key=lambda i: i[1])]
+            i = [i for i, j in sorted(enumerate(colnames), key=lambda i: i[1])]
             # sort list of column names and last modified times
             colnames = [colnames[indice] for indice in i]
             lastmod = [lastmod[indice] for indice in i]
         # return the list of column names and last modified times
-        return (colnames,lastmod)
+        return (colnames, lastmod)
+
 
 # PURPOSE: filter the CMR json response for desired data files
-def cmr_filter_json(search_results, endpoint="data",
-    request_type="application/x-netcdf"):
+def cmr_filter_json(
+    search_results, endpoint="data", request_type="application/x-netcdf"
+):
     """
     Filter the CMR json response for desired data files
 
@@ -823,39 +1108,51 @@ def cmr_filter_json(search_results, endpoint="data",
     granule_urls = []
     granule_mtimes = []
     # check that there are urls for request
-    if ('feed' not in search_results) or ('entry' not in search_results['feed']):
-        return (granule_names,granule_urls)
+    if ("feed" not in search_results) or (
+        "entry" not in search_results["feed"]
+    ):
+        return (granule_names, granule_urls)
     # descriptor links for each endpoint
     rel = {}
-    rel['data'] = "http://esipfed.org/ns/fedsearch/1.1/data#"
-    rel['opendap'] = "http://esipfed.org/ns/fedsearch/1.1/service#"
-    rel['s3'] = "http://esipfed.org/ns/fedsearch/1.1/s3#"
+    rel["data"] = "http://esipfed.org/ns/fedsearch/1.1/data#"
+    rel["opendap"] = "http://esipfed.org/ns/fedsearch/1.1/service#"
+    rel["s3"] = "http://esipfed.org/ns/fedsearch/1.1/s3#"
     # iterate over references and get cmr location
-    for entry in search_results['feed']['entry']:
-        granule_names.append(entry['producer_granule_id'])
-        granule_mtimes.append(get_unix_time(entry['updated'],
-            format='%Y-%m-%dT%H:%M:%S.%f%z'))
-        for link in entry['links']:
+    for entry in search_results["feed"]["entry"]:
+        granule_names.append(entry["producer_granule_id"])
+        granule_mtimes.append(
+            get_unix_time(entry["updated"], format="%Y-%m-%dT%H:%M:%S.%f%z")
+        )
+        for link in entry["links"]:
             # skip inherited granules
-            if ('inherited' in link.keys()):
+            if "inherited" in link.keys():
                 continue
             # append if selected endpoint
-            if (link['rel'] == rel[endpoint]):
-                granule_urls.append(link['href'])
+            if link["rel"] == rel[endpoint]:
+                granule_urls.append(link["href"])
                 break
             # alternatively append if selected data type
-            if ('type' not in link.keys()):
+            if "type" not in link.keys():
                 continue
-            if (link['type'] == request_type):
-                granule_urls.append(link['href'])
+            if link["type"] == request_type:
+                granule_urls.append(link["href"])
                 break
     # return the list of urls, granule ids and modified times
     return (granule_names, granule_urls, granule_mtimes)
 
+
 # PURPOSE: cmr queries for GRACE/GRACE-FO products
-def cmr(short_name, version=None, start_date=None, end_date=None,
-    provider='GES_DISC', endpoint='data', request_type='application/x-netcdf',
-    verbose=False, fid=sys.stdout):
+def cmr(
+    short_name,
+    version=None,
+    start_date=None,
+    end_date=None,
+    provider="GES_DISC",
+    endpoint="data",
+    request_type="application/x-netcdf",
+    verbose=False,
+    fid=sys.stdout,
+):
     """
     Query the NASA Common Metadata Repository (CMR) for model data
 
@@ -911,48 +1208,52 @@ def cmr(short_name, version=None, start_date=None, end_date=None,
     # create "opener" (OpenerDirector instance)
     opener = urllib2.build_opener(*handler)
     # build CMR query
-    cmr_format = 'json'
+    cmr_format = "json"
     cmr_page_size = 2000
-    CMR_HOST = ['https://cmr.earthdata.nasa.gov','search',
-        'granules.{0}'.format(cmr_format)]
+    CMR_HOST = [
+        "https://cmr.earthdata.nasa.gov",
+        "search",
+        "granules.{0}".format(cmr_format),
+    ]
     # build list of CMR query parameters
     CMR_KEYS = []
-    CMR_KEYS.append('?provider={0}'.format(provider))
-    CMR_KEYS.append('&sort_key[]=start_date')
-    CMR_KEYS.append('&sort_key[]=producer_granule_id')
-    CMR_KEYS.append('&scroll=true')
-    CMR_KEYS.append('&page_size={0}'.format(cmr_page_size))
+    CMR_KEYS.append("?provider={0}".format(provider))
+    CMR_KEYS.append("&sort_key[]=start_date")
+    CMR_KEYS.append("&sort_key[]=producer_granule_id")
+    CMR_KEYS.append("&page_size={0}".format(cmr_page_size))
     # dictionary of product shortnames and version
-    CMR_KEYS.append('&short_name={0}'.format(short_name))
+    CMR_KEYS.append("&short_name={0}".format(short_name))
     if version:
-        CMR_KEYS.append('&version={0}'.format(version))
+        CMR_KEYS.append("&version={0}".format(version))
     # append keys for start and end time
     # verify that start and end times are in ISO format
-    start_date = isoformat(start_date) if start_date else ''
-    end_date = isoformat(end_date) if end_date else ''
-    CMR_KEYS.append('&temporal={0},{1}'.format(start_date, end_date))
+    start_date = isoformat(start_date) if start_date else ""
+    end_date = isoformat(end_date) if end_date else ""
+    CMR_KEYS.append("&temporal={0},{1}".format(start_date, end_date))
     # full CMR query url
-    cmr_query_url = "".join([posixpath.join(*CMR_HOST),*CMR_KEYS])
-    logging.info('CMR request={0}'.format(cmr_query_url))
+    cmr_query_url = "".join([posixpath.join(*CMR_HOST), *CMR_KEYS])
+    logging.info("CMR request={0}".format(cmr_query_url))
     # output list of granule names and urls
     granule_names = []
     granule_urls = []
     granule_mtimes = []
-    cmr_scroll_id = None
+    cmr_search_after = None
     while True:
         req = urllib2.Request(cmr_query_url)
-        if cmr_scroll_id:
-            req.add_header('cmr-scroll-id', cmr_scroll_id)
+        # add CMR search after header
+        if cmr_search_after:
+            req.add_header("CMR-Search-After", cmr_search_after)
+            logging.debug(f"CMR-Search-After: {cmr_search_after}")
         response = opener.open(req)
-        # get scroll id for next iteration
-        if not cmr_scroll_id:
-            headers = {k.lower():v for k,v in dict(response.info()).items()}
-            cmr_scroll_id = headers['cmr-scroll-id']
+        # get search after index for next iteration
+        headers = {k.lower(): v for k, v in dict(response.info()).items()}
+        cmr_search_after = headers.get("cmr-search-after")
         # read the CMR search as JSON
-        search_page = json.loads(response.read().decode('utf8'))
-        ids,urls,mtimes = cmr_filter_json(search_page,
-            endpoint=endpoint, request_type=request_type)
-        if not urls:
+        search_page = json.loads(response.read().decode("utf8"))
+        ids, urls, mtimes = cmr_filter_json(
+            search_page, endpoint=endpoint, request_type=request_type
+        )
+        if not urls or cmr_search_after is None:
             break
         # extend lists
         granule_names.extend(ids)
@@ -961,10 +1262,19 @@ def cmr(short_name, version=None, start_date=None, end_date=None,
     # return the list of granule ids, urls and modification times
     return (granule_names, granule_urls, granule_mtimes)
 
+
 # PURPOSE: build requests for the GES DISC subsetting API
-def build_request(short_name, dataset_version, url, variables=[],
-    format='bmM0Lw', service='L34RS_MERRA2', version='1.02',
-    bbox=[-90,-180,90,180], **kwargs):
+def build_request(
+    short_name,
+    dataset_version,
+    url,
+    variables=[],
+    format="bmM0Lw",
+    service="L34RS_MERRA2",
+    version="1.02",
+    bbox=[-90, -180, 90, 180],
+    **kwargs,
+):
     """
     Build requests for the GES DISC subsetting API
 
@@ -993,17 +1303,17 @@ def build_request(short_name, dataset_version, url, variables=[],
         Formatted url for GES DISC subsetting API
     """
     # split CMR supplied url for granule
-    HOST,*args = url_split(url)
-    api_host = posixpath.join(HOST,'daac-bin','OTF','HTTP_services.cgi?')
+    HOST, *args = url_split(url)
+    api_host = posixpath.join(HOST, "daac-bin", "OTF", "HTTP_services.cgi?")
     # create parameters to be encoded
-    kwargs['FILENAME'] = posixpath.join(posixpath.sep, *args)
-    kwargs['FORMAT'] = format
-    kwargs['SERVICE'] = service
-    kwargs['VERSION'] = version
-    kwargs['BBOX'] = ','.join(map(str, bbox))
-    kwargs['SHORTNAME'] = short_name
-    kwargs['DATASET_VERSION'] = dataset_version
-    kwargs['VARIABLES'] = ','.join(variables)
+    kwargs["FILENAME"] = posixpath.join(posixpath.sep, *args)
+    kwargs["FORMAT"] = format
+    kwargs["SERVICE"] = service
+    kwargs["VERSION"] = version
+    kwargs["BBOX"] = ",".join(map(str, bbox))
+    kwargs["SHORTNAME"] = short_name
+    kwargs["DATASET_VERSION"] = dataset_version
+    kwargs["VARIABLES"] = ",".join(variables)
     # return the formatted request url
     request_url = api_host + urlencode(kwargs)
     return request_url

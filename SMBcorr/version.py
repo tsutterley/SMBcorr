@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-u"""
+"""
 version.py (11/2023)
 Gets version number of a package
 """
+
 import importlib.metadata
 
 # package metadata

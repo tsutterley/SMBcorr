@@ -22,7 +22,8 @@ authors = [
 maintainers = [
     {name = "SMBcorr contributors"}
 ]
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.rst"
 
 requires-python = "~=3.6"
@@ -43,7 +44,6 @@ dynamic = ["version"]
 classifiers=[
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.6",
@@ -95,3 +95,38 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 precision = 2
+
+[tool.ruff]
+line-length = 80
+indent-width = 4
+exclude = [
+    ".git",
+    ".pixi",
+    "build",
+    "run",
+    "test",
+]
+
+[tool.ruff.lint]
+select = [
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # ruff-specific
+    "RUF",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.format]
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = false
